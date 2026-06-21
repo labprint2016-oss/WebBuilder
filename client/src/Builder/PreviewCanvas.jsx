@@ -10,6 +10,11 @@ const toPercent = (size) => {
   return `${(safe / 12) * 100}%`;
 };
 
+const toGridSpan = (size) => {
+  const n = Number(size);
+  return Number.isFinite(n) ? Math.min(12, Math.max(1, Math.round(n))) : DEFAULT_COL_SIZE;
+};
+
 const resolveSurfaceBackground = (node, theme) => {
   if (!node) return "transparent";
   const isGradient = node?.isGradient === true;
@@ -82,12 +87,13 @@ const PreviewColumn = ({ column, theme, device, conI, colI, noColumnGap }) => {
   const colElements = Array.isArray(column?.elements) ? column.elements : [];
   const spans = Array.isArray(column?.spans) ? column.spans : [];
 
+  const gridSpan = toGridSpan(column?.size);
+
   return (
     <div
       className="min-w-0"
       style={{
-        width: toPercent(column?.size),
-        flex: `0 0 ${toPercent(column?.size)}`,
+        gridColumn: `span ${gridSpan} / span ${gridSpan}`,
       }}
     >
       {isSpan ? (
@@ -159,7 +165,10 @@ const PreviewSection = ({ layout, theme, device, conI }) => {
           paddingBottom: Number(container?.paddingBottom) || 0,
         }}
       >
-        <div className="flex w-full min-w-0 flex-wrap" style={{ columnGap: gapPx, rowGap: gapPx }}>
+        <div
+          className="grid w-full min-w-0 grid-cols-12"
+          style={{ columnGap: gapPx, rowGap: gapPx }}
+        >
           {columns.map((column, colI) => (
             <PreviewColumn
               key={column?.id || `col-${conI}-${colI}`}
