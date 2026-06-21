@@ -2184,6 +2184,11 @@ function normalizeSpanStructure(rawLayouts) {
   return changed ? nextLayouts : rawLayouts;
 }
 
+const MaybeDndContext = ({ enabled, children, ...props }) => {
+  if (!enabled) return <>{children}</>;
+  return <DndContext {...props}>{children}</DndContext>;
+};
+
 const Content = ({
   handleDropElement,
   openOffcavanas,
@@ -2204,6 +2209,7 @@ const Content = ({
     [layoutsProp]
   );
   const isLayoutMode = builderMode === "Layout Mode";
+  const isPreviewCleanMode = isPreview;
   const previewAuditMode =
     isPreview &&
     typeof window !== "undefined" &&
@@ -13443,26 +13449,46 @@ const Content = ({
         className={`content-area min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
           isPreview ? "p-0" : "p-4 sm:p-6"
         }`}
-        onDrop={(e) => {
-          handleDrop(e);
-        }}
-        onDragOver={(e) => {
-          handleDuring(e);
-        }}
-        onDragEnterCapture={(e) => {
-          e.preventDefault();
+        onDrop={
+          isPreviewCleanMode
+            ? undefined
+            : (e) => {
+                handleDrop(e);
+              }
+        }
+        onDragOver={
+          isPreviewCleanMode
+            ? undefined
+            : (e) => {
+                handleDuring(e);
+              }
+        }
+        onDragEnterCapture={
+          isPreviewCleanMode
+            ? undefined
+            : (e) => {
+                e.preventDefault();
 
-          if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-        }}
-        onDragOverCapture={(e) => {
-          e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+              }
+        }
+        onDragOverCapture={
+          isPreviewCleanMode
+            ? undefined
+            : (e) => {
+                e.preventDefault();
 
-          if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-        }}
-        onMouseMove={(e) => {
-          scheduleBTNUpdate(e);
-          scheduleDND(e);
-        }}
+                if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+              }
+        }
+        onMouseMove={
+          isPreviewCleanMode
+            ? undefined
+            : (e) => {
+                scheduleBTNUpdate(e);
+                scheduleDND(e);
+              }
+        }
         onClickCapture={(e) => {
           if (builderMode !== "Layout Mode") return;
           const target = e.target;
@@ -13477,20 +13503,25 @@ const Content = ({
           if (!targetEl) return;
           // Keep nested element selection until user clicks the same element again.
         }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          const stillInsideCanvas = checkGhostPosition(
-            e.clientX,
-            e.clientY,
-            e.currentTarget.getBoundingClientRect()
-          );
-          if (stillInsideCanvas) return;
-          setDrop(null, null);
-          setPreview(null);
-        }}
+        onDragLeave={
+          isPreviewCleanMode
+            ? undefined
+            : (e) => {
+                e.preventDefault();
+                const stillInsideCanvas = checkGhostPosition(
+                  e.clientX,
+                  e.clientY,
+                  e.currentTarget.getBoundingClientRect()
+                );
+                if (stillInsideCanvas) return;
+                setDrop(null, null);
+                setPreview(null);
+              }
+        }
       >
         {/* Canvas สำหรับวาง element */}
-        <DndContext
+        <MaybeDndContext
+        enabled={!isPreviewCleanMode}
         onDragStart={(e) => {
           if (builderMode !== "Layout Mode") return;
           listImageColWarnedRef.current = false;
@@ -15247,7 +15278,7 @@ const Content = ({
 
 
 
-      </DndContext>
+      </MaybeDndContext>
       </div>
 
       {!isPreview && (

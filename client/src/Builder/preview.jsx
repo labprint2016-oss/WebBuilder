@@ -1,7 +1,7 @@
-import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 
 const SNAPSHOT_KEY = "wb:preview:snapshot:v1";
-const PreviewContent = lazy(() => import("./content"));
+const PreviewCanvas = lazy(() => import("./PreviewCanvas"));
 
 const IMAGE_TYPES = new Set(["img", "imgh", "imgo", "bnr", "post"]);
 
@@ -38,8 +38,10 @@ const findFirstImageSrc = (layouts) => {
 function PreviewRuntime() {
   const [snapshot, setSnapshot] = useState(null);
   const [isSnapshotLoading, setIsSnapshotLoading] = useState(true);
-  const patchElementRef = useRef(null);
-  const openListBoxTextEditRef = useRef(null);
+  const auditMode = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).get("audit") === "1";
+  }, []);
   const firstImageSrc = useMemo(
     () => findFirstImageSrc(snapshot?.layouts),
     [snapshot?.layouts]
@@ -88,21 +90,24 @@ function PreviewRuntime() {
 
   return (
     <div className="relative h-full min-h-0 flex-1">
+      {!auditMode ? (
+        <style>{`
+          @keyframes previewFeedIn {
+            from { transform: translate3d(0, 10px, 0); }
+            to { transform: translate3d(0, 0, 0); }
+          }
+          .preview-feed-in {
+            animation: previewFeedIn 240ms cubic-bezier(0.22, 1, 0.36, 1);
+            animation-fill-mode: both;
+          }
+        `}</style>
+      ) : null}
       <Suspense fallback={<div className="h-full min-h-0 flex-1 bg-white" />}>
-        <PreviewContent
-          builderMode="Preview Mode"
-          handleDropElement={() => null}
+        <PreviewCanvas
           device={snapshot?.device || "Desktop"}
-          openOffcavanas={() => {}}
-          offcanvasID={null}
           layouts={snapshot.layouts}
-          setLayout={() => {}}
           theme={snapshot.theme}
-          setPage={() => {}}
-          page={snapshot.page}
-          patchElementRef={patchElementRef}
-          openListBoxTextEditRef={openListBoxTextEditRef}
-          isPreview
+          auditMode={auditMode}
         />
       </Suspense>
     </div>
