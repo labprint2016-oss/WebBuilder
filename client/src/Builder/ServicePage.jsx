@@ -1,0 +1,320 @@
+import { useEffect, useState,useRef } from "react";
+import { createPage } from "../../Functions/pages";
+
+import {
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    Button,
+    Radio,
+    RadioGroup,
+    FormControlLabel,
+    FormControl,
+    Input,
+    InputAdornment,
+    Box,
+    Slider,
+    Typography,
+    Select,
+    MenuItem,
+    ListItemText,
+    OutlinedInput,
+    Grow,
+    Slide,
+    Popper,
+    TextField,
+    Modal,
+    Fade,Zoom,Collapse,Backdrop
+
+  
+  
+  
+  } from "@mui/material";
+  import lodash, { first, isNull, set } from "lodash";
+
+  import { Minus, Plus,Check,Palette,ImageOff,Trash2} from "lucide-react";
+  import { styled } from '@mui/material/styles';
+  import Switch from '@mui/material/Switch';
+  import Stack from '@mui/material/Stack';
+  import { text } from "@fortawesome/fontawesome-svg-core";
+
+
+
+const COMMON_FIELD_SX = (darkMode,error) => {
+    const isDark = darkMode === "dark";
+
+
+  const borderColor = isDark ? "#494d54" : "#e7e7e7";
+  const textColor = isDark ? "#ffffff" : "#18181b";
+  const bgcolor = "none" // เหมือน SocialList
+  const dangerColor = darkMode === "dark" ? "#cc0000" : "#ea9999";
+
+  const borderColorValidate = error ? dangerColor : borderColor
+
+  const outlineStyle = {
+    borderColor:borderColorValidate,
+    borderWidth: 1,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+    borderTopRightRadius: 5,
+    borderBottomRightRadius: 5,
+    borderLeftWidth: 0,
+  };
+  
+    return {
+        "& .MuiOutlinedInput-root": {
+          height:35,
+          backgroundColor: bgcolor,
+          alignItems: "center",
+          padding: 0,
+          borderTopLeftRadius: 0,
+          borderBottomLeftRadius: 0,
+          borderTopRightRadius: 5,
+    borderBottomRightRadius: 5,
+          overflow: "hidden",
+    
+          "& fieldset": outlineStyle,
+          "&:hover fieldset": outlineStyle,
+          "&.Mui-focused fieldset": outlineStyle,
+          "&.Mui-error fieldset": outlineStyle,
+        },
+    
+        "& .MuiOutlinedInput-input": {
+          fontSize:13,
+          color: textColor,
+          padding: "0 12px",
+          height: "100%",
+          boxSizing: "border-box",
+          backgroundColor: bgcolor,
+          WebkitTextFillColor: textColor,
+    
+          "&:-webkit-autofill": {
+            WebkitBoxShadow: `0 0 0 1000px ${bgcolor} inset`,
+            WebkitTextFillColor: textColor,
+            caretColor: textColor,
+            borderRadius: 0,
+            transition: "background-color 9999s ease-out 0s",
+          },
+          "&:-webkit-autofill:hover": {
+            WebkitBoxShadow: `0 0 0 1000px ${bgcolor} inset`,
+            WebkitTextFillColor: textColor,
+          },
+          "&:-webkit-autofill:focus": {
+            WebkitBoxShadow: `0 0 0 1000px ${bgcolor} inset`,
+            WebkitTextFillColor: textColor,
+          },
+        },
+      };
+  };
+
+const ServicePage = ({open,onClose,darkMode,complete})=>{
+
+    const primaryColor = darkMode === "dark" ? "#3d85c6" : "#3677b2";
+    const secondaryColor = darkMode === "dark" ? "#3d85c6" : "#18354f";
+    const textSecondaryColor = darkMode === "dark" ? "#bebebe" : "#555555";
+    const thirdColor = darkMode === "dark" ? "#494d55" : "#18354f";
+    const fouthColor = darkMode === "dark" ? "#ebf2f9" : "#ebf2f9";
+    const fifthColor = darkMode === "dark" ? "#494d55" : "#e0e0e0";
+
+    const dangerColor = darkMode === "dark" ? "#cc0000" : "#ea9999";
+    
+    const textColor = darkMode === "dark" ? "#ffffff" : "#202020";
+    const cencelColor = darkMode === "dark" ? "gray" : "gray";
+    const bgColor = darkMode === "dark" ? "#494d54" : "#A1A1AA"
+   
+    const [data,setData] = useState({pageName:""})
+    const [error,setError] = useState("")
+    const [validating,setValidating] = useState(false)
+
+
+    const validation = (pageName)=>{
+        if(pageName.length < 3){
+            setError("กรุณากรอกชื่อหน้าให้ถูกต้อง")
+        }else{
+            setError("")
+        }
+    }
+
+    const bgColorValidate = error ? dangerColor :bgColor
+
+
+    useEffect(()=>{
+        console.log(error);
+    },[error])
+
+
+    const handleClose = ()=>{
+        setData({...data,pageName:""})
+        setValidating(false)
+        setError("")
+        onClose()
+    }
+
+    return(  
+      <Modal
+      open={open}
+      onClose={()=>{
+        handleClose()
+      }}
+      aria-labelledby="basic-modal-title"
+      aria-describedby="basic-modal-desc"
+      slotProps={{ backdrop: { timeout: 200 } }}
+      closeAfterTransition
+      slots={{ backdrop: Backdrop }}
+    >
+      <Zoom in={open} timeout={200}>
+        <Box
+          sx={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            p: 2,
+            pointerEvents: "none",
+            overflowY: "auto", // ✅ ให้ modal ทั้งก้อนเลื่อนได้ถ้าจอเตี้ย
+          }}
+        >
+          <Box
+            onClick={(e) => e.stopPropagation()}
+            sx={{
+              pointerEvents: "auto",
+              width: 450,
+              maxWidth: "95vw",
+              maxHeight: 300, // ✅ เพิ่มความสูง
+              backgroundColor: darkMode === "dark" ? "#27272a" : "#ffffff",
+              borderRadius: 3,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <div className="flex justify-between px-4 pt-3 pb-1 shrink-0">
+            <div className="text-[15px] flex items-center gap-6">
+              <span className="font-extrabold" style={{ color: primaryColor }}>
+                เพิ่มหน้าใหม่
+              </span>
+            </div>
+              <div>
+                <a onClick={()=>{
+                    handleClose()
+                }} style={{ cursor: "pointer", color: textColor }}>
+                  X
+                </a>
+              </div>
+            </div>
+    
+            <div className="border-b border-dotted border-gray-500/50 shrink-0 mt-1"></div>
+    
+            {/* ✅ ส่วนนี้ scroll */}
+            <Box
+              sx={{
+                flex: 1,
+                overflowY: "auto",
+                px: 1,
+              }}
+            >
+              <div className="w-full rounded-md POPPER px-[10px] pt-[12px] pb-[14px] pt-[20px] flex gap-3">
+
+     
+                <FormControl fullWidth>
+                
+                <Box sx={{ display: "flex", width: "100%" }}>
+                <Box
+  sx={{
+    display: "flex",
+    fontSize: 12,
+    bgcolor: fifthColor,
+    color: textSecondaryColor,
+    height: 35,
+    width: 80,
+    alignItems: "center",
+    justifyContent: "center",
+    borderTopLeftRadius: 5,
+    borderBottomLeftRadius: 5,
+    textAlign: "center",
+  }}
+>
+  ชื่อหน้า
+</Box>
+                  <TextField
+                    sx={COMMON_FIELD_SX( darkMode,error)}
+                    fullWidth
+                    name="pageName"
+                 value={data.pageName}
+                 onChange={(e)=>{
+                    e.preventDefault()
+                    if(error === "ต้องมีชื่อหน้าอย่างน้อย 3 ขึ้นไป"){
+                        setError("")
+                    }
+                    const {name,value} = e.target
+                    if(validating) validation(value)
+                    setData({...data,[name]:value})
+                 }}
+                    type="text"
+                  />
+                </Box>
+              </FormControl>
+</div>
+             
+            </Box>
+    
+            <div className="flex justify-between gap-2 my-[-1px] pb-5 shrink-0 px-4">
+                <div className="ml-1 pt-2 text-red-500/50">
+                    {error && (
+                        <span style={{fontSize:12}}>{error}</span>
+                    )}
+                </div>
+                <div className="flex gap-2">
+                <Button sx={{
+                    color: textSecondaryColor,
+                    backgroundColor: fifthColor,
+                    fontSize:12,
+                    fontWeight:400,
+
+                }} onClick={()=>{
+                    handleClose()
+                }}>
+                    ยกเลิก
+                </Button>
+                <Button sx={{
+                    color:"#ffffff",
+                    backgroundColor: secondaryColor,
+                    fontSize:12,
+                    paddingX: 2,
+                    fontWeight:400,
+
+                }} onClick={()=>{
+                    setValidating(true)
+                    validation(data.pageName)
+                    if(error) return
+                    createPage(data)
+                    .then((res)=>{
+                        complete()
+                        handleClose()
+                    })
+                    .catch((err)=>{
+                        
+                        console.log(err);
+                        if(err.response.data === "Page already exists"){
+                            setError("มีชื่อหน้านี้แล้ว")
+                        }
+                    })
+                }}>
+                    บันทึกข้อมูล
+                </Button>
+                </div>
+
+            </div>
+          </Box>
+        </Box>
+      </Zoom>
+    </Modal>
+      )
+
+
+}
+
+
+export default ServicePage

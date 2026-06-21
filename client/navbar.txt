@@ -1,0 +1,250 @@
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Home,
+  FileText,
+  Bell,
+  Users,
+  Settings,
+  Gift,
+  BarChart3,
+  Layers,
+  Database,
+  Grid3X3,
+  MapPin,
+  ChevronRight,
+  Menu,
+  LogOut,
+  Plus,
+  Download,
+  SlidersHorizontal,
+  RefreshCw,
+  Sun,
+  Moon,
+} from "lucide-react";
+
+export default function DashboardApp() {
+  const [navOpen, setNavOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [activeItem, setActiveItem] = useState("CRM");
+  const [selectedMenuId, setSelectedMenuId] = useState("home");
+  const [isDark, setIsDark] = useState(() => {
+    try {
+      const saved = typeof window !== "undefined" ? localStorage.getItem("dash-theme") : null;
+      if (saved) return saved === "dark";
+      if (typeof window !== "undefined" && window.matchMedia) {
+        return window.matchMedia("(prefers-color-scheme: dark)").matches;
+      }
+    } catch (_) {}
+    return true;
+  });
+
+  useEffect(() => {
+    const mode = isDark ? "dark" : "light";
+    localStorage.setItem("dash-theme", mode);
+    const root = document.documentElement;
+    if (isDark) root.classList.add("dark");
+    else root.classList.remove("dark");
+  }, [isDark]);
+
+  const menus = useMemo(
+    () => ({
+      home: {
+        title: "Dashboards",
+        items: ["CRM", "Ecommerce", "Crypto", "Jobs", "NFT", "Sales", "Analytics", "Projects", "HRM", "Stocks", "Courses", "Personal"],
+      },
+      docs: { title: "Documents", items: ["Requirements", "Specs", "Contracts", "Invoices"] },
+      alerts: { title: "Notifications", items: ["All Alerts", "Errors", "Warnings", "Mentions"] },
+      team: { title: "Team", items: ["Members", "Roles", "Permissions", "Invites"] },
+      settings: { title: "Settings", items: ["General", "Billing", "Security", "Integrations"] },
+      gifts: { title: "Campaigns", items: ["Coupons", "Promos", "Loyalty", "Gifts"] },
+      reports: { title: "Reports", items: ["Sales", "Traffic", "Cohorts", "Funnel"] },
+      apps: { title: "Apps", items: ["Calendar", "Inbox", "Contacts", "Files"] },
+      data: { title: "Data", items: ["Tables", "ETL Jobs", "Backups", "Schemas"] },
+      map: { title: "Locations", items: ["Stores", "Regions", "Routing", "Heatmap"] },
+    }),
+    []
+  );
+
+  const currentMenu = menus[selectedMenuId];
+
+  return (
+    <div className={`${isDark ? "dark" : ""} h-screen w-full`}>
+      <div className="flex h-full w-full bg-slate-50 dark:bg-gray-950 text-slate-900 dark:text-white">
+        {/* Icon rail */}
+        <aside className="hidden sm:flex flex-col items-center gap-4 py-4 w-16 border-r border-slate-200 dark:border-white/10 bg-white/90 dark:bg-gray-950/70">
+          <div className="h-10 w-10 grid place-items-center rounded-lg bg-slate-100 dark:bg-white/5">
+            <Layers className="h-5 w-5 text-slate-700 dark:text-white/90" />
+          </div>
+          <IconButton icon={Home} label="Home" onClick={() => { setSelectedMenuId('home'); setNavOpen(true); }} />
+          <IconButton icon={FileText} label="Docs" onClick={() => { setSelectedMenuId('docs'); setNavOpen(true); }} />
+          <IconButton icon={Bell} label="Alerts" onClick={() => { setSelectedMenuId('alerts'); setNavOpen(true); }} />
+          <IconButton icon={Users} label="Team" onClick={() => { setSelectedMenuId('team'); setNavOpen(true); }} />
+          <IconButton icon={Settings} label="Settings" onClick={() => { setSelectedMenuId('settings'); setNavOpen(true); }} />
+          <IconButton icon={Gift} label="Gifts" onClick={() => { setSelectedMenuId('gifts'); setNavOpen(true); }} />
+          <IconButton icon={BarChart3} label="Reports" onClick={() => { setSelectedMenuId('reports'); setNavOpen(true); }} />
+          <IconButton icon={Grid3X3} label="Apps" onClick={() => { setSelectedMenuId('apps'); setNavOpen(true); }} />
+          <IconButton icon={Database} label="Data" onClick={() => { setSelectedMenuId('data'); setNavOpen(true); }} />
+          <IconButton icon={MapPin} label="Map" onClick={() => { setSelectedMenuId('map'); setNavOpen(true); }} />
+          <div className="mt-auto">
+            <IconButton icon={LogOut} label="Logout" onClick={() => {}} />
+          </div>
+        </aside>
+
+        {/* Wide nav panel (collapsible) */}
+        <aside className={`${navOpen ? "w-72" : "w-0"} hidden sm:block transition-all duration-300 overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10`}>
+          <div className="px-6 py-5 flex items-center justify-between">
+            <div className="font-semibold tracking-wide">{currentMenu?.title || 'Navigation'}</div>
+            <button
+              onClick={() => setNavOpen((s) => !s)}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                <path fillRule="evenodd" d="M15.78 4.22a.75.75 0 010 1.06L10.06 11l5.72 5.72a.75.75 0 11-1.06 1.06l-6.25-6.25a.75.75 0 010-1.06l6.25-6.25a.75.75 0 011.06 0z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+          <nav className="px-4 pb-6 overflow-y-auto h-[calc(100%-64px)]">
+            <ul className="mt-1 pl-1">
+              {currentMenu?.items.map((item) => (
+                <li key={item}>
+                  <button
+                    onClick={() => setActiveItem(item)}
+                    className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 ${activeItem === item ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-white/70'}`}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-white/40" />
+                    <span>{item}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </aside>
+
+        {/* Main column */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Topbar */}
+          <header className="h-16 shrink-0 flex items-center gap-3 px-3 sm:px-6 border-b border-slate-200 dark:border-white/10 bg-white/80 backdrop-blur dark:bg-gray-900/70">
+            <button className="sm:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/80" onClick={() => setMobileOpen((s) => !s)} aria-label="Toggle navigation">
+              <Menu className="h-5 w-5" />
+            </button>
+            <button className="hidden sm:inline-flex p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/80" onClick={() => setNavOpen((s) => !s)} aria-label="Collapse navigation">
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="ml-auto" />
+            <button onClick={() => setIsDark((s) => !s)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5" aria-label="Toggle theme">
+              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+          </header>
+
+          {/* Content */}
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+            <h1 className="text-xl sm:text-2xl font-semibold mb-2">{activeItem} Dashboard</h1>
+
+            {/* Toolbar */}
+            <div className="mb-6 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-slate-600 dark:text-white/70 text-sm">
+                <span className="hidden sm:inline">Dashboard</span>
+                <ChevronRight className="h-4 w-4 hidden sm:inline" />
+                <span className="font-medium text-slate-900 dark:text-white">{activeItem}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm inline-flex items-center gap-2 dark:bg-white/10 dark:hover:bg-white/15">
+                  <SlidersHorizontal className="h-4 w-4" /> Filters
+                </button>
+                <button className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm inline-flex items-center gap-2 dark:bg-white/10 dark:hover:bg-white/15">
+                  <RefreshCw className="h-4 w-4" /> Refresh
+                </button>
+                <button className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm inline-flex items-center gap-2 dark:bg-white/10 dark:hover:bg-white/15">
+                  <Download className="h-4 w-4" /> Export
+                </button>
+                <button className="px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-sm inline-flex items-center gap-2 dark:bg-emerald-500/20 dark:text-white dark:border dark:border-emerald-400/30 dark:hover:bg-emerald-500/30">
+                  <Plus className="h-4 w-4" /> New
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-gray-900/70">
+              Main content area...
+            </div>
+          </main>
+
+          {/* Footer */}
+          <footer className="h-12 shrink-0 border-t border-slate-200 dark:border-white/10 bg-white/80 backdrop-blur dark:bg-gray-900/70 px-4 sm:px-6 flex items-center justify-between text-xs text-slate-600 dark:text-white/60">
+            <span>© {new Date().getFullYear()} Your Company. All rights reserved.</span>
+            <div className="flex items-center gap-3">
+              <a className="hover:text-slate-900 dark:hover:text-white" href="#">Privacy</a>
+              <span className="opacity-40">•</span>
+              <a className="hover:text-slate-900 dark:hover:text-white" href="#">Terms</a>
+              <span className="opacity-40">•</span>
+              <a className="hover:text-slate-900 dark:hover:text-white" href="#">Status</a>
+            </div>
+          </footer>
+        </div>
+      </div>
+
+      {/* Mobile sheet nav */}
+      {mobileOpen && (
+        <div className="sm:hidden fixed inset-0 z-50 bg-black/60" onClick={() => setMobileOpen(false)}>
+          <div className="absolute left-0 top-0 bottom-0 w-72 bg-white dark:bg-gray-900 text-slate-900 dark:text-white border-r border-slate-200 dark:border-white/10 p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-semibold">Navigation</span>
+              <button className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5" onClick={() => setMobileOpen(false)}>
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="text-xs uppercase tracking-wider text-slate-500 dark:text-white/40 px-2 mt-2 mb-1">
+              {currentMenu?.title || 'Dashboards'}
+            </div>
+            <ul>
+              {currentMenu?.items.map((item) => (
+                <li key={item}>
+                  <button
+                    onClick={() => {
+                      setActiveItem(item);
+                      setMobileOpen(false);
+                    }}
+                    className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 ${activeItem === item ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-white/70'}`}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-white/40" />
+                    <span>{item}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IconButton({ icon: Icon, label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group relative p-2 rounded-lg hover:bg-slate-100 text-slate-700 dark:text-white/70 dark:hover:bg-white/5"
+      aria-label={label}
+    >
+      <Icon className="h-5 w-5 group-hover:text-slate-900 dark:group-hover:text-white" />
+      <span className="pointer-events-none absolute left-11 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-slate-800 text-white dark:bg-gray-800 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 border border-slate-700/40 dark:border-white/10">
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function getMenuIcon(key) {
+  const icons = {
+    home: Home,
+    docs: FileText,
+    alerts: Bell,
+    team: Users,
+    settings: Settings,
+    gifts: Gift,
+    reports: BarChart3,
+    apps: Grid3X3,
+    data: Database,
+    map: MapPin,
+  };
+  return icons[key] || Home;
+}

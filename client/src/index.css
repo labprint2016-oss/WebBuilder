@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* แถบความคืบหน้า range ที่ใช้ --fill: อ่อนกว่าหัวเลื่อนเล็กน้อย (ไม่ชนกับสีวงกลม) */
+@layer components {
+  .theme-range-fill-track {
+    background-repeat: no-repeat;
+    background-size: var(--pos, 0%) 100%;
+    background-image: linear-gradient(
+      to right,
+      color-mix(in srgb, var(--fill) 80%, white),
+      color-mix(in srgb, var(--fill) 80%, white)
+    );
+  }
+  .dark .theme-range-fill-track {
+    background-image: linear-gradient(
+      to right,
+      color-mix(in srgb, var(--fill) 80%, rgb(63 63 70)),
+      color-mix(in srgb, var(--fill) 80%, rgb(63 63 70))
+    );
+  }
+}
+
+/* ให้สูงเต็มหน้าจอ — กัน scroll แนวนอนระดับหน้า */
+html,
+body {
+  height: 100%;
+  overflow-x: hidden;
+}
+#root {
+  height: 100%;
+  overflow-x: hidden;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  text-align: inherit !important;
+}
+p {
+  size: 10px;
+}
+
