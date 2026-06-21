@@ -206,10 +206,18 @@ function PreviewCanvas({ layouts = [], theme, device = "Desktop", auditMode = fa
         {renderQueue.map((entry, idx) => {
           if (entry.kind === "single") {
             const item = entry.items[0];
+            const deferOffscreenStyle =
+              item.conI > 0
+                ? {
+                    contentVisibility: "auto",
+                    containIntrinsicSize: "1px 900px",
+                  }
+                : undefined;
             return (
               <div
                 key={`single-${item.layout?.container?.id || idx}`}
                 className={!auditMode && item.conI > 0 ? "preview-feed-in" : ""}
+                style={deferOffscreenStyle}
               >
                 <PreviewSection
                   layout={item.layout}
@@ -224,7 +232,18 @@ function PreviewCanvas({ layouts = [], theme, device = "Desktop", auditMode = fa
             <div key={`split-${idx}`} className={!auditMode ? "preview-feed-in" : ""}>
               <div className="flex w-full min-w-0">
                 {entry.items.map((item) => (
-                  <div key={item.layout?.container?.id || item.conI} className="min-w-0 flex-1">
+                  <div
+                    key={item.layout?.container?.id || item.conI}
+                    className="min-w-0 flex-1"
+                    style={
+                      item.conI > 0
+                        ? {
+                            contentVisibility: "auto",
+                            containIntrinsicSize: "1px 900px",
+                          }
+                        : undefined
+                    }
+                  >
                     <PreviewSection
                       layout={item.layout}
                       theme={theme}
