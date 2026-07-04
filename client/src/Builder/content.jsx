@@ -6,7 +6,7 @@ import React, {
   useState,
   useRef,
 } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import {
   Settings,
   Copy,
@@ -2248,6 +2248,7 @@ const Content = ({
   const [disableColDrag, setDisableColDrag] = useState(true); // ตัวแปรควบคุมการ disable Drag&Drop ของ col
   const [disableEleDrag, setDisableEleDrag] = useState(true); // ตัวแปรควบคุมการ disable Drag&Drop ของ ele
   const [disableSpnDrag, setDisableSpnDrag] = useState(true); // ตัวแปรควบคุมการ disable Drag&Drop ของ spn
+  const [suppressDropMotion, setSuppressDropMotion] = useState(false);
   // ฟังก์ชันเกี่ยวกับ Layout
   const [selectID, setSelectID] = useState({
     ids:{},
@@ -2354,6 +2355,9 @@ const Content = ({
   // การเก็บค่า
   const positionRef = useRef(null); // เก็บตำแหน่งเดิมของ container เมื่อ Drag&Drop ele
   const dragToken = useRef(0); // เก็บtoken เพื่อสั่งหยุด hoverRef
+  const dropCommitGuardRef = useRef({ token: -1, at: 0 });
+  const lastDropHandledAtRef = useRef(0);
+  const dropMotionTimerRef = useRef(null);
   const activeInlineDragGroupRef = useRef(null);
   const carouselColWarnedRef = useRef(false);
   const listImageColWarnedRef = useRef(false);
@@ -4150,8 +4154,17 @@ const Content = ({
     }
    }, [builderMode]); // ควบคุมการลบ ele
   useEffect(() => {
+    return () => {
+      if (dropMotionTimerRef.current) {
+        clearTimeout(dropMotionTimerRef.current);
+        dropMotionTimerRef.current = null;
+      }
+    };
+  }, []);
+  useEffect(() => {
     if (!preview) return;
     const cancle = () => {
+      if (Date.now() - (Number(lastDropHandledAtRef.current) || 0) < 260) return;
       setTimeout(() => clearGhost(), 0);
     };
 
@@ -4164,14 +4177,12 @@ const Content = ({
 
   useEffect(() => {
     if (!preview || !handleDropElement()) return;
-    const onDragEnd = (e) => {
+    const onDropCapture = (e) => {
       handleDrop(e);
     };
-    window.addEventListener("dragend", onDragEnd, { capture: true });
-    window.addEventListener("drop", onDragEnd, { capture: true });
+    window.addEventListener("drop", onDropCapture, { capture: true });
     return () => {
-      window.removeEventListener("dragend", onDragEnd, { capture: true });
-      window.removeEventListener("drop", onDragEnd, { capture: true });
+      window.removeEventListener("drop", onDropCapture, { capture: true });
     };
   }, [layouts, preview,handleDropElement()]);
 
@@ -4803,6 +4814,12 @@ const Content = ({
   };
 
   const dropNewElement = () => {
+    const commitElementDrop = (nextLayouts) => {
+      flushSync(() => {
+        setLayout(nextLayouts);
+        clearGhost();
+      });
+    };
     const dropType = dropTargetRef.current?.type;
     const isDropElementLike = dropType === "ELEMENT" || dropType === "TAB-ELEMENT";
     if (
@@ -4924,8 +4941,7 @@ const Content = ({
         clearGhost();
         return;
       }
-      clearGhost();
-      setLayout(newLayouts);
+      commitElementDrop(newLayouts);
       return;
     }
 
@@ -4962,8 +4978,7 @@ const Content = ({
         elementId: String(element.id || ""),
       };
     }
-    clearGhost();
-    setLayout(newLayouts);
+    commitElementDrop(newLayouts);
   };
 
   const dropNewSection = () => {
@@ -5039,6 +5054,21 @@ const Content = ({
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    const now = Date.now();
+    lastDropHandledAtRef.current = now;
+    if (
+      dropCommitGuardRef.current.token === dragToken.current &&
+      now - (Number(dropCommitGuardRef.current.at) || 0) < 220
+    ) {
+      return;
+    }
+    setSuppressDropMotion(true);
+    if (dropMotionTimerRef.current) clearTimeout(dropMotionTimerRef.current);
+    dropMotionTimerRef.current = setTimeout(() => {
+      setSuppressDropMotion(false);
+      dropMotionTimerRef.current = null;
+    }, 180);
+    dropCommitGuardRef.current = { token: dragToken.current, at: now };
 
     const rawDroppingElem = handleDropElement();
     const isCanvasElementMove =
@@ -8724,7 +8754,9 @@ const Content = ({
       !isDragging && suppressSortableTransform
         ? "transform 200ms ease, opacity 200ms ease"
         : undefined;
-    const sortableTransition = isDragging
+    const sortableTransition = suppressDropMotion
+      ? undefined
+      : isDragging
       ? undefined
       : splitPreviewTransition ?? splitTransitionCss ?? transition;
     const style = {
@@ -13418,9 +13450,55 @@ const Content = ({
   }
 
 
-  const sizes = {Tablet:768, Mobile: 375,Desktop: "100%"}; 
+  const sizes = {Tablet:768, Mobile: 375,Desktop: "100%"};
 
   const canvasSize = {width: sizes[device]};
+  const mobileSkeletonSvg = `
+<svg xmlns='http://www.w3.org/2000/svg' width='375' height='1320' viewBox='0 0 375 1320'>
+  <rect width='375' height='1320' fill='#f5f5f6'/>
+
+  <rect x='16' y='16' width='170' height='30' rx='15' fill='#d6d6d9'/>
+  <rect x='196' y='16' width='80' height='30' rx='15' fill='#d8d8db'/>
+  <rect x='286' y='16' width='73' height='30' rx='15' fill='#d6d6d9'/>
+
+  <rect x='16' y='62' width='343' height='210' rx='5' fill='#d2d2d6'/>
+  <rect x='16' y='288' width='220' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='316' width='120' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='16' y='352' width='250' height='16' rx='5' fill='#d4d4d8'/>
+  <rect x='274' y='352' width='85' height='16' rx='5' fill='#d6d6d9'/>
+  <rect x='0' y='400' width='375' height='2' fill='#c9c9cd'/>
+
+  <rect x='16' y='430' width='160' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='186' y='430' width='90' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='286' y='430' width='73' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='460' width='343' height='170' rx='5' fill='#d3d3d7'/>
+  <rect x='16' y='646' width='120' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='674' width='200' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='224' y='674' width='135' height='16' rx='5' fill='#d6d6d9'/>
+  <rect x='0' y='714' width='375' height='2' fill='#c9c9cd'/>
+
+  <rect x='16' y='744' width='343' height='120' rx='5' fill='#d2d2d6'/>
+  <rect x='16' y='880' width='180' height='14' rx='5' fill='#d6d6d9'/>
+  <rect x='16' y='906' width='95' height='14' rx='5' fill='#d8d8db'/>
+  <rect x='16' y='932' width='250' height='14' rx='5' fill='#d6d6d9'/>
+  <rect x='16' y='958' width='145' height='14' rx='5' fill='#d8d8db'/>
+  <rect x='0' y='988' width='375' height='2' fill='#c9c9cd'/>
+
+  <rect x='16' y='1020' width='105' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='131' y='1020' width='120' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='261' y='1020' width='98' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='1052' width='343' height='220' rx='5' fill='#d2d2d6'/>
+</svg>
+`.trim();
+  const mobileSkeletonStyle = device === "Mobile"
+    ? {
+        backgroundColor: "#f5f5f6",
+        backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(mobileSkeletonSvg)}")`,
+        backgroundSize: "375px 1320px",
+        backgroundPosition: "0 0",
+        backgroundRepeat: "repeat-y",
+      }
+    : {};
 
 
   
@@ -13565,7 +13643,10 @@ const Content = ({
           className={`content-area min-h-[600px] ${
             isPreview ? "" : "rounded-xl border border-white/10 bg-white/5"
           }`}
-          style={isPreview ? { width: "100%" } : canvasSize}
+          style={{
+            ...(isPreview ? { width: "100%" } : canvasSize),
+            ...mobileSkeletonStyle,
+          }}
         >
           <SortableContext
             items={containerIds}

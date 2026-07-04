@@ -94,9 +94,8 @@ import { Route, Routes, useLocation } from "react-router-dom"
 
 const Post = lazy(() => import("./post"));
 const PostData = lazy(() => import("./postData"));
-const HeroData = lazy(() => import("./heroData"));
 const UpdatePost = lazy(() => import("./updatePost"));
-const HeroDesign = lazy(() => import("./heroDesign"));
+const HeroPage = lazy(() => import("./hero"));
 const MenuPage = lazy(() => import("./menu"));
 const Navbar = lazy(() => import("./navbar"));
 const Header = lazy(() => import("./header"));
@@ -127,6 +126,7 @@ const TabsElementOffcanvas = lazy(() => import("./Offcanvas/tabsElement"));
 const AccordionElementOffcanvas = lazy(() => import("./Offcanvas/accordionElement"));
 const TopBarOffcanvas = lazy(() => import("./Offcanvas/topBar"));
 const MenuBarOffcanvas = lazy(() => import("./Offcanvas/menuBar"));
+const HeroOffcanvas = lazy(() => import("./Offcanvas/hero"));
 
 /** หา element ใน layouts ตาม id (คอลัมน์ / span / miniSpan) */
 function findLayoutElementById(layouts, eleId) {
@@ -197,10 +197,8 @@ const Builder = ()=>{
  
 
 
-  const [updateHero,setUpdateHero] = useState(false)
   const [mobilePage,setMobilePage] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
-  const [heroID,setHeroID] = useState("")
 
 
 
@@ -249,81 +247,6 @@ const Builder = ()=>{
     return page
 
   }
-
-
-  const design = {
-    degree:0,
-    backgroundColor:"#ffffff",
-    backgroundColorGradient:[{type:"mainColor",index:0},{type:"mainColor",index:1}],
-    opacity:255,
-    opacityGradient:[255,255],
-    isTitle:true,
-    isGradient:false,
-    isSubTitle:true,
-    isText:true,
-    isButton:true,
-    isImageTopLayer:true,
-    layout:"left",
-    title:{
-      text:"Explore The World Using Virtual Reality.",
-      bold:true,
-      size:25,
-      color:{type:"mainColor",index:0}
-    },
-    subTitle:{
-      text:"From Ideas To Reality.",
-      bold:true,
-      size:18,
-      color:{type:"mainColor",index:1}
-    },
-    text:{
-      text:"Duis aute Irure dolor in reprehenderit in voluptate velit esse cillum dolore fugiat nulla pariatur.",
-      bold:false,
-      size:15,
-      color:"#ffffff"
-    }, button:{
-      text:"Discover More",
-      bold:false,
-      size:15,
-      color:"#ffffff",
-      backgroundColor:{type:"mainColor",index:0},
-      icon:"Bluetooth"
-    },
-    backgroundImage:"",
-    imageTopLayer1:{
-      image:"",
-      positionX:0,
-      positionY:0,
-    },
-    imageTopLayer2:{
-      image:"",
-      positionX:0,
-      positionY:0,
-    },
-  }
-
-
-  const [heroMobile,setHeroMobile] = useState({
-    name:"",
-    slideAmount:1,
-    desktop:design,
-    mobile:design,
-    divider:"-",
-    dividerColor:"#ffffff",
-    dividerPosition:0,
-    desktopHeight:500,
-    mobileHeight:500,
-  });
-
-
-  
-  
-
-
-
-
-
-
 
 
     const [selectedMenuId,setSelectedMenuId] = useState(getLatestPage())
@@ -417,6 +340,29 @@ const Builder = ()=>{
     useEffect(()=>{
       localStorage.setItem("page",selectedMenuId)
     },[selectedMenuId])
+
+    useEffect(() => {
+      const path = location.pathname || "";
+      if (path === "/menus" && selectedMenuId !== "Menu") {
+        setSelectedMenuId("Menu");
+        return;
+      }
+      if (path === "/heros" && selectedMenuId !== "Hero") {
+        setSelectedMenuId("Hero");
+        return;
+      }
+      if (path === "/builder" && selectedMenuId !== "Builder") {
+        setSelectedMenuId("Builder");
+        return;
+      }
+      if (path === "/categories" && selectedMenuId !== "Category") {
+        setSelectedMenuId("Category");
+        return;
+      }
+      if (path === "/posts" && selectedMenuId !== "Posts") {
+        setSelectedMenuId("Posts");
+      }
+    }, [location.pathname, selectedMenuId]);
     
     const [page,setPage] = useState({});
     const [theme, setTheme] = useState({
@@ -1341,9 +1287,342 @@ const Builder = ()=>{
     children:[]
  }
 
-const [menus, setMenus] = useState(
-Array.from({ length: 3 }, (_, i) => ({ ...menu, id: Math.round(Math.random() * 1e9),name:"Home - "+i }))
+const createDefaultMenuItems = () =>
+  Array.from({ length: 6 }, (_, i) => ({
+    ...menu,
+    id: Math.round(Math.random() * 1e9),
+    name: "Home - " + i,
+  }));
+const menuPresetVisualConfigRef = useRef({
+  menuBarDesktop: null,
+  menuBarMobile: null,
+  menuBarMobilePhone: null,
+  navBottomMobile: null,
+  navBottomTablet: null,
+  topBar: null,
+});
+const clonePresetVisualConfig = (source = {}) => ({
+  menuBarDesktop: _.cloneDeep(source?.menuBarDesktop),
+  menuBarMobile: _.cloneDeep(source?.menuBarMobile),
+  menuBarMobilePhone: _.cloneDeep(source?.menuBarMobilePhone ?? null),
+  navBottomMobile: _.cloneDeep(source?.navBottomMobile),
+  navBottomTablet: _.cloneDeep(source?.navBottomTablet),
+  topBar: _.cloneDeep(source?.topBar),
+});
+const withPresetVisualConfig = (preset, fallback = menuPresetVisualConfigRef.current) => ({
+  ...preset,
+  menuBarDesktop: _.cloneDeep(preset?.menuBarDesktop ?? fallback?.menuBarDesktop),
+  menuBarMobile: _.cloneDeep(preset?.menuBarMobile ?? fallback?.menuBarMobile),
+  menuBarMobilePhone: _.cloneDeep(
+    Object.prototype.hasOwnProperty.call(preset || {}, "menuBarMobilePhone")
+      ? preset?.menuBarMobilePhone ?? null
+      : fallback?.menuBarMobilePhone ?? null
+  ),
+  navBottomMobile: _.cloneDeep(preset?.navBottomMobile ?? fallback?.navBottomMobile),
+  navBottomTablet: _.cloneDeep(preset?.navBottomTablet ?? fallback?.navBottomTablet),
+  topBar: _.cloneDeep(preset?.topBar ?? fallback?.topBar),
+});
+const buildMenuPreset = (preset, visualSource = menuPresetVisualConfigRef.current) => ({
+  ...preset,
+  ...clonePresetVisualConfig(visualSource),
+});
+const getDefaultMenuPresetState = () => {
+  const defaultItems = createDefaultMenuItems();
+  return {
+    menuPresets: [buildMenuPreset({ id: "menu-preset-1", name: "Menu 1", items: defaultItems })],
+    activeMenuPresetId: "menu-preset-1",
+    defaultMenuPresetId: "menu-preset-1",
+    menus: _.cloneDeep(defaultItems),
+    nextCounter: 2,
+  };
+};
+
+const initialMenuPresetStateRef = useRef(null);
+if (initialMenuPresetStateRef.current == null) {
+  initialMenuPresetStateRef.current = getDefaultMenuPresetState();
+}
+const initialMenuPresetState = initialMenuPresetStateRef.current;
+const [menus, setMenus] = useState(initialMenuPresetState.menus);
+const [menuPresets, setMenuPresets] = useState(initialMenuPresetState.menuPresets);
+const [activeMenuPresetId, setActiveMenuPresetId] = useState(initialMenuPresetState.activeMenuPresetId);
+const [defaultMenuPresetId, setDefaultMenuPresetId] = useState(initialMenuPresetState.defaultMenuPresetId);
+const menuPresetCounterRef = useRef(initialMenuPresetState.nextCounter);
+const getDefaultHeroPresetState = () => ({
+  heroPresets: [{ id: "hero-preset-1", name: "Hero 1" }],
+  activeHeroPresetId: "hero-preset-1",
+  defaultHeroPresetId: "hero-preset-1",
+  nextCounter: 2,
+});
+const initialHeroPresetStateRef = useRef(null);
+if (initialHeroPresetStateRef.current == null) {
+  initialHeroPresetStateRef.current = getDefaultHeroPresetState();
+}
+const initialHeroPresetState = initialHeroPresetStateRef.current;
+const [heroPresets, setHeroPresets] = useState(initialHeroPresetState.heroPresets);
+const [activeHeroPresetId, setActiveHeroPresetId] = useState(initialHeroPresetState.activeHeroPresetId);
+const [defaultHeroPresetId, setDefaultHeroPresetId] = useState(initialHeroPresetState.defaultHeroPresetId);
+const heroPresetCounterRef = useRef(initialHeroPresetState.nextCounter);
+const handleHeroStateChange = useCallback(
+  ({
+    heroPresets: nextHeroPresets,
+    activeHeroPresetId: nextActiveHeroPresetId,
+    defaultHeroPresetId: nextDefaultHeroPresetId,
+  }) => {
+    if (Array.isArray(nextHeroPresets)) {
+      setHeroPresets((prev) =>
+        _.isEqual(prev, nextHeroPresets) ? prev : _.cloneDeep(nextHeroPresets)
+      );
+    }
+    if (typeof nextActiveHeroPresetId === "string") {
+      setActiveHeroPresetId((prev) =>
+        prev === nextActiveHeroPresetId ? prev : nextActiveHeroPresetId
+      );
+    }
+    if (typeof nextDefaultHeroPresetId === "string") {
+      setDefaultHeroPresetId((prev) =>
+        prev === nextDefaultHeroPresetId ? prev : nextDefaultHeroPresetId
+      );
+    }
+  },
+  []
 );
+const normalizePresetName = (name) => String(name || "").trim().toLowerCase();
+const createDefaultHeroSection = () => ({
+  id: "HeroSec-1",
+  heroHeight: 400,
+  slides: [{ id: "hero-slide-1", name: "Slide 1", displayMode: "fade", durationSec: 5, layerItems: [] }],
+  activeSlideId: "hero-slide-1",
+  activeLayerItemId: null,
+  isAutoPlay: false,
+  slideDisplayMode: "fade",
+  slideDurationSec: 5,
+  bulletShape: "circle",
+  bulletSize: 10,
+  bulletColor: "#454b57",
+  bulletBottomOffset: 12,
+  latestColID: 3,
+  isFluid: false,
+  isGradient: false,
+  paddingTop: 30,
+  paddingBottom: 30,
+  sectionOverlapTop: 0,
+  sectionOverlapTopDesktop: 0,
+  sectionOverlapTopTablet: 0,
+  sectionOverlapTopMobile: 0,
+  opacityImage: 1,
+  opacityColor: 255,
+  opacityColorGradient: [255, 255],
+  backgroundImage: "",
+  backgroundColor: "#ffffff",
+  backgroundColorGradient: [
+    { type: "mainColor", index: 0 },
+    { type: "mainColor", index: 1 },
+  ],
+  degrees: 90,
+  blur: 0,
+  gridBorder: false,
+  noColumnGap: false,
+  parallaxEnabled: false,
+  columnDividerStyle: "dashed",
+  columnDividerColor: "#d8d8d8",
+  columnDividerOpacity: 255,
+  columnDividerVerticalLengthPercent: 95,
+  _sectionIndex: 0,
+  _isSplitSection: false,
+});
+const [heroSection, setHeroSection] = useState(createDefaultHeroSection);
+useEffect(() => {
+  if (offcanvas !== "Hero") return;
+  setElementData((prev) => {
+    if (!prev) return _.cloneDeep(heroSection);
+    const nextHero = _.cloneDeep(heroSection);
+    if (_.isEqual(prev, nextHero)) return prev;
+    return nextHero;
+  });
+}, [offcanvas, heroSection]);
+const isMenuPresetNameTaken = (name, excludeId = null) => {
+  const normalized = normalizePresetName(name);
+  if (!normalized) return false;
+  return menuPresets.some(
+    (preset) =>
+      preset.id !== excludeId && normalizePresetName(preset.name) === normalized
+  );
+};
+const buildUniqueMenuPresetName = (baseName, excludeId = null) => {
+  const base = String(baseName || "").trim();
+  if (!isMenuPresetNameTaken(base, excludeId)) return base;
+  let index = 2;
+  let candidate = `${base} ${index}`;
+  while (isMenuPresetNameTaken(candidate, excludeId)) {
+    index += 1;
+    candidate = `${base} ${index}`;
+  }
+  return candidate;
+};
+
+const createMenuPreset = useCallback(
+  (name) => {
+    const trimmedName = String(name || "").trim();
+    if (trimmedName.length < 3) return { ok: false, reason: "too_short" };
+    if (isMenuPresetNameTaken(trimmedName)) {
+      return { ok: false, reason: "duplicate_name" };
+    }
+    const nextId = `menu-preset-${menuPresetCounterRef.current++}`;
+    const nextItems =
+      Array.isArray(menus) && menus.length > 0
+        ? _.cloneDeep(menus)
+        : createDefaultMenuItems();
+    const preset = buildMenuPreset({ id: nextId, name: trimmedName, items: nextItems });
+    const nextPresets = [...menuPresets, preset];
+    setMenuPresets(nextPresets);
+    setActiveMenuPresetId(nextId);
+    setMenus(_.cloneDeep(nextItems));
+    return { ok: true, id: nextId, name: trimmedName };
+  },
+  [menus, menuPresets]
+);
+
+const selectMenuPreset = useCallback(
+  (presetId) => {
+    const selected = menuPresets.find((item) => item.id === presetId);
+    if (!selected) return;
+    const hydratedPreset = withPresetVisualConfig(selected);
+    setMenuPresets((prev) =>
+      prev.map((item) => (item.id === presetId ? hydratedPreset : item))
+    );
+    setActiveMenuPresetId(presetId);
+    setMenus(_.cloneDeep(hydratedPreset.items || createDefaultMenuItems()));
+    if (hydratedPreset?.menuBarDesktop) setMenuBarDesktop(_.cloneDeep(hydratedPreset.menuBarDesktop));
+    if (hydratedPreset?.menuBarMobile) setMenuBarMobile(_.cloneDeep(hydratedPreset.menuBarMobile));
+    if (Object.prototype.hasOwnProperty.call(hydratedPreset || {}, "menuBarMobilePhone")) {
+      setMenuBarMobilePhone(_.cloneDeep(hydratedPreset.menuBarMobilePhone ?? null));
+    }
+    if (hydratedPreset?.navBottomMobile) setNavBottomMobile(_.cloneDeep(hydratedPreset.navBottomMobile));
+    if (hydratedPreset?.navBottomTablet) setNavBottomTablet(_.cloneDeep(hydratedPreset.navBottomTablet));
+    if (hydratedPreset?.topBar) setTopBar(_.cloneDeep(hydratedPreset.topBar));
+  },
+  [menuPresets]
+);
+
+const renameMenuPreset = useCallback((presetId, name) => {
+  const trimmedName = String(name || "").trim();
+  if (trimmedName.length < 3) return { ok: false, reason: "too_short" };
+  if (isMenuPresetNameTaken(trimmedName, presetId)) {
+    return { ok: false, reason: "duplicate_name" };
+  }
+  let updated = false;
+  const nextPresets = menuPresets.map((preset) => {
+    if (preset.id !== presetId) return preset;
+    updated = true;
+    return { ...preset, name: trimmedName };
+  });
+  if (updated) {
+    setMenuPresets(nextPresets);
+  }
+  return updated
+    ? { ok: true, name: trimmedName }
+    : { ok: false, reason: "not_found" };
+}, [menuPresets]);
+
+const duplicateMenuPreset = useCallback(
+  (presetId) => {
+    const sourcePresetRaw = menuPresets.find((item) => item.id === presetId);
+    if (!sourcePresetRaw) return { ok: false, reason: "not_found" };
+    const sourcePreset = withPresetVisualConfig(sourcePresetRaw);
+    const nextId = `menu-preset-${menuPresetCounterRef.current++}`;
+    const duplicatedItems = _.cloneDeep(sourcePreset.items);
+    const duplicatedName = buildUniqueMenuPresetName(`${sourcePreset.name} Copy`);
+    const duplicatedPreset = buildMenuPreset(
+      { id: nextId, name: duplicatedName, items: duplicatedItems },
+      sourcePreset
+    );
+    const nextPresets = [...menuPresets, duplicatedPreset];
+    setMenuPresets(nextPresets);
+    setActiveMenuPresetId(nextId);
+    setMenus(_.cloneDeep(duplicatedItems));
+    if (duplicatedPreset?.menuBarDesktop) setMenuBarDesktop(_.cloneDeep(duplicatedPreset.menuBarDesktop));
+    if (duplicatedPreset?.menuBarMobile) setMenuBarMobile(_.cloneDeep(duplicatedPreset.menuBarMobile));
+    if (Object.prototype.hasOwnProperty.call(duplicatedPreset || {}, "menuBarMobilePhone")) {
+      setMenuBarMobilePhone(_.cloneDeep(duplicatedPreset.menuBarMobilePhone ?? null));
+    }
+    if (duplicatedPreset?.navBottomMobile) setNavBottomMobile(_.cloneDeep(duplicatedPreset.navBottomMobile));
+    if (duplicatedPreset?.navBottomTablet) setNavBottomTablet(_.cloneDeep(duplicatedPreset.navBottomTablet));
+    if (duplicatedPreset?.topBar) setTopBar(_.cloneDeep(duplicatedPreset.topBar));
+    return { ok: true, id: nextId, name: duplicatedName };
+  },
+  [menuPresets]
+);
+
+const deleteMenuPreset = useCallback(
+  (presetId) => {
+    if (menuPresets.length <= 1) return { ok: false, reason: "last_item" };
+    const targetId = String(presetId);
+    const removeIndex = menuPresets.findIndex((item) => String(item?.id) === targetId);
+    if (removeIndex === -1) return { ok: false, reason: "not_found" };
+    const removedPreset = menuPresets[removeIndex];
+    const nextPresets = menuPresets.filter((item) => String(item?.id) !== targetId);
+    setMenuPresets(nextPresets);
+    if (String(defaultMenuPresetId) === targetId) {
+      const fallbackDefault = nextPresets[Math.max(removeIndex - 1, 0)] || nextPresets[0];
+      if (fallbackDefault) {
+        setDefaultMenuPresetId(fallbackDefault.id);
+      }
+    }
+    if (String(activeMenuPresetId) === targetId) {
+      const fallbackPreset = nextPresets[Math.max(removeIndex - 1, 0)] || nextPresets[0];
+      if (!fallbackPreset) return;
+      setActiveMenuPresetId(fallbackPreset.id);
+      setMenus(_.cloneDeep(fallbackPreset.items || createDefaultMenuItems()));
+      if (fallbackPreset?.menuBarDesktop) setMenuBarDesktop(_.cloneDeep(fallbackPreset.menuBarDesktop));
+      if (fallbackPreset?.menuBarMobile) setMenuBarMobile(_.cloneDeep(fallbackPreset.menuBarMobile));
+      if (Object.prototype.hasOwnProperty.call(fallbackPreset || {}, "menuBarMobilePhone")) {
+        setMenuBarMobilePhone(_.cloneDeep(fallbackPreset.menuBarMobilePhone ?? null));
+      }
+      if (fallbackPreset?.navBottomMobile) setNavBottomMobile(_.cloneDeep(fallbackPreset.navBottomMobile));
+      if (fallbackPreset?.navBottomTablet) setNavBottomTablet(_.cloneDeep(fallbackPreset.navBottomTablet));
+      if (fallbackPreset?.topBar) setTopBar(_.cloneDeep(fallbackPreset.topBar));
+    }
+    return { ok: true, name: removedPreset?.name || "" };
+  },
+  [menuPresets, activeMenuPresetId, defaultMenuPresetId]
+);
+
+const setDefaultMenuPreset = useCallback(
+  (presetId) => {
+    const found = menuPresets.find((item) => item.id === presetId);
+    if (!found) return { ok: false, reason: "not_found" };
+    if (defaultMenuPresetId === presetId) return { ok: true, name: found.name, unchanged: true };
+    setDefaultMenuPresetId(presetId);
+    return { ok: true, name: found.name };
+  },
+  [menuPresets, defaultMenuPresetId]
+);
+
+const resetMenuPresets = useCallback(() => {
+  const defaultItems = createDefaultMenuItems();
+  const defaultPresets = [buildMenuPreset({ id: "menu-preset-1", name: "Menu 1", items: defaultItems })];
+  setMenuPresets(defaultPresets);
+  setActiveMenuPresetId("menu-preset-1");
+  setDefaultMenuPresetId("menu-preset-1");
+  setMenus(_.cloneDeep(defaultItems));
+  menuPresetCounterRef.current = 2;
+}, []);
+
+useEffect(() => {
+  setMenuPresets((prev) =>
+    prev.map((preset) => withPresetVisualConfig(preset))
+  );
+}, []);
+
+const toBoolean = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "true" || normalized === "1";
+  }
+  return false;
+};
 
 
 
@@ -1354,7 +1633,7 @@ const [menuBarDesktop,setMenuBarDesktop] = useState({
   menuFontSize:15,
   menuFontWeight:400,
 
-  menuColor:"#000000",
+  menuColor:"#333333",
   menuColorOpacity:255,
   activeMenuColor:{type:"mainColor",index:0},
   activeMenuColorOpacity:255,
@@ -1365,7 +1644,7 @@ const [menuBarDesktop,setMenuBarDesktop] = useState({
   bgMenuColor:"#ffffff",
   bgMenuColorGradient:[{type:"mainColor",index:0},{type:"mainColor",index:1}],
 
-  bgMenuOpacity:255,
+  bgMenuOpacity:95,
   bgMenuOpacityGradient:[255,255],
   bgMenuDegree:0,
 
@@ -1381,6 +1660,7 @@ const [menuBarDesktop,setMenuBarDesktop] = useState({
   dividerColor:"#000000",
   dividerOpacity:255,
   dividerWeight:1,
+  isFluidLayout:false,
 
 
   //Sub
@@ -1393,6 +1673,8 @@ const [menuBarDesktop,setMenuBarDesktop] = useState({
   activeSubMenuColorOpacity:255,
   hoverSubMenuColor:{type:"mainColor",index:1},
   hoverSubMenuColorOpacity:255,
+  hoverSubMenuBgColor:"#000000",
+  hoverSubMenuBgOpacity:20,
 
   isSubMenuGradient:false,
   bgSubMenuColor:"#ffffff",
@@ -1427,26 +1709,27 @@ const [menuBarMobile,setMenuBarMobile] = useState({
   bgMenuBarDegree:0,
 
   bgButtonColor:"#ffffff",
-  borderButtonColor:"#000000",
-  iconButtonColor:"#000000",
+  borderButtonColor:"#333333",
+  iconButtonColor:"#333333",
   bgButtonOpacity:255,
   borderButtonOpacity:255,
   iconButtonOpacity:255,
-  borderWidth:1,
+  borderWidth:2,
 
   bgMenuColor:"#ffffff",
-  bgMenuOpacity:255,
+  bgMenuOpacity:178,
 
   display:"right",
-  barHeight:50,
+  barHeight:55,
 
   logo:"",
   logoHeight:35,
 
-  menuHeight:40,
+  menuHeight:44,
   dividerStyle:"solid",
-  dividerColor:"#000000",
-  dividerOpacity:255,
+  dividerColor:"#333333",
+  dividerOpacity:20,
+  isFluidLayout:false,
 
 
   //Sub
@@ -1460,13 +1743,15 @@ const [menuBarMobile,setMenuBarMobile] = useState({
 
 
 })
+const [menuBarMobilePhone, setMenuBarMobilePhone] = useState(null);
 
 const navBottomPrototype = (n,space)=>{
   return{
     isAbleNavBottom:true,
-    navBottomDisplay:"text",
-    navText:"Home",
-    navIcon:"Home",
+    navBottomDesign:"classic",
+    navBottomDisplay:"menu",
+    navText:"Domain.com All rights reserved.",
+    navIcon:{ name: "faCopyright", type: "fas" },
     navBottoms:Array.from({length:n},()=>({
       icon:{name: 'fa0', type: 'fas'},label:"Home",link:"Page1"
     })),
@@ -1491,8 +1776,149 @@ const navBottomPrototype = (n,space)=>{
   }
 }
 
+const defaultMobileNavBottomItems = [
+  { icon: { name: "faBasketShopping", type: "fas" }, label: "Product", link: "Page1" },
+  { icon: { name: "faGear", type: "fas" }, label: "Service", link: "Page1" },
+  { icon: { name: "faHouse", type: "fas" }, label: "Home", link: "Page1" },
+  { icon: { name: "faBuilding", type: "fas" }, label: "Company", link: "Page1" },
+  { icon: { name: "faHeadphones", type: "fas" }, label: "Contact", link: "Page1" },
+];
 
-const [navBottomMobile,setNavBottomMobile] = useState(navBottomPrototype(4,10))
+const cloneDefaultMobileNavBottomItems = () =>
+  defaultMobileNavBottomItems.map((item) => ({
+    ...item,
+    icon: { ...(item.icon || {}) },
+  }));
+
+const hasVisibleMobileNavIcon = (item) =>
+  Boolean(item?.icon?.name && item.icon.name !== "fa0" && item?.icon?.type);
+
+const normalizeMobileNavBottomItems = (items) => {
+  if (!Array.isArray(items) || items.length === 0) {
+    return cloneDefaultMobileNavBottomItems();
+  }
+
+  const isLegacyDefaultItems = items.every(
+    (item) =>
+      (item?.label === "Home" || !item?.label) &&
+      (!hasVisibleMobileNavIcon(item))
+  );
+
+  if (isLegacyDefaultItems) {
+    return cloneDefaultMobileNavBottomItems();
+  }
+
+  return items.slice(0, 5).map((item, index) => ({
+    ...defaultMobileNavBottomItems[index % defaultMobileNavBottomItems.length],
+    ...(item || {}),
+    icon: item?.icon || defaultMobileNavBottomItems[index % defaultMobileNavBottomItems.length].icon,
+  }));
+};
+
+const normalizeMobileNavBottomDefaults = (navBottomData) => {
+  if (!navBottomData) return navBottomData;
+  const next = { ...navBottomData };
+  const isDefaultMobilePreset =
+    next.navBottomDesign === "modern" &&
+    Number(next.navHeight) === 60 &&
+    Number(next.navSpace) === 5 &&
+    Array.isArray(next.navBottoms) &&
+    next.navBottoms.length === 5 &&
+    next.navBottoms.every(
+      (item, idx) =>
+        String(item?.label || "").trim().toLowerCase() ===
+        String(defaultMobileNavBottomItems[idx]?.label || "").trim().toLowerCase()
+    );
+
+  const isLegacyDesignDefault =
+    next.navBottomDesign == null || next.navBottomDesign === "classic";
+  if (isLegacyDesignDefault) {
+    next.navBottomDesign = "modern";
+  }
+
+  const isLegacyBgDefault =
+    (next.bgNav == null || next.bgNav === "#000000") &&
+    (next.bgNavOpacity == null || next.bgNavOpacity === 255);
+  if (isLegacyBgDefault) {
+    next.bgNav = "#333333";
+    next.bgNavOpacity = 255;
+  }
+
+  const isLegacyNavHeightDefault = next.navHeight == null || next.navHeight === 56;
+  if (isLegacyNavHeightDefault) {
+    next.navHeight = 60;
+  }
+
+  const isLegacyNavSpaceDefault = next.navSpace == null || next.navSpace === 10;
+  if (isLegacyNavSpaceDefault) {
+    next.navSpace = 5;
+  }
+
+  const isLegacyIconSizeDefault = next.iconSize == null || next.iconSize === 20;
+  if (isLegacyIconSizeDefault) {
+    next.iconSize = 19;
+  }
+
+  const isLegacyIconColorDefault =
+    next.iconColor == null ||
+    next.iconColor === "#ffffff" ||
+    next.iconColor === "white" ||
+    next.iconColor === "#000000" ||
+    next.iconColor === "black" ||
+    (typeof next.iconColor === "object" &&
+      next.iconColor?.type === "textColor" &&
+      Number(next.iconColor?.index) === 0) ||
+    (isDefaultMobilePreset && typeof next.iconColor === "object");
+  if (isLegacyIconColorDefault) {
+    next.iconColor = "#ffffff";
+    next.iconOpacity = 255;
+  }
+
+  const isLegacyLabelColorDefault =
+    next.labelColor == null ||
+    next.labelColor === "#ffffff" ||
+    next.labelColor === "white" ||
+    next.labelColor === "#000000" ||
+    next.labelColor === "black" ||
+    (typeof next.labelColor === "object" &&
+      next.labelColor?.type === "textColor" &&
+      Number(next.labelColor?.index) === 0) ||
+    (isDefaultMobilePreset && typeof next.labelColor === "object");
+  if (isLegacyLabelColorDefault) {
+    next.labelColor = "#ffffff";
+    next.labelOpacity = 255;
+  }
+
+  if (!next.navText || String(next.navText).trim().toLowerCase() === "home") {
+    next.navText = "Domain.com All rights reserved.";
+  }
+  if (
+    !next.navIcon ||
+    typeof next.navIcon !== "object" ||
+    !next.navIcon.name ||
+    !next.navIcon.type ||
+    next.navIcon.name === "fa0"
+  ) {
+    next.navIcon = { name: "faCopyright", type: "fas" };
+  }
+
+  return next;
+};
+
+const createDefaultMobileNavBottom = () => ({
+  ...navBottomPrototype(5,5),
+  navBottomDesign: "modern",
+  bgNav: "#333333",
+  iconSize: 19,
+  iconColor: "#ffffff",
+  labelColor: "#ffffff",
+  navHeight: 60,
+  navSpace: 5,
+  navBottoms: cloneDefaultMobileNavBottomItems(),
+});
+
+
+const [navBottomMobile,setNavBottomMobile] = useState(createDefaultMobileNavBottom())
 
 const [navBottomTablet,setNavBottomTablet] = useState(navBottomPrototype(7,12))
 
@@ -1505,6 +1931,49 @@ const iconTopBar = {
   iconOpacity:255,
   iconSize:18,
 }
+
+const defaultTopBarSocialIcons = [
+  {
+    ...iconTopBar,
+    icon: { name: "faTiktok", type: "fab" },
+    iconSize: 16,
+  },
+  {
+    ...iconTopBar,
+    icon: { name: "faFacebookF", type: "fab" },
+    iconSize: 16,
+  },
+  {
+    ...iconTopBar,
+    icon: { name: "faXTwitter", type: "fab" },
+    iconSize: 16,
+  },
+];
+
+const cloneDefaultTopBarSocialIcons = () =>
+  defaultTopBarSocialIcons.map((item) => ({
+    ...item,
+    icon: { ...(item.icon || {}) },
+  }));
+
+const hasVisibleTopBarIcon = (item) =>
+  Boolean(item?.icon?.name && item.icon.name !== "fa0" && item?.icon?.type);
+
+const normalizeTopBarIconGroup = (iconGroup) => {
+  if (!Array.isArray(iconGroup) || iconGroup.length === 0) {
+    return cloneDefaultTopBarSocialIcons();
+  }
+
+  if (!iconGroup.some(hasVisibleTopBarIcon)) {
+    return cloneDefaultTopBarSocialIcons();
+  }
+
+  return iconGroup.map((item) => ({
+    ...iconTopBar,
+    ...(item || {}),
+    icon: item?.icon || iconTopBar.icon,
+  }));
+};
 
 const textTopBar = {
   icon:{name: 'fa0', type: 'fas'},
@@ -1520,41 +1989,452 @@ const textTopBar = {
 
 }
 
+const defaultTopBarTextItems = [
+  {
+    ...textTopBar,
+    icon: { name: "faPhone", type: "fas" },
+    iconSize: 16,
+    text: "089-012-34567",
+  },
+  {
+    ...textTopBar,
+    icon: { name: "faLocationDot", type: "fas" },
+    iconSize: 16,
+    text: "Bangkok Thailand",
+  },
+  {
+    ...textTopBar,
+    icon: { name: "faClock", type: "fas" },
+    iconSize: 16,
+    text: "09 : 00 AM - 05 : 00 PM",
+  },
+];
+
+const cloneDefaultTopBarTextItems = () =>
+  defaultTopBarTextItems.map((item) => ({
+    ...item,
+    icon: { ...(item.icon || {}) },
+  }));
+
+const normalizeTopBarTextGroup = (textGroup) => {
+  if (!Array.isArray(textGroup) || textGroup.length === 0) {
+    return cloneDefaultTopBarTextItems();
+  }
+
+  const isLegacyDefaultGroup = textGroup.every(
+    (item) =>
+      (!item?.icon?.name || item.icon.name === "fa0") &&
+      (!item?.text || item.text === "Bangkok Thailand")
+  );
+
+  if (isLegacyDefaultGroup) {
+    return cloneDefaultTopBarTextItems();
+  }
+
+  return textGroup.map((item) => ({
+    ...textTopBar,
+    ...(item || {}),
+    icon: item?.icon || textTopBar.icon,
+  }));
+};
+
 
 const [topBar,setTopBar] = useState({
   ableLeft:true,
+  hideTopBarEverywhere:false,
+  tabletTopBarMode:"social",
   topBarHeight:52,
+  isFluidLayout:false,
   isGradient:false,
-  bgColor:"#000000",
+  bgColor:"#333333",
   bgOpacity:255,
   bgColorGradient:[{type:"mainColor",index:0},{type:"mainColor",index:1}],
   bgOpacityGradient:[255,255],
   bgDegree:0,
   borderSize:26,
   radius:50,
-  iconGroup:Array.from({length:3},()=>iconTopBar),
+  iconGroup: defaultTopBarSocialIcons,
 
   ableRight:true,
   radiusText:50,
   borderTextSize:26,
-  textGroup:Array.from({length:3},()=>textTopBar),
+  textGroup: cloneDefaultTopBarTextItems(),
 })
+
+useEffect(() => {
+  menuPresetVisualConfigRef.current = {
+    menuBarDesktop: _.cloneDeep(menuBarDesktop),
+    menuBarMobile: _.cloneDeep(menuBarMobile),
+    menuBarMobilePhone: _.cloneDeep(menuBarMobilePhone ?? null),
+    navBottomMobile: _.cloneDeep(navBottomMobile),
+    navBottomTablet: _.cloneDeep(navBottomTablet),
+    topBar: _.cloneDeep(topBar),
+  };
+}, [menuBarDesktop, menuBarMobile, menuBarMobilePhone, navBottomMobile, navBottomTablet, topBar]);
+
+useEffect(() => {
+  setMenuPresets((prev) =>
+    prev.map((preset) =>
+      preset.id === activeMenuPresetId
+        ? { ...preset, items: _.cloneDeep(menus) }
+        : preset
+    )
+  );
+}, [activeMenuPresetId, menus]);
 
 
 const menuButtonRef = useRef(null);
+const isHydratingMenuBarRef = useRef(false);
+const isFirstMenuPresetPersistRef = useRef(true);
 
 
 
 const loadMenuBar = () => {
+  isHydratingMenuBarRef.current = true;
   getMenuBar("69db17211be82fe7637ea096").then((res) => {
-    const {menuBarDesktop:md,menuBarMobile:mm,navBottomMobile:nm,navBottomTablet:nt,topBar:tb} = res.data
-    setMenuBarDesktop(md)
-    setMenuBarMobile(mm)
-    setNavBottomMobile(nm)
-    setNavBottomTablet(nt)
-    setTopBar(tb)
+    const {
+      menuBarDesktop: md,
+      menuBarMobile: mm,
+      menuBarMobilePhone: mmp,
+      navBottomMobile: nm,
+      navBottomTablet: nt,
+      topBar: tb,
+      menuPresets: serverMenuPresets,
+      activeMenuPresetId: serverActiveMenuPresetId,
+      defaultMenuPresetId: serverDefaultMenuPresetId,
+      heroPresets: serverHeroPresets,
+      activeHeroPresetId: serverActiveHeroPresetId,
+      defaultHeroPresetId: serverDefaultHeroPresetId,
+      heroSection: serverHeroSection,
+    } = res.data
+    const normalizeMenuBarMobileDefaults = (menuBarMobileData) => {
+      if (!menuBarMobileData) return menuBarMobileData;
+      const next = { ...menuBarMobileData };
+      const isLegacyDividerDefault =
+        (next.dividerColor === "#000000" || !next.dividerColor) &&
+        (next.dividerOpacity === 255 || next.dividerOpacity == null);
+
+      if (isLegacyDividerDefault) {
+        next.dividerColor = "#333333";
+        next.dividerOpacity = 20;
+      }
+
+      const isLegacyMenuTextDefault =
+        (next.menuColor === "#000000" || !next.menuColor) &&
+        (next.menuColorOpacity === 255 || next.menuColorOpacity == null);
+      if (isLegacyMenuTextDefault) {
+        next.menuColor = "#333333";
+      }
+
+      const isLegacyMenuBgDefault =
+        (next.bgMenuColor === "#ffffff" || !next.bgMenuColor) &&
+        (next.bgMenuOpacity === 255 || next.bgMenuOpacity == null);
+      if (isLegacyMenuBgDefault) {
+        next.bgMenuColor = "#ffffff";
+        next.bgMenuOpacity = 178;
+      }
+
+      const isLegacyButtonBorderColorDefault =
+        !next.borderButtonColor || next.borderButtonColor === "#000000";
+      if (isLegacyButtonBorderColorDefault) {
+        next.borderButtonColor = "#333333";
+      }
+
+      const isLegacyButtonIconColorDefault =
+        !next.iconButtonColor || next.iconButtonColor === "#000000";
+      if (isLegacyButtonIconColorDefault) {
+        next.iconButtonColor = "#333333";
+      }
+
+      const isLegacySizingDefault =
+        (next.borderWidth === 1 || next.borderWidth == null) &&
+        (next.barHeight === 50 || next.barHeight == null) &&
+        (next.menuHeight === 40 || next.menuHeight == null);
+      if (isLegacySizingDefault) {
+        next.borderWidth = 2;
+        next.barHeight = 55;
+        next.menuHeight = 44;
+      }
+
+      return next;
+    };
+
+    const normalizedMenuBarDesktop = {
+      ...menuBarDesktop,
+      ...(md || {}),
+      isFluidLayout: toBoolean(md?.isFluidLayout),
+    };
+    const normalizedMenuBarMobile = {
+      ...menuBarMobile,
+      ...normalizeMenuBarMobileDefaults(mm),
+      isFluidLayout: toBoolean(mm?.isFluidLayout),
+    };
+    const normalizedMenuBarMobilePhone = mmp
+      ? {
+          ...normalizedMenuBarMobile,
+          ...normalizeMenuBarMobileDefaults(mmp),
+          isFluidLayout: toBoolean(mmp?.isFluidLayout),
+        }
+      : null;
+    const normalizedMobileNavBottom = {
+      ...createDefaultMobileNavBottom(),
+      ...normalizeMobileNavBottomDefaults({
+        ...(nm || {}),
+        navBottoms: normalizeMobileNavBottomItems(nm?.navBottoms),
+      }),
+      navBottomDisplay: "menu",
+    };
+    const normalizedTabletNavBottom = {
+      ...navBottomPrototype(7,12),
+      ...(nt || {}),
+      navBottomDisplay: "menu",
+    };
+    const normalizedTopBar = {
+      ...topBar,
+      ...(tb || {}),
+      iconGroup: normalizeTopBarIconGroup(tb?.iconGroup),
+      textGroup: normalizeTopBarTextGroup(tb?.textGroup),
+      bgColor:
+        !tb?.bgColor || tb.bgColor === "#000000"
+          ? "#333333"
+          : tb.bgColor,
+      isFluidLayout: tb?.isFluidLayout === true,
+    };
+    setMenuBarDesktop(normalizedMenuBarDesktop);
+    setMenuBarMobile(normalizedMenuBarMobile);
+    setMenuBarMobilePhone(normalizedMenuBarMobilePhone);
+    setNavBottomMobile(normalizedMobileNavBottom);
+    setNavBottomTablet(normalizedTabletNavBottom);
+    setTopBar(normalizedTopBar);
+
+    const fallbackVisualConfig = {
+      menuBarDesktop: normalizedMenuBarDesktop,
+      menuBarMobile: normalizedMenuBarMobile,
+      menuBarMobilePhone: normalizedMenuBarMobilePhone,
+      navBottomMobile: normalizedMobileNavBottom,
+      navBottomTablet: normalizedTabletNavBottom,
+      topBar: normalizedTopBar,
+    };
+    const normalizedPresets = (Array.isArray(serverMenuPresets) ? serverMenuPresets : [])
+      .map((preset, index) => {
+        const mergedMenuBarDesktop = _.merge(
+          _.cloneDeep(fallbackVisualConfig.menuBarDesktop),
+          _.cloneDeep(preset?.menuBarDesktop || {})
+        );
+        mergedMenuBarDesktop.isFluidLayout = toBoolean(
+          preset?.menuBarDesktop?.isFluidLayout ??
+            fallbackVisualConfig.menuBarDesktop?.isFluidLayout
+        );
+        const mergedMenuBarMobile = _.merge(
+          _.cloneDeep(fallbackVisualConfig.menuBarMobile),
+          _.cloneDeep(normalizeMenuBarMobileDefaults(preset?.menuBarMobile) || {})
+        );
+        mergedMenuBarMobile.isFluidLayout = toBoolean(
+          preset?.menuBarMobile?.isFluidLayout ??
+            fallbackVisualConfig.menuBarMobile?.isFluidLayout
+        );
+        const mergedMenuBarMobilePhone =
+          preset?.menuBarMobilePhone == null
+            ? _.cloneDeep(fallbackVisualConfig.menuBarMobilePhone)
+            : _.merge(
+                _.cloneDeep(fallbackVisualConfig.menuBarMobilePhone || fallbackVisualConfig.menuBarMobile),
+                _.cloneDeep(normalizeMenuBarMobileDefaults(preset?.menuBarMobilePhone) || {})
+              );
+        if (mergedMenuBarMobilePhone) {
+          mergedMenuBarMobilePhone.isFluidLayout = toBoolean(
+            preset?.menuBarMobilePhone?.isFluidLayout ??
+              fallbackVisualConfig.menuBarMobilePhone?.isFluidLayout
+          );
+        }
+        const mergedNavBottomMobile = _.merge(
+          _.cloneDeep(fallbackVisualConfig.navBottomMobile),
+          _.cloneDeep(normalizeMobileNavBottomDefaults(preset?.navBottomMobile) || {})
+        );
+        mergedNavBottomMobile.navBottoms = normalizeMobileNavBottomItems(
+          preset?.navBottomMobile?.navBottoms ??
+            fallbackVisualConfig.navBottomMobile?.navBottoms
+        );
+        const mergedNavBottomTablet = _.merge(
+          _.cloneDeep(fallbackVisualConfig.navBottomTablet),
+          _.cloneDeep(preset?.navBottomTablet || {})
+        );
+        mergedNavBottomTablet.navBottomDisplay = "menu";
+        const mergedTopBar = _.merge(
+          _.cloneDeep(fallbackVisualConfig.topBar),
+          _.cloneDeep(preset?.topBar || {})
+        );
+        mergedTopBar.iconGroup = normalizeTopBarIconGroup(
+          preset?.topBar?.iconGroup ?? fallbackVisualConfig.topBar?.iconGroup
+        );
+        mergedTopBar.textGroup = normalizeTopBarTextGroup(
+          preset?.topBar?.textGroup ?? fallbackVisualConfig.topBar?.textGroup
+        );
+        mergedTopBar.bgColor =
+          !preset?.topBar?.bgColor || preset.topBar.bgColor === "#000000"
+            ? fallbackVisualConfig.topBar?.bgColor || "#333333"
+            : preset.topBar.bgColor;
+        mergedTopBar.isFluidLayout =
+          preset?.topBar?.isFluidLayout === true ||
+          fallbackVisualConfig.topBar?.isFluidLayout === true;
+        const nextPreset = {
+          id: String(preset?.id || `menu-preset-${index + 1}`),
+          name: String(preset?.name || `Menu ${index + 1}`),
+          items:
+            Array.isArray(preset?.items) && preset.items.length > 0
+              ? _.cloneDeep(preset.items)
+              : createDefaultMenuItems(),
+          menuBarDesktop: mergedMenuBarDesktop,
+          menuBarMobile: mergedMenuBarMobile,
+          menuBarMobilePhone: mergedMenuBarMobilePhone,
+          navBottomMobile: mergedNavBottomMobile,
+          navBottomTablet: mergedNavBottomTablet,
+          topBar: mergedTopBar,
+        };
+        return nextPreset;
+      })
+      .filter((preset) => Array.isArray(preset.items));
+
+    const presetsToUse =
+      normalizedPresets.length > 0
+        ? normalizedPresets
+        : [
+            buildMenuPreset(
+              {
+                id: "menu-preset-1",
+                name: "Menu 1",
+                items: createDefaultMenuItems(),
+              },
+              fallbackVisualConfig
+            ),
+          ];
+    const restoredActiveId = presetsToUse.some(
+      (preset) => preset.id === serverActiveMenuPresetId
+    )
+      ? serverActiveMenuPresetId
+      : presetsToUse[0].id;
+    const restoredDefaultId = presetsToUse.some(
+      (preset) => preset.id === serverDefaultMenuPresetId
+    )
+      ? serverDefaultMenuPresetId
+      : restoredActiveId;
+    const restoredActivePreset =
+      presetsToUse.find((preset) => preset.id === restoredActiveId) ||
+      presetsToUse[0];
+    setMenuPresets(presetsToUse);
+    setActiveMenuPresetId(restoredActiveId);
+    setDefaultMenuPresetId(restoredDefaultId);
+    setMenus(_.cloneDeep(restoredActivePreset?.items || createDefaultMenuItems()));
+    if (restoredActivePreset?.menuBarDesktop) {
+      setMenuBarDesktop(_.cloneDeep(restoredActivePreset.menuBarDesktop));
+    }
+    if (restoredActivePreset?.menuBarMobile) {
+      setMenuBarMobile(_.cloneDeep(restoredActivePreset.menuBarMobile));
+    }
+    if (Object.prototype.hasOwnProperty.call(restoredActivePreset || {}, "menuBarMobilePhone")) {
+      setMenuBarMobilePhone(_.cloneDeep(restoredActivePreset.menuBarMobilePhone ?? null));
+    }
+    if (restoredActivePreset?.navBottomMobile) {
+      setNavBottomMobile(_.cloneDeep(restoredActivePreset.navBottomMobile));
+    }
+    if (restoredActivePreset?.navBottomTablet) {
+      setNavBottomTablet(_.cloneDeep(restoredActivePreset.navBottomTablet));
+    }
+    if (restoredActivePreset?.topBar) {
+      setTopBar(_.cloneDeep(restoredActivePreset.topBar));
+    }
+    const maxCounter = presetsToUse.reduce((acc, preset) => {
+      const match = String(preset.id || "").match(/menu-preset-(\d+)/);
+      if (!match) return acc;
+      const num = Number(match[1]);
+      if (Number.isNaN(num)) return acc;
+      return Math.max(acc, num);
+    }, 1);
+    menuPresetCounterRef.current = maxCounter + 1;
+    const normalizedHeroPresets = (Array.isArray(serverHeroPresets) ? serverHeroPresets : [])
+      .map((preset, index) => ({
+        id: String(preset?.id || `hero-preset-${index + 1}`),
+        name: String(preset?.name || `Hero ${index + 1}`),
+      }))
+      .filter((preset) => preset.id && preset.name);
+    const heroPresetsToUse =
+      normalizedHeroPresets.length > 0
+        ? normalizedHeroPresets
+        : getDefaultHeroPresetState().heroPresets;
+    const restoredActiveHeroId = heroPresetsToUse.some(
+      (preset) => preset.id === serverActiveHeroPresetId
+    )
+      ? serverActiveHeroPresetId
+      : heroPresetsToUse[0].id;
+    const restoredDefaultHeroId = heroPresetsToUse.some(
+      (preset) => preset.id === serverDefaultHeroPresetId
+    )
+      ? serverDefaultHeroPresetId
+      : restoredActiveHeroId;
+    setHeroPresets(heroPresetsToUse);
+    setActiveHeroPresetId(restoredActiveHeroId);
+    setDefaultHeroPresetId(restoredDefaultHeroId);
+    const maxHeroCounter = heroPresetsToUse.reduce((acc, preset) => {
+      const match = String(preset.id || "").match(/hero-preset-(\d+)/);
+      if (!match) return acc;
+      const num = Number(match[1]);
+      if (Number.isNaN(num)) return acc;
+      return Math.max(acc, num);
+    }, 1);
+    heroPresetCounterRef.current = maxHeroCounter + 1;
+    const normalizedHeroSection = {
+      ...createDefaultHeroSection(),
+      ...(serverHeroSection || {}),
+      id: String(serverHeroSection?.id || "HeroSec-1"),
+      _sectionIndex: 0,
+      _isSplitSection: false,
+    };
+    setHeroSection(normalizedHeroSection);
+    isHydratingMenuBarRef.current = false;
+  }).catch(() => {
+    isHydratingMenuBarRef.current = false;
   });
 }; // โหลดข้อมูลหน้า
+
+useEffect(() => {
+  if (isHydratingMenuBarRef.current) return;
+  if (isFirstMenuPresetPersistRef.current) {
+    isFirstMenuPresetPersistRef.current = false;
+    return;
+  }
+  const timer = setTimeout(() => {
+    const menuBarData = {
+      menuBarDesktop,
+      menuBarMobile,
+      menuBarMobilePhone,
+      navBottomMobile,
+      navBottomTablet,
+      topBar,
+      menuPresets,
+      activeMenuPresetId,
+      defaultMenuPresetId,
+      heroPresets,
+      activeHeroPresetId,
+      defaultHeroPresetId,
+      heroSection,
+    };
+    updateMenuBar(menuBarData ,"69db17211be82fe7637ea096").catch(() => {});
+  }, 120);
+  return () => clearTimeout(timer);
+}, [
+  menuPresets,
+  activeMenuPresetId,
+  defaultMenuPresetId,
+  menuBarDesktop,
+  menuBarMobile,
+  menuBarMobilePhone,
+  navBottomMobile,
+  navBottomTablet,
+  topBar,
+  heroPresets,
+  activeHeroPresetId,
+  defaultHeroPresetId,
+  heroSection,
+]);
 
 useEffect(() => {
   loadMenuBar();
@@ -1570,6 +2450,28 @@ useEffect(()=>{
 
 
 const navBottom = device === "Mobile" ? navBottomMobile:navBottomTablet
+const menuBarForCurrentDevice =
+  device === "Mobile" ? (menuBarMobilePhone || menuBarMobile) : menuBarMobile;
+
+const syncActivePresetVisualField = useCallback((field, value) => {
+  if (!activeMenuPresetId) return;
+  setMenuPresets((prev) =>
+    prev.map((preset) =>
+      preset.id === activeMenuPresetId
+        ? { ...preset, [field]: _.cloneDeep(value) }
+        : preset
+    )
+  );
+}, [activeMenuPresetId]);
+
+const updateTopBarForPreset = useCallback((valueOrUpdater) => {
+  setTopBar((prev) => {
+    const next =
+      typeof valueOrUpdater === "function" ? valueOrUpdater(prev) : valueOrUpdater;
+    syncActivePresetVisualField("topBar", next);
+    return next;
+  });
+}, [syncActivePresetVisualField]);
 
 
 
@@ -1579,15 +2481,24 @@ const editMenuBar = (data,isNav)=>{
     if(isNav){
       if(device === "Mobile"){
         setNavBottomMobile(data)
+        syncActivePresetVisualField("navBottomMobile", data);
       }else{
         setNavBottomTablet(data)
+        syncActivePresetVisualField("navBottomTablet", data);
       }
     }else{
-      setMenuBarMobile(data)
+      if (device === "Mobile") {
+        setMenuBarMobilePhone(data);
+        syncActivePresetVisualField("menuBarMobilePhone", data);
+      } else {
+        setMenuBarMobile(data)
+        syncActivePresetVisualField("menuBarMobile", data);
+      }
     }
    
   }else{
     setMenuBarDesktop(data)
+    syncActivePresetVisualField("menuBarDesktop", data);
   }
 }
 
@@ -1615,15 +2526,45 @@ useEffect(()=>{
   setOffcanvas(null)
 },[selectedMenuId])
 
+const previousSelectedMenuRef = useRef(selectedMenuId);
+useEffect(() => {
+  const previous = previousSelectedMenuRef.current;
+  if (selectedMenuId === "Menu" && previous !== "Menu") {
+    const defaultPreset =
+      menuPresets.find((preset) => preset.id === defaultMenuPresetId) || menuPresets[0];
+    if (defaultPreset) {
+      setActiveMenuPresetId(defaultPreset.id);
+      setMenus(_.cloneDeep(defaultPreset.items || createDefaultMenuItems()));
+      if (defaultPreset?.menuBarDesktop) setMenuBarDesktop(_.cloneDeep(defaultPreset.menuBarDesktop));
+      if (defaultPreset?.menuBarMobile) setMenuBarMobile(_.cloneDeep(defaultPreset.menuBarMobile));
+      if (Object.prototype.hasOwnProperty.call(defaultPreset || {}, "menuBarMobilePhone")) {
+        setMenuBarMobilePhone(_.cloneDeep(defaultPreset.menuBarMobilePhone ?? null));
+      }
+      if (defaultPreset?.navBottomMobile) setNavBottomMobile(_.cloneDeep(defaultPreset.navBottomMobile));
+      if (defaultPreset?.navBottomTablet) setNavBottomTablet(_.cloneDeep(defaultPreset.navBottomTablet));
+      if (defaultPreset?.topBar) setTopBar(_.cloneDeep(defaultPreset.topBar));
+    }
+  }
+  previousSelectedMenuRef.current = selectedMenuId;
+}, [selectedMenuId, defaultMenuPresetId, menuPresets]);
+
 
 
 const submitMenuBar = ()=>{
   const menuBarData = {
     menuBarDesktop,
     menuBarMobile,
+    menuBarMobilePhone,
     navBottomMobile,
     navBottomTablet,
     topBar,
+    menuPresets,
+    activeMenuPresetId,
+    defaultMenuPresetId,
+    heroPresets,
+    activeHeroPresetId,
+    defaultHeroPresetId,
+    heroSection,
   }
   updateMenuBar(menuBarData ,"69db17211be82fe7637ea096")
   .then(()=>{
@@ -1651,14 +2592,12 @@ const openPreviewPage = useCallback(() => {
 }, [layouts, page, theme, device]);
 
 
-const [offcanvasWdith,setOffcanvasWdith] = useState(400)
-useEffect(()=>{
-  if(offcanvas === "Nav"){
-    setOffcanvasWdith(500)
-  }else{
-    setOffcanvasWdith(400)
-  }
-},[offcanvas])
+const offcanvasWidth =
+  offcanvas === "Nav"
+    ? 500
+    : offcanvas === "Hero"
+      ? 400
+      : 400;
 
 
 
@@ -1674,14 +2613,14 @@ useEffect(()=>{
 
                 {!isPreviewRoute && (
                   <Suspense fallback={null}>
-                    <Navbar handleDragElement={handleDragElement} isDark={darkMode} selectedMenuId={selectedMenuId} setSelectedMenuId={setSelectedMenuId}  post={sendPost()} updateNewTheme={updateNewTheme} isEditPost={isEditPost} setMobilePage={setMobilePage}  mobilePage={mobilePage}  navOpen={navOpen} setNavOpen={setNavOpen} hero={heroMobile}/>
+                    <Navbar handleDragElement={handleDragElement} isDark={darkMode} selectedMenuId={selectedMenuId} setSelectedMenuId={setSelectedMenuId}  post={sendPost()} updateNewTheme={updateNewTheme} isEditPost={isEditPost} setMobilePage={setMobilePage}  mobilePage={mobilePage}  navOpen={navOpen} setNavOpen={setNavOpen}/>
                   </Suspense>
                 )}
 
              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 {!isPreviewRoute && (
                   <Suspense fallback={null}>
-                    <Header menuButtonRef={menuButtonRef} submitMenuBar={submitMenuBar} topBarData={topBar} menuBarDesktop={menuBarDesktop} menuBarMobile={menuBarMobile} theme={theme} setFont={setFont} toggleDarkMode={toggleDarkMode} setOpenBar={setOffcanvas} openBar={offcanvas} isDark={darkMode} menus={menus} setBuilderMode={setBuilderMode} builderMode={builderMode} deviceType={device} setDevice={setDevice} pageName={page.pageName} textColor={darkTextColor} option={selectedMenuId} setNavOpen={setNavOpen} isAddPost={isAddPost} submitPost={handleSubmit} updatePost={handleUpdate} setUpdateHero={setUpdateHero} onOpenPreview={openPreviewPage}/>
+                    <Header menuButtonRef={menuButtonRef} submitMenuBar={submitMenuBar} topBarData={topBar} menuBarDesktop={menuBarDesktop} menuBarMobile={menuBarForCurrentDevice} theme={theme} setFont={setFont} toggleDarkMode={toggleDarkMode} setOpenBar={setOffcanvas} openBar={offcanvas} isDark={darkMode} menus={menus} setBuilderMode={setBuilderMode} builderMode={builderMode} deviceType={device} setDevice={setDevice} pageName={page.pageName} textColor={darkTextColor} option={selectedMenuId} setNavOpen={setNavOpen} isAddPost={isAddPost} submitPost={handleSubmit} updatePost={handleUpdate} onOpenPreview={openPreviewPage} menuPresets={menuPresets} activeMenuPresetId={activeMenuPresetId} defaultMenuPresetId={defaultMenuPresetId} onCreateMenuPreset={createMenuPreset} onSelectMenuPreset={selectMenuPreset} onSetDefaultMenuPreset={setDefaultMenuPreset} onRenameMenuPreset={renameMenuPreset} onDuplicateMenuPreset={duplicateMenuPreset} onDeleteMenuPreset={deleteMenuPreset} onResetMenuPresets={resetMenuPresets} heroPresets={heroPresets} activeHeroPresetId={activeHeroPresetId} defaultHeroPresetId={defaultHeroPresetId} onHeroStateChange={handleHeroStateChange}/>
                   </Suspense>
                 )}
 
@@ -1694,9 +2633,8 @@ useEffect(()=>{
                     <Route path="newPost" element={<Post post={post} setPost={setPost} mainTheme={theme} setIsEditPost={setIsEditPost} setIsAddPost={setIsAddPost}/>}/>
 
                     <Route path="categories" element={<Category copy={handleSubmit} setIsEditPost={setIsEditPost} setPostID={setPostID}/>}/>
-                    <Route path="heros" element={<HeroData copy={handleSubmit} setIsEditPost={setIsEditPost} setPostID={setPostID} setOption={setSelectedMenuId} setHeroID={setHeroID}/>}/>
-                    <Route path="menus" element={<MenuPage menuButtonRef={menuButtonRef} menus={menus} setMenus={setMenus} navBottom={navBottom} navOpen={navOpen} setNavOpen={setNavOpen} device={device} menuBar={menuBarMobile} theme={theme} setFont={setFont} darkMode={darkMode} darkTextColor={darkTextColor}/> } />
-                    <Route path="editHero/:id" element={<HeroDesign id={heroID} theme={theme} setOption={setSelectedMenuId} setHeroMobile={setHeroMobile} setNavOpen={setNavOpen} mobilePage={mobilePage} updateHero={updateHero} setUpdateHero={setUpdateHero}/>}/>
+                    <Route path="heros" element={<HeroPage heroSection={heroSection} theme={theme} openOffcavanas={openOffcavanas} updateHeroSection={(nextSection) => setHeroSection(_.cloneDeep(nextSection))} />} />
+                    <Route path="menus" element={<MenuPage menuButtonRef={menuButtonRef} menus={menus} setMenus={setMenus} navBottom={navBottom} navOpen={navOpen} setNavOpen={setNavOpen} setOpenBar={setOffcanvas} device={device} menuBar={menuBarForCurrentDevice} topBar={topBar} theme={theme} setFont={setFont} darkMode={darkMode} darkTextColor={darkTextColor}/> } />
 
 
         
@@ -1717,7 +2655,7 @@ useEffect(()=>{
     transition-[width,transform,opacity] duration-300 ease-in-out
   "
   style={{
-    width: offcanvas ? offcanvasWdith : 0,
+    width: offcanvas ? offcanvasWidth : 0,
     transform: "translateX(0)",
     pointerEvents: offcanvas ? "auto" : "none",
     flexShrink: 0,
@@ -1729,6 +2667,9 @@ useEffect(()=>{
              )}
               {offcanvas === "Header" && (
               <HeaderOffcanvas elements={elementData} updateContainer={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
+             )}
+             {offcanvas === "Hero" && (
+              <HeroOffcanvas element={elementData} updateHero={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
              )}
               {offcanvas === "Column" && (
               <ColumnOffcanvas element={elementData} updateColumn={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
@@ -2418,11 +3359,11 @@ useEffect(()=>{
              )}
              
              {offcanvas === "Top" && (
-              <TopBarOffcanvas open={offcanvas === "Top"} close={setOffcanvas} topBar={topBar} darkMode={darkMode} darkTextColor={darkTextColor} updateTopBar={setTopBar}/>
+              <TopBarOffcanvas open={offcanvas === "Top"} close={setOffcanvas} topBar={topBar} darkMode={darkMode} darkTextColor={darkTextColor} updateTopBar={updateTopBarForPreset} device={device}/>
              )}
 
 {["Menu","Nav"].includes(offcanvas) && (
-              <MenuBarOffcanvas  open={["Menu","Nav"].includes(offcanvas)} device={device} close={setOffcanvas} navBottom={navBottom} textColor={darkTextColor} menuBarDesktop={menuBarDesktop} menuBarMobile={menuBarMobile} updateMenuBar={(data,isNav=false)=>editMenuBar(data,isNav)} darkMode={darkMode} darkTextColor={darkTextColor}/>
+              <MenuBarOffcanvas  open={["Menu","Nav"].includes(offcanvas)} device={device} close={setOffcanvas} navBottom={navBottom} topBar={topBar} updateTopBar={updateTopBarForPreset} textColor={darkTextColor} menuBarDesktop={menuBarDesktop} menuBarMobile={menuBarForCurrentDevice} updateMenuBar={(data,isNav=false)=>editMenuBar(data,isNav)} darkMode={darkMode} darkTextColor={darkTextColor}/>
 )}
 </Suspense>
 </aside>

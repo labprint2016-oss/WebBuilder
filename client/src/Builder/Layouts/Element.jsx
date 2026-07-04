@@ -1,29 +1,25 @@
-import React, {
-    Suspense,
-    lazy,
-  } from "react";
-
-const Image = lazy(() => import("./Elements/Image"));
-const Video = lazy(() => import("./Elements/Video"));
-const Lightbox = lazy(() => import("./Elements/Lightbox"));
-const Text = lazy(() => import("./Elements/Text"));
-const Heading = lazy(() => import("./Elements/Heading"));
-const ButtonElement = lazy(() => import("./Elements/Button"));
-const ButtonGroupElement = lazy(() => import("./Elements/ButtonGroup"));
+import React from "react";
+import Image from "./Elements/Image";
+import Video from "./Elements/Video";
+import Lightbox from "./Elements/Lightbox";
+import Text from "./Elements/Text";
+import Heading from "./Elements/Heading";
+import ButtonElement from "./Elements/Button";
+import ButtonGroupElement from "./Elements/ButtonGroup";
 import { isButtonFullWidthEnabled } from "./Elements/buttonElementConfig"
-const Icon = lazy(() => import("./Elements/Icon"));
-const ListElement = lazy(() => import("./Elements/List"));
-const Carousel = lazy(() => import("./Elements/Carousel"));
-const ListBox = lazy(() => import("./Elements/ListBox"));
-const Counter = lazy(() => import("./Elements/Counter"));
-const Tabs = lazy(() => import("./Elements/Tabs"));
-const AccordionElement = lazy(() => import("./Elements/Accordion"));
-const PostElement = lazy(() => import("./Elements/Post"));
-const TableElement = lazy(() => import("./Elements/Table"));
-const BetweenElement = lazy(() => import("./Elements/Between"));
-const DividerElement = lazy(() => import("./Elements/Divider"));
-const DataSlider = lazy(() => import("./Elements/DataSlider"));
-const Catagories = lazy(() => import("./Elements/Catagories"));
+import Icon from "./Elements/Icon";
+import ListElement from "./Elements/List";
+import Carousel from "./Elements/Carousel";
+import ListBox from "./Elements/ListBox";
+import Counter from "./Elements/Counter";
+import Tabs from "./Elements/Tabs";
+import AccordionElement from "./Elements/Accordion";
+import PostElement from "./Elements/Post";
+import TableElement from "./Elements/Table";
+import BetweenElement from "./Elements/Between";
+import DividerElement from "./Elements/Divider";
+import DataSlider from "./Elements/DataSlider";
+import Catagories from "./Elements/Catagories";
 
 
 const Element = ({
@@ -87,51 +83,10 @@ const Element = ({
         columnIndex === 0 &&
         elementIndex === 0);
 
-    const previewFallback = isPreviewMode ? (
-      (() => {
-        const rawAspect =
-          typeof elementData?.aspectRatio === "string"
-            ? elementData.aspectRatio.trim()
-            : "";
-        const aspectRatio = rawAspect && rawAspect !== "auto" ? rawAspect : "16/9";
-        const mediaTypes = new Set(["img", "imgh", "imgo", "bnr", "vid", "lbx"]);
-        const contentHeavyTypes = new Set([
-          "crl",
-          "lstb",
-          "tabs",
-          "acc",
-          "post",
-          "tbl",
-          "dts",
-          "ctg",
-        ]);
-
-        if (mediaTypes.has(type)) {
-          return (
-            <div
-              className="w-full rounded-sm bg-slate-100"
-              style={{ aspectRatio }}
-              aria-hidden
-            />
-          );
-        }
-
-        if (contentHeavyTypes.has(type)) {
-          return (
-            <div className="w-full rounded-sm bg-slate-50" style={{ minHeight: 220 }} aria-hidden />
-          );
-        }
-
-        if (type === "text" || type === "heading") {
-          return <div className="w-full bg-slate-50" style={{ minHeight: 32 }} aria-hidden />;
-        }
-
-        return <div className="w-full bg-slate-50" style={{ minHeight: 24 }} aria-hidden />;
-      })()
-    ) : null;
-
     const animationForElement =
-    "transition-all duration-200 ease-in-out will-change-transform";
+      builderMode === "Layout Mode"
+        ? ""
+        : "transition-all duration-200 ease-in-out will-change-transform";
 
     const isBtnOrG = type === "btn" || type === "btnG";
     const inButtonRowGroup =
@@ -229,7 +184,6 @@ const Element = ({
 
     return ( 
     <div className={wrapClass} style={elementZIndex ? { zIndex: elementZIndex } : undefined}>
-            <Suspense fallback={previewFallback}>
             {(type === "img" || type === "imgh" || type === "imgo" || type === "bnr") && (
         <Image
           elementData={elementData}
@@ -471,7 +425,6 @@ const Element = ({
               builderMode={builderMode}
             />
           )}
-          </Suspense>
     </div>
     )
 

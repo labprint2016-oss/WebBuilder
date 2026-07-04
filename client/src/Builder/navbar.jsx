@@ -72,12 +72,6 @@ import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { SketchPicker } from "react-color";
 import lodash, { isNull, set, update } from "lodash";
 import { getTheme, updateTheme } from "../../Functions/theme";
-import HeroSlider from "./heroSlider";
-import { Swiper, SwiperSlide } from "swiper/react";
-import { Navigation, Pagination, Autoplay } from "swiper/modules";
-import "swiper/css";
-import "swiper/css/navigation";
-import "swiper/css/pagination";
 import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate, matchPath, useParams } from "react-router-dom"
 
 const AntSwitch = styled(Switch)(({ theme }) => ({
@@ -243,48 +237,6 @@ function RadioInput({ label,name, value,datas,handleChange, color = "black" ,gap
    
   );
 }
-
-function CheckInput({ label, field, index, display, heroData, setHero, miniField = null }) {
-
-
-  const checked = miniField ? heroData[field][miniField] : heroData[field];
-
-
-  return (
-    <FormControlLabel
-      control={
-        <Checkbox
-          checked={checked}
-          sx={{
-            "&.Mui-checked": {
-              color: "black", // สีตอน 'ถูกติ๊ก'
-            },
-          }}
-        />
-      }
-      label={label}
-      onChange={(e) => {
-        setHero((prev) => {
-          const hero = lodash.cloneDeep(prev);
-          if (miniField) {
-            hero[display][index][field][miniField] = e.target.checked;
-          } else {
-            hero[display][index][field] = e.target.checked;
-          }
-
-          return hero;
-        });
-      }}
-      sx={{
-        "& .MuiFormControlLabel-label": {
-          fontSize: 13, // ปรับฟอนต์ของตัวหนังสือ
-          whiteSpace: "nowrap",
-        },
-      }}
-    />
-  );
-}
-
 
 function Btn({
   handleClick,
@@ -564,7 +516,7 @@ function SelectInput({ label, name, value, datas, handleChange }) {
 
 
 
-function Navbar({ handleDragElement,isDark,setOption,post,updateNewTheme,option,navOpen,setNavOpen,hero,setMobilePage,mobilePage,selectedMenuId,setSelectedMenuId }) {
+function Navbar({ handleDragElement,isDark,setOption,post,updateNewTheme,option,navOpen,setNavOpen,selectedMenuId,setSelectedMenuId }) {
 
 
  const navigate = useNavigate()
@@ -609,7 +561,7 @@ function Navbar({ handleDragElement,isDark,setOption,post,updateNewTheme,option,
 
 
   useEffect(()=>{
-    if(option === "AddPost" || option === "editPost" || option === "HeroDesign-Mobile" || option === "HeroDesign-Desktop"){
+    if(option === "AddPost" || option === "editPost"){
       setSelectedMenuId(option)
     }
   },[option])
@@ -1037,15 +989,12 @@ function Navbar({ handleDragElement,isDark,setOption,post,updateNewTheme,option,
 
 
   const navWidth = ()=>{
-    if(navOpen && selectedMenuId === "HeroDesign-Mobile"){
-      return "w-[480px]"
-    }
-    else if(navOpen && (selectedMenuId === "AddPost" || selectedMenuId === "editPost" )){
+    if(navOpen && (selectedMenuId === "AddPost" || selectedMenuId === "editPost" )){
       return "w-[400px]"
     }
-    else if(navOpen && !["AddPost","Posts","Category","editPost","Hero","HeroDesign-Desktop","Menu"].includes(selectedMenuId) && !["AddPost","Posts","Category","editPost","Hero","HeroDesign-Desktop","Menu"].includes(option) ){
+    else if(navOpen && !["AddPost","Posts","Category","Hero","editPost","Menu"].includes(selectedMenuId) && !["AddPost","Posts","Category","Hero","editPost","Menu"].includes(option) ){
       return "w-60"
-    }else if(!navOpen || (selectedMenuId === "Posts"  || selectedMenuId === "Category" || selectedMenuId === "Hero" || selectedMenuId === "HeroDesign-Desktop" || selectedMenuId === "Menu")){
+    }else if(!navOpen || (selectedMenuId === "Posts"  || selectedMenuId === "Category" || selectedMenuId === "Hero" || selectedMenuId === "Menu")){
       return "w-0"
     }
   }
@@ -1642,28 +1591,6 @@ const pages = ["Page1","Page2","Page3"]
                     </div>
                   )}
                 </div>
-              )}
-              {selectedMenuId === "HeroDesign-Mobile" && (
-                     <div className="w-full " style={{height:hero.mobileHeight}} >
-                     <Swiper modules={[Pagination]}  pagination={{ clickable: true, dynamicBullets: true }} loop className="w-full h-full mySwiper" onSlideChange={(swiper) => {
-            setMobilePage(swiper.realIndex);
-          }}>
-                       {[0,1,2,3,4].map(_=>{
-                         if(_+1 <= hero.slideAmount){
-                           return (
-                             <SwiperSlide >
-                             <HeroSlider type="mobile" data={hero.mobile[_]} divider={hero.divider} theme={theme} dividerColor={hero.dividerColor} dividerPosition={hero.dividerPosition}/>
-                           </SwiperSlide>
-                           )
-                         }
-                      else{
-                           return null
-                         }
-                       })}
-                              
-                              
-                     </Swiper>
-                         </div>
               )}
             </li>
           </ul>

@@ -3,11 +3,23 @@ import { setColor } from "../../function";
 import Element from "./Layouts/Element";
 
 const DEFAULT_COL_SIZE = 12;
+const DEFAULT_GAP_PX = 22;
 
-const toPercent = (size) => {
-  const n = Number(size);
-  const safe = Number.isFinite(n) ? Math.min(12, Math.max(1, n)) : DEFAULT_COL_SIZE;
-  return `${(safe / 12) * 100}%`;
+const resolveResponsiveGridSpan = (sizeValue, device) => {
+  const size = Number(sizeValue) || 6;
+  if (device === "Desktop") return Math.max(1, Math.min(12, size));
+  if (device === "Tablet") {
+    if (size >= 5) return 12;
+    if (size >= 3) return 6;
+    if (size === 2) return 4;
+    return 3;
+  }
+  if (device === "Mobile") {
+    if (size >= 3) return 12;
+    if (size === 2) return 6;
+    return 4;
+  }
+  return Math.max(1, Math.min(12, size));
 };
 
 const toGridSpan = (size) => {
@@ -48,12 +60,58 @@ const PreviewElement = ({ element, theme, device, ids }) => {
   );
 };
 
+const PreviewMiniSpan = ({ miniSpan, theme, device, ids, noColumnGap }) => {
+  const bg = resolveSurfaceBackground(miniSpan, theme);
+  const borderColor = resolveSurfaceBorder(miniSpan, theme);
+  const miniElements = Array.isArray(miniSpan?.elements) ? miniSpan.elements : [];
+  const gridSpan = resolveResponsiveGridSpan(miniSpan?.size, device);
+  return (
+    <div
+      className="w-full min-w-0"
+      style={{
+        gridColumn: `span ${gridSpan} / span ${gridSpan}`,
+      }}
+    >
+      <div
+        className="w-full min-w-0"
+        style={{
+          background: bg,
+          borderRadius: Number(miniSpan?.borderRadius) || 0,
+          borderWidth: Number(miniSpan?.borderWidth) || 0,
+          borderStyle: "solid",
+          borderColor,
+          padding: `${Number(miniSpan?.paddingY) || 0}px ${Number(miniSpan?.paddingX) || 0}px`,
+        }}
+      >
+        {miniElements.map((element, eleI) => (
+          <PreviewElement
+            key={element?.id || `mini-el-${eleI}`}
+            element={element}
+            theme={theme}
+            device={device}
+            ids={{ ...ids, eleI }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const PreviewSpan = ({ span, theme, device, ids, noColumnGap }) => {
   const bg = resolveSurfaceBackground(span, theme);
   const borderColor = resolveSurfaceBorder(span, theme);
   const spanElements = Array.isArray(span?.elements) ? span.elements : [];
+  const nestedSpans = Array.isArray(span?.nestedSpans) ? span.nestedSpans : [];
+  const hasNestedSpan = span?.hasNestedSpan === true && nestedSpans.length > 0;
+  const gridSpan = resolveResponsiveGridSpan(span?.size, device);
+  const gapPx = noColumnGap ? 0 : DEFAULT_GAP_PX;
   return (
-    <div className="w-full min-w-0">
+    <div
+      className="w-full min-w-0"
+      style={{
+        gridColumn: `span ${gridSpan} / span ${gridSpan}`,
+      }}
+    >
       <div
         className="w-full min-w-0"
         style={{
@@ -65,17 +123,34 @@ const PreviewSpan = ({ span, theme, device, ids, noColumnGap }) => {
           padding: `${Number(span?.paddingY) || 0}px ${Number(span?.paddingX) || 0}px`,
         }}
       >
-        {spanElements.map((element, eleI) => (
-          <PreviewElement
-            key={element?.id || `spn-el-${eleI}`}
-            element={element}
-            theme={theme}
-            device={device}
-            ids={{ ...ids, eleI }}
-          />
-        ))}
+        {hasNestedSpan ? (
+          <div
+            className="grid w-full min-w-0 grid-cols-12"
+            style={{ columnGap: gapPx, rowGap: gapPx }}
+          >
+            {nestedSpans.map((miniSpan, nestI) => (
+              <PreviewMiniSpan
+                key={miniSpan?.id || `mini-${nestI}`}
+                miniSpan={miniSpan}
+                theme={theme}
+                device={device}
+                ids={{ ...ids, nestI }}
+                noColumnGap={noColumnGap}
+              />
+            ))}
+          </div>
+        ) : (
+          spanElements.map((element, eleI) => (
+            <PreviewElement
+              key={element?.id || `spn-el-${eleI}`}
+              element={element}
+              theme={theme}
+              device={device}
+              ids={{ ...ids, eleI }}
+            />
+          ))
+        )}
       </div>
-      {!noColumnGap && <div className="h-[22px]" aria-hidden />}
     </div>
   );
 };
@@ -87,7 +162,8 @@ const PreviewColumn = ({ column, theme, device, conI, colI, noColumnGap }) => {
   const colElements = Array.isArray(column?.elements) ? column.elements : [];
   const spans = Array.isArray(column?.spans) ? column.spans : [];
 
-  const gridSpan = toGridSpan(column?.size);
+  const gridSpan = toGridSpan(resolveResponsiveGridSpan(column?.size, device));
+  const gapPx = noColumnGap ? 0 : DEFAULT_GAP_PX;
 
   return (
     <div
@@ -97,7 +173,10 @@ const PreviewColumn = ({ column, theme, device, conI, colI, noColumnGap }) => {
       }}
     >
       {isSpan ? (
-        <div className={`min-h-[40px] ${noColumnGap ? "space-y-0" : "space-y-0"}`}>
+        <div
+          className="grid w-full min-w-0 grid-cols-12"
+          style={{ columnGap: gapPx, rowGap: gapPx }}
+        >
           {spans.map((span, spnI) => (
             <PreviewSpan
               key={span?.id || `span-${spnI}`}
@@ -187,6 +266,53 @@ const PreviewSection = ({ layout, theme, device, conI }) => {
 };
 
 function PreviewCanvas({ layouts = [], theme, device = "Desktop", auditMode = false }) {
+  const mobileSkeletonSvg = `
+<svg xmlns='http://www.w3.org/2000/svg' width='375' height='1320' viewBox='0 0 375 1320'>
+  <rect width='375' height='1320' fill='#f5f5f6'/>
+
+  <rect x='16' y='16' width='170' height='30' rx='15' fill='#d6d6d9'/>
+  <rect x='196' y='16' width='80' height='30' rx='15' fill='#d8d8db'/>
+  <rect x='286' y='16' width='73' height='30' rx='15' fill='#d6d6d9'/>
+
+  <rect x='16' y='62' width='343' height='210' rx='5' fill='#d2d2d6'/>
+  <rect x='16' y='288' width='220' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='316' width='120' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='16' y='352' width='250' height='16' rx='5' fill='#d4d4d8'/>
+  <rect x='274' y='352' width='85' height='16' rx='5' fill='#d6d6d9'/>
+  <rect x='0' y='400' width='375' height='2' fill='#c9c9cd'/>
+
+  <rect x='16' y='430' width='160' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='186' y='430' width='90' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='286' y='430' width='73' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='460' width='343' height='170' rx='5' fill='#d3d3d7'/>
+  <rect x='16' y='646' width='120' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='674' width='200' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='224' y='674' width='135' height='16' rx='5' fill='#d6d6d9'/>
+  <rect x='0' y='714' width='375' height='2' fill='#c9c9cd'/>
+
+  <rect x='16' y='744' width='343' height='120' rx='5' fill='#d2d2d6'/>
+  <rect x='16' y='880' width='180' height='14' rx='5' fill='#d6d6d9'/>
+  <rect x='16' y='906' width='95' height='14' rx='5' fill='#d8d8db'/>
+  <rect x='16' y='932' width='250' height='14' rx='5' fill='#d6d6d9'/>
+  <rect x='16' y='958' width='145' height='14' rx='5' fill='#d8d8db'/>
+  <rect x='0' y='988' width='375' height='2' fill='#c9c9cd'/>
+
+  <rect x='16' y='1020' width='105' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='131' y='1020' width='120' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='261' y='1020' width='98' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='1052' width='343' height='220' rx='5' fill='#d2d2d6'/>
+</svg>
+`.trim();
+  const mobileSkeletonStyle = device === "Mobile"
+    ? {
+        backgroundColor: "#f5f5f6",
+        backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(mobileSkeletonSvg)}")`,
+        backgroundSize: "375px 1320px",
+        backgroundPosition: "0 0",
+        backgroundRepeat: "repeat-y",
+      }
+    : {};
+
   const renderQueue = useMemo(() => {
     const out = [];
     for (let i = 0; i < layouts.length; i += 1) {
@@ -210,7 +336,10 @@ function PreviewCanvas({ layouts = [], theme, device = "Desktop", auditMode = fa
   }, [layouts]);
 
   return (
-    <div className="content-area min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-0">
+    <div
+      className="content-area min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-0"
+      style={mobileSkeletonStyle}
+    >
       <div className="w-full">
         {renderQueue.map((entry, idx) => {
           if (entry.kind === "single") {

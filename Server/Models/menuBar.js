@@ -351,6 +351,56 @@ const navBottom = new Schema({
     }
 },{_id:false})
 
+const menuPreset = new Schema({
+    id:{
+        type:String,
+        default:""
+    },
+    name:{
+        type:String,
+        default:"Menu 1"
+    },
+    items:{
+        type:[Schema.Types.Mixed],
+        default:[]
+    },
+    menuBarDesktop:{
+        type:Schema.Types.Mixed,
+        default:{}
+    },
+    menuBarMobile:{
+        type:Schema.Types.Mixed,
+        default:{}
+    },
+    menuBarMobilePhone:{
+        type:Schema.Types.Mixed,
+        default:null
+    },
+    navBottomMobile:{
+        type:Schema.Types.Mixed,
+        default:{}
+    },
+    navBottomTablet:{
+        type:Schema.Types.Mixed,
+        default:{}
+    },
+    topBar:{
+        type:Schema.Types.Mixed,
+        default:{}
+    }
+},{_id:false})
+
+const heroPreset = new Schema({
+    id:{
+        type:String,
+        default:""
+    },
+    name:{
+        type:String,
+        default:"Hero 1"
+    }
+},{_id:false})
+
 const navBottomPrototype = (n,space)=>{
     return{
       isAbleNavBottom:true,
@@ -628,6 +678,9 @@ const menuBarSchema = new Schema({
     },menuBarMobile:{
         type:menuBarMobile,
         default: () => ({})
+    },menuBarMobilePhone:{
+        type:menuBarMobile,
+        default:null
     },navBottomMobile:{
         type:navBottomBar,
         default:defaultNavBottomMobile
@@ -637,6 +690,27 @@ const menuBarSchema = new Schema({
     },topBar:{
         type:topBar,
         default: () => ({})
+    },menuPresets:{
+        type:[menuPreset],
+        default:[]
+    },activeMenuPresetId:{
+        type:String,
+        default:"menu-preset-1"
+    },defaultMenuPresetId:{
+        type:String,
+        default:"menu-preset-1"
+    },heroPresets:{
+        type:[heroPreset],
+        default:[]
+    },activeHeroPresetId:{
+        type:String,
+        default:"hero-preset-1"
+    },defaultHeroPresetId:{
+        type:String,
+        default:"hero-preset-1"
+    },heroSection:{
+        type:Schema.Types.Mixed,
+        default:{}
     }
 
 },{timestamps:true})

@@ -1,6 +1,6 @@
 import { useState,useEffect,useRef } from "react";
 import { Modal,Box,Fade,Backdrop,Button} from "@mui/material";
-import {uploadImage,listImages,deleteImage} from "../../Functions/hero";
+import {uploadImage,listImages,deleteImage} from "../../Functions/media";
 import { Check,X } from "lucide-react";
 
 
@@ -11,6 +11,7 @@ function ImageModal({openModal,setOpenModal,handleChange,isPost=false}){
   const [hover,setHover] = useState("")
   const [isRemove,setIsRemove] = useState(false)
   const [remove,setRemove] = useState("")
+  const [selectedImage,setSelectedImage] = useState("")
 
 
 
@@ -38,13 +39,6 @@ function ImageModal({openModal,setOpenModal,handleChange,isPost=false}){
 
 
 
-  useEffect(()=>{
-    console.log(hover);
-    
-  },[hover])
-
-
-    
     const handleClose = ()=>{
         setOpenModal(isPost ? "null-0" : false);
     }
@@ -55,20 +49,31 @@ function ImageModal({openModal,setOpenModal,handleChange,isPost=false}){
 
     const loadImages = ()=>{
         listImages()
-        .then((res)=>setImage(res.data))
+        .then((res)=>{
+          const nextImages = Array.isArray(res?.data) ? res.data : [];
+          setImage(nextImages);
+          if (selectedImage && !nextImages.includes(selectedImage)) {
+            setSelectedImage("");
+          }
+        })
         .catch((err)=>console.log(err))
     }
 
     const removeOptions = [
       {
-        Funct:() => {
-  
-          deleteImage(remove)
-          .then((res)=>{
-            loadImages()
-          })
-          .catch((err)=>console.log(err))
-          setIsRemove(false)
+        Funct:async () => {
+          if (!remove) return;
+          try {
+            await deleteImage(remove);
+            setImage((prev) => prev.filter((img) => img !== remove));
+            setHover("");
+            setSelectedImage((prev) => (prev === remove ? "" : prev));
+            setRemove("");
+            setIsRemove(false);
+            loadImages();
+          } catch (err) {
+            console.log(err);
+          }
         },
         label:"ใช่ ...ฉันต้องการลบ",
         color:"#B91C1C",
@@ -88,6 +93,26 @@ function ImageModal({openModal,setOpenModal,handleChange,isPost=false}){
     useEffect(()=>{
         loadImages()
     },[])
+    useEffect(() => {
+      if (!openModal || isRemove) return undefined;
+      const onKeyDown = (event) => {
+        if (!selectedImage) return;
+        const isDeleteKey =
+          event.key === "Delete" ||
+          event.key === "Backspace" ||
+          event.code === "Delete" ||
+          event.code === "Backspace" ||
+          event.keyCode === 8 ||
+          event.keyCode === 46;
+        if (!isDeleteKey) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setRemove(selectedImage);
+        setIsRemove(true);
+      };
+      window.addEventListener("keydown", onKeyDown, true);
+      return () => window.removeEventListener("keydown", onKeyDown, true);
+    }, [isRemove, openModal, selectedImage]);
 
 
     const fileInput = useRef(null);
@@ -101,7 +126,7 @@ const BODY_H = THUMB_H * ROWS + GAP * (ROWS - 1) + 24; // + padding เผื่
 if(isRemove){
   return (
     <Modal
-            open={isRemove && openModal}
+            open={Boolean(isRemove)}
             onClose={()=>setIsRemove(false)}
             aria-labelledby="basic-modal-title"
             aria-describedby="basic-modal-desc"
@@ -110,7 +135,7 @@ if(isRemove){
             closeAfterTransition
             slots={{ backdrop: Backdrop }}
           >
-            <Fade in={isRemove && openModal} timeout={200} onExited={()=>setIsRemove(false)}>
+            <Fade in={Boolean(isRemove)} timeout={200} onExited={()=>setIsRemove(false)}>
               <Box
                 sx={{
                   position: "relative",
@@ -225,7 +250,8 @@ if(isRemove){
         }}
         onMouseLeave={(e)=>{
           setHover("")
-        }}>
+        }}
+        onClick={() => setSelectedImage(img)}>
 
           {hover === img && (
             <div    className="
@@ -252,8 +278,16 @@ if(isRemove){
           <img
             src={`/uploads/${img}`}
             alt={`image-${index}`}
-
-            style={{height: 120, width: "100%",opacity:hover === img ? 0.2:1 , borderRadius: 5, objectFit: "cover",cursor:"pointer"}}
+            style={{
+              height: 120,
+              width: "100%",
+              opacity:hover === img ? 0.2:1,
+              borderRadius: 5,
+              objectFit: "cover",
+              cursor:"pointer",
+              outline: selectedImage === img ? "2px solid #333333" : "none",
+              outlineOffset: selectedImage === img ? "2px" : "0px",
+            }}
            
           />
         </div>

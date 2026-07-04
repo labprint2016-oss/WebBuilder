@@ -10,6 +10,9 @@ import {
   SwatchBook,
   
   FileText,
+  FilePenLine,
+  Copy,
+  Trash2,
   Bell,
   Users,
   Settings,
@@ -35,7 +38,8 @@ import {
   Bluetooth,
   Icon,
   ChevronDown,
-  CircleCheckBig
+  Check,
+  AlertCircle
 
 } from "lucide-react";
 import TextField from "@mui/material/TextField";
@@ -92,7 +96,6 @@ const Header = ({
   isAddPost,
   submitPost,
   updatePost,
-  setUpdateHero,
   textColor,
   deviceType,
   setDevice,
@@ -107,8 +110,36 @@ const Header = ({
   submitMenuBar,
   topBarData,
   onOpenPreview = null,
+  menuPresets = [],
+  activeMenuPresetId = null,
+  defaultMenuPresetId = null,
+  onCreateMenuPreset = null,
+  onSelectMenuPreset = null,
+  onSetDefaultMenuPreset = null,
+  onRenameMenuPreset = null,
+  onDuplicateMenuPreset = null,
+  onDeleteMenuPreset = null,
+  onResetMenuPresets = null,
+  heroPresets = [],
+  activeHeroPresetId = null,
+  defaultHeroPresetId = null,
+  onHeroStateChange = null,
 }) => {
+  const hasVisibleMenuIcon = (icon) =>
+    Boolean(icon?.name && icon?.type && icon.name !== "fa0");
+  const normalizeTopBarIcon = (icon) =>
+    icon?.name && icon.name !== "fa0" ? icon : { type: "fas", name: "faHouse" };
   const navigate = useNavigate();
+
+  const toBoolean = (value) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value === 1;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      return normalized === "true" || normalized === "1";
+    }
+    return false;
+  };
 
   const{
     // Main
@@ -141,6 +172,7 @@ const Header = ({
     dividerColor:dvc_D,
     dividerOpacity:dvo_D,
     dividerWeight:dvw_D,
+    isFluidLayout:menuFluidDesktop,
   
     // Sub
     subMenuFontSize:s_fs_D,
@@ -152,6 +184,8 @@ const Header = ({
     activeSubMenuColorOpacity:s_activeOpct_D,
     hoverSubMenuColor:s_hover_D,
     hoverSubMenuColorOpacity:s_hoverOpct_D,
+    hoverSubMenuBgColor:s_hoverBg_D = s_color_D,
+    hoverSubMenuBgOpacity:s_hoverBgOpct_D = 20,
   
     isSubMenuGradient:s_isGD_D,
     bgSubMenuColor:s_bg_D,
@@ -214,13 +248,17 @@ const Header = ({
     subMenuColorOpacity:s_opct_M,
     activeSubMenuColor:s_active_M,
     activeSubMenuColorOpacity:s_activeOpct_M,
+    isFluidLayout:menuFluidMobile,
   
   
   } = menuBarMobile;
 
   const {
     ableLeft,
+    hideTopBarEverywhere = false,
+    tabletTopBarMode = "social",
     topBarHeight,
+    isFluidLayout:topBarFluidLayout,
     isGradient,
     bgColor,
     bgOpacity,
@@ -326,24 +364,16 @@ const Header = ({
       submitPost(e);
       navigate("/posts");
     },
-    "HeroDesign-Desktop": (e) => {
-      setUpdateHero(true);
-      navigate("/heros");
-    },
-    "HeroDesign-Mobile": (e) => {
-      setUpdateHero(true);
-      navigate("/heros");
-    },
   };
 
   const [done,setDone] = useState(false)
 
   function Breadcrumbs() {
-    const fields = ["Posts", "Category", "Hero"];
+    const fields = ["Posts", "Category"];
     if (!fields.includes(option) && option !== "Builder") return;
     let textLabel;
     if (fields.includes(option) && !isAddPost) {
-      const kinds = { Posts: "โพสต์", Category: "หมวดหมู่", Hero: "สไลด์โชว์" };
+      const kinds = { Posts: "โพสต์", Category: "หมวดหมู่" };
       textLabel = kinds[option] + "ทั้งหมด";
     } else if (isAddPost) {
       textLabel = "โพสต์ใหม่";
@@ -400,6 +430,9 @@ const Header = ({
                     }}
                     onClick={() => {
                       setDevice(name);
+                      if (["Menu", "Hero"].includes(option) && ["Tablet", "Mobile"].includes(name)) {
+                        setNavOpen(true);
+                      }
                     }}
                   >
                     <Icon
@@ -425,10 +458,18 @@ const Header = ({
     }
   };
 
-  const w = deviceType === "Desktop"?"full":deviceType === "Mobile"?375:768
+  const w = deviceType === "Desktop" ? "100%" : deviceType === "Mobile" ? 375 : 768
   const h = deviceType === "Desktop"?mh_D:brh_M
 
   const MenuBar = () => {
+    const fluidLayoutValue =
+      (deviceType === "Desktop"
+        ? menuFluidDesktop
+        : menuFluidMobile);
+    const isFluidLayoutEnabled = toBoolean(fluidLayoutValue);
+    const menuInnerBaseClass = isFluidLayoutEnabled
+      ? "relative z-10 h-full w-full min-w-0 max-w-none"
+      : "relative z-10 mx-auto h-full w-full min-w-0 max-w-[1536px]";
     const length = menus.length;
     let spiltMenu;
     if (dp_D === "center") {
@@ -464,12 +505,34 @@ const Header = ({
     };
 
     const [hoverID, setHoverID] = useState(null);
+    const hoverCloseTimerRef = useRef(null);
+
+    const clearHoverCloseTimer = () => {
+      if (hoverCloseTimerRef.current) {
+        clearTimeout(hoverCloseTimerRef.current);
+        hoverCloseTimerRef.current = null;
+      }
+    };
+
+    const scheduleHoverClose = () => {
+      clearHoverCloseTimer();
+      hoverCloseTimerRef.current = setTimeout(() => {
+        setHoverID(null);
+        hoverCloseTimerRef.current = null;
+      }, 120);
+    };
+
+    useEffect(() => {
+      return () => {
+        clearHoverCloseTimer();
+      };
+    }, []);
 
     const SubMenus = ({
       items,
       setMainHoverID,
       level = 0,
-      posClass = "absolute top-[60px] left-[115px] -translate-x-1/2",
+      posClass = "absolute left-1/2 top-full -translate-x-1/2",
       posStyle = {},
     }) => {
 
@@ -535,7 +598,7 @@ const Header = ({
           <div className="relative w-[220px]">
             {/* ✅ กล่องรายการ (ยัง overflow-hidden ได้ เพราะ submenu ชั้นถัดไปจะ render เป็น sibling ไม่ถูก clip) */}
             <div
-              className={`rounded-md bg-white/95 border overflow-hidden`}
+              className={`rounded-md bg-white/95 overflow-hidden`}
               style={subMenuStyle}
             >
               {items.map((menu) => {
@@ -551,7 +614,7 @@ const Header = ({
     
                 const bgColor = () => {
                   if (id === subHoverID) {
-                    return setColor(s_color_D, 20);
+                    return setColor(s_hoverBg_D, s_hoverBgOpct_D);
                   }
                   return "";
                 };
@@ -586,7 +649,9 @@ const Header = ({
                     }}
                   >
                     <div>
-                      <IconAwsome iconName={icon.name} iconType={icon.type} style={{marginRight:3}}/> 
+                      {hasVisibleMenuIcon(icon) && (
+                        <IconAwsome iconName={icon.name} iconType={icon.type} style={{marginRight:3}}/>
+                      )}
                       {name}
                     </div>
                   
@@ -612,8 +677,11 @@ const Header = ({
                 items={childItems}
                 level={level + 1}
                 setMainHoverID={setMainHoverID}
-                posClass="absolute left-full top-[-1px]"
-                posStyle={{ transform: `translateY(${childTop}px)` }}
+                posClass="absolute top-0"
+                posStyle={{
+                  left: "calc(100% + 8px)",
+                  transform: `translateY(${childTop}px)`,
+                }}
               />
             )}
           </div>
@@ -638,13 +706,21 @@ const Header = ({
             const showDivider = dv_D && i !== items.length - 1;
 
             return (
-              <div key={menu.id} className="relative h-full flex items-stretch">
+              <div
+                key={menu.id}
+                className="relative h-full flex items-stretch"
+                onMouseEnter={() => {
+                  clearHoverCloseTimer();
+                  setHoverID(id);
+                }}
+                onMouseLeave={() => {
+                  scheduleHoverClose();
+                }}
+              >
                 {/* ✅ Hitbox ที่ใหญ่จริง */}
                 <button
                   type="button"
                   className="h-full flex items-center px-3"
-                  onMouseEnter={() => setHoverID(id)}
-                  onMouseLeave={() => setHoverID(null)}
                   style={{
                     fontSize: fs_D,
                     fontWeight: fw_D,
@@ -652,7 +728,9 @@ const Header = ({
                     cursor:"pointer",
                   }}
                 >
-                  <IconAwsome iconName={icon.name} iconType={icon.type} style={{marginRight:5}}/>
+                  {hasVisibleMenuIcon(icon) && (
+                    <IconAwsome iconName={icon.name} iconType={icon.type} style={{marginRight:5}}/>
+                  )}
                   <span className={`whitespace-nowrap ${theme?.textHeading.value}`}>{name}</span>
                   {menu.children?.length > 0 && (
                     <ChevronDown
@@ -682,7 +760,14 @@ const Header = ({
                 {menu.children?.length > 0 && isHover && (
                   <SubMenus
                     items={menu.children}
-                    setMainHoverID={(n) => setHoverID(n === 1 ? id : null)}
+                    setMainHoverID={(n) => {
+                      if (n === 1) {
+                        clearHoverCloseTimer();
+                        setHoverID(id);
+                      } else {
+                        scheduleHoverClose();
+                      }
+                    }}
                   />
                 )}
               </div>
@@ -710,17 +795,27 @@ const Header = ({
     }
         
 
+    const menuBg = bg();
     const menuStyle = {
       height: h,
-      background: bg(),
-      width:w
+      background: menuBg,
+      width:w,
+      border: "none",
+      borderBottom: "none",
+      borderBottomWidth: 0,
+      borderColor: "transparent",
+      boxShadow: "none",
     };
 
 
     const MenuButton = ()=>{
+      const menuButtonClassName = [
+        "p-[5px] rounded-lg text-slate-700 dark:text-white/80 border flex items-center justify-center",
+        ["Mobile", "Tablet"].includes(deviceType) ? "inline-flex" : "hidden sm:inline-flex",
+      ].join(" ");
       return (
         <button
-        className="hidden sm:inline-flex p-[5px] rounded-lg text-slate-700 dark:text-white/80 border flex items-center justify-center" ref={menuButtonRef}
+        className={menuButtonClassName} ref={menuButtonRef}
         style={{
           backgroundColor:setColor(bgbtn_M,bgbtno_M),
           borderColor:setColor(bbtn_M,bbtno_M),
@@ -744,13 +839,16 @@ const Header = ({
     if (dp_D === "center" && deviceType === "Desktop") {
       return (
         <header
-          className={`flex min-w-0 w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6  border-slate-200 backdrop-blur dark:bg-gray-900/70 `}
+          className={`relative z-[120] flex min-w-0 w-full shrink-0 items-center gap-3 overflow-visible px-3 sm:px-6 backdrop-blur`}
           style={menuStyle}
           onClick={() => open("Menu")}
         >
           <div
-            className={`container mx-auto relative z-10 h-full min-w-0 max-w-full grid items-stretch`}
-            style={{ gridTemplateColumns: "1fr auto 1fr", columnGap: 55 }}
+            className={`${menuInnerBaseClass} grid items-stretch`}
+            style={{
+              gridTemplateColumns: "1fr auto 1fr",
+              columnGap: 55,
+            }}
           >
             <div className="justify-self-end h-full flex items-stretch">
               <Menus items={spiltMenu[0]} />
@@ -771,11 +869,11 @@ const Header = ({
     if (dp_D === "right" && deviceType === "Desktop") {
     return (
       <header
-        className="flex min-w-0 w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6  border-slate-200 backdrop-blur dark:bg-gray-900/70 "
+        className="relative z-[120] flex min-w-0 w-full shrink-0 items-center gap-3 overflow-visible px-3 sm:px-6 backdrop-blur"
         style={menuStyle}
         onClick={() => open("Menu")}
       >
-        <div className="container relative z-10 mx-auto h-full min-w-0 max-w-full flex items-center justify-between">
+        <div className={`${menuInnerBaseClass} flex items-center justify-between`}>
           <Logo />
 
           <Menus items={menus} />
@@ -788,11 +886,11 @@ const Header = ({
       return(
         <div className="flex w-full min-w-0 justify-center overflow-x-hidden">
         <header
-       className="flex min-w-0 w-full max-w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6 border-slate-200 backdrop-blur dark:bg-gray-900/70 "
+       className="relative z-[120] flex min-w-0 w-full max-w-full shrink-0 items-center gap-3 overflow-visible px-3 sm:px-6 backdrop-blur"
        style={menuStyle}
        onClick={() => open("Menu")}
      >
-       <div className="container relative z-10 mx-auto h-full min-w-0 max-w-full flex items-center justify-between">
+       <div className={`${menuInnerBaseClass} flex items-center justify-between`}>
          <Logo />
 
         <MenuButton/>
@@ -806,11 +904,11 @@ const Header = ({
       return(
         <div className="flex w-full min-w-0 justify-center overflow-x-hidden">
         <header
-       className="flex min-w-0 w-full max-w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6 border-slate-200 backdrop-blur dark:bg-gray-900/70 "
+       className="relative z-[120] flex min-w-0 w-full max-w-full shrink-0 items-center gap-3 overflow-visible px-3 sm:px-6 backdrop-blur"
        style={menuStyle}
        onClick={() => open("Menu")}
      >
-       <div className="container relative z-10 mx-auto h-full min-w-0 max-w-full flex items-center justify-between">
+       <div className={`${menuInnerBaseClass} flex items-center justify-between`}>
 
        <MenuButton/>
 
@@ -825,6 +923,11 @@ const Header = ({
   };
 
   const TopBar = ()=>{
+    if (hideTopBarEverywhere) return null;
+    const isTopBarFluidLayout = toBoolean(topBarFluidLayout);
+    const topBarInnerBaseClass = isTopBarFluidLayout
+      ? "relative z-10 h-full w-full min-w-0 max-w-none"
+      : "relative z-10 mx-auto h-full w-full min-w-0 max-w-[1536px]";
 
     const bg = setColor(
       isGradient?bgColorGradient:bgColor,
@@ -839,10 +942,11 @@ const Header = ({
       if(!ableLeft) return <div></div>
 
       return(
-        <div className="flex gap-[8px]">
+        <div className="flex gap-[10px]">
         {iconGroup.map(
           (_, i) => {
             const {icon,iconSize,iconColor,iconOpacity,bgColor,bgOpacity,url} = _
+            const safeIcon = normalizeTopBarIcon(icon);
             const href =
             url && /^(https?:\/\/)/i.test(url) ? url : url ? `https://${url}` : "#";
             return(
@@ -864,7 +968,7 @@ const Header = ({
               cursor: url ? "pointer" : "default",
             }}
           >
-                <IconAwsome iconType={icon.type} iconName={icon.name} style={{color:setColor(iconColor,iconOpacity),fontSize:iconSize}}/>
+                <IconAwsome iconType={safeIcon.type} iconName={safeIcon.name} style={{color:setColor(iconColor,iconOpacity),fontSize:iconSize}}/>
 
               </a>
             )
@@ -875,15 +979,19 @@ const Header = ({
     }
 
 
-    const TextGroup = ()=>{
+    const TextGroup = ({ scrollable = false } = {})=>{
       if(!ableRight) return <div></div>
-      return(<div className="flex gap-[12px]">
+      return(<div
+        className={`flex gap-[12px] ${scrollable ? "min-w-max" : ""}`}
+        style={scrollable ? { scrollbarWidth: "none", msOverflowStyle: "none" } : undefined}
+      >
       {textGroup.map(
         (_, i) => {
           const {text,textSize,textColor,textOpacity,icon,iconSize,iconColor,iconOpacity,bgColor,bgOpacity} = _
+          const safeIcon = normalizeTopBarIcon(icon);
           return(
             <div
-              className="h-full flex items-center text-[10px]"
+              className="h-full shrink-0 flex items-center text-[10px]"
               key={i}
             >
               <div className="size-[26px] bg-white rounded-full flex items-center justify-center"     style={{
@@ -893,9 +1001,9 @@ const Header = ({
               borderRadius: `${radiusText}%`,
               textDecoration: "none",
             }}>
-                <IconAwsome iconType={icon.type} iconName={icon.name} style={{color:setColor(iconColor,iconOpacity),fontSize:iconSize}}/>
+                <IconAwsome iconType={safeIcon.type} iconName={safeIcon.name} style={{color:setColor(iconColor,iconOpacity),fontSize:iconSize}}/>
               </div>
-              <div className="ml-2" style={{color:setColor(textColor,textOpacity),fontSize:textSize}}>{text}</div>
+              <div className="ml-2 whitespace-nowrap" style={{color:setColor(textColor,textOpacity),fontSize:textSize}}>{text}</div>
             </div>
           )
         }
@@ -903,15 +1011,39 @@ const Header = ({
     </div>)
     }
 
-    if(deviceType === "Mobile" || deviceType === "Tablet"){
+    const mode = tabletTopBarMode || "social";
+
+    if(deviceType === "Tablet"){
+      if (mode === "off") return null;
+      return(
+        <div className="flex w-full min-w-0 justify-center overflow-x-hidden">
+           <header
+      className="flex min-w-0 w-full max-w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6   backdrop-blur dark:bg-gray-900/70 " style={{width:w,maxWidth:"100%",height:topBarHeight,background:bg}}
+    >
+      <div className={`${topBarInnerBaseClass} flex items-center justify-center`}>
+      {mode === "text" ? <TextGroup/> : <IconGroup/>}
+      </div>
+    </header>
+        </div>
+      )
+    }
+
+    if(deviceType === "Mobile"){
+      if (mode === "off") return null;
       return(
         <div className="flex w-full min-w-0 justify-center overflow-x-hidden">
            <header
       className="flex min-w-0 w-full max-w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6   backdrop-blur dark:bg-gray-900/70 " style={{width:w,maxWidth:"100%",height:topBarHeight,background:bg}}
       onClick={() => open("Top")}
     >
-      <div className="container relative z-10 mx-auto h-full min-w-0 max-w-full flex items-center justify-center">
-      <IconGroup/>
+      <div className={`${topBarInnerBaseClass} flex items-center ${mode === "text" ? "justify-start overflow-hidden" : "justify-center"}`}>
+      {mode === "text" ? (
+        <div className="w-full overflow-x-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+          <TextGroup scrollable/>
+        </div>
+      ) : (
+        <IconGroup/>
+      )}
       </div>
     </header>
         </div>
@@ -922,7 +1054,7 @@ const Header = ({
       className="flex h-[32px] min-w-0 w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6 backdrop-blur dark:bg-gray-900/70 " style={{height:topBarHeight,background:bg}}
       onClick={() => open("Top")}
     >
-      <div className="container relative z-10 mx-auto h-full min-w-0 max-w-full flex items-center justify-between">
+      <div className={`${topBarInnerBaseClass} flex items-center justify-between`}>
       <IconGroup/>
         <TextGroup/>
       </div>
@@ -937,7 +1069,7 @@ const Header = ({
       className="hidden sm:inline-flex p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/80"
       onClick={() => {
         if (
-          ["Posts", "Cetegory", "Hero", "HeroDesign-Desktop","Menu"].includes(
+          ["Posts", "Cetegory", "Menu", "Hero"].includes(
             option
           )
         )
@@ -954,6 +1086,197 @@ const Header = ({
 
   const [openPageModal,setOpenPageModal] = useState(false)
   const [openSelectPageModal,setOpenSelectPageModal] = useState(false)
+  const [openCreateMenuModal, setOpenCreateMenuModal] = useState(false);
+  const [openSelectMenuModal, setOpenSelectMenuModal] = useState(false);
+  const [openCreateHeroModal, setOpenCreateHeroModal] = useState(false);
+  const [openSelectHeroModal, setOpenSelectHeroModal] = useState(false);
+  const DUPLICATE_MENU_NAME_MESSAGE = "ชื่อเมนูนี้มีอยู่แล้ว ..... กรุณาใช้ชื่ออื่น";
+  const DUPLICATE_HERO_NAME_MESSAGE = "ชื่อ Hero นี้มีอยู่แล้ว ..... กรุณาใช้ชื่ออื่น";
+  const DEFAULT_MENU_SET_MESSAGE = "ตั้งค่าเมนูเริ่มต้นเรียบร้อยแล้ว";
+  const DEFAULT_HERO_SET_MESSAGE = "ตั้งค่า Hero เริ่มต้นเรียบร้อยแล้ว";
+  const [newMenuName, setNewMenuName] = useState("");
+  const [newMenuNameError, setNewMenuNameError] = useState("");
+  const [newHeroName, setNewHeroName] = useState("");
+  const [newHeroNameError, setNewHeroNameError] = useState("");
+  const [editingMenuPresetId, setEditingMenuPresetId] = useState(null);
+  const [editingMenuPresetName, setEditingMenuPresetName] = useState("");
+  const [editingHeroId, setEditingHeroId] = useState(null);
+  const [editingHeroName, setEditingHeroName] = useState("");
+  const [menuPresetFooterMessage, setMenuPresetFooterMessage] = useState("");
+  const [heroFooterMessage, setHeroFooterMessage] = useState("");
+  const [menuPresetToast, setMenuPresetToast] = useState({ open: false, message: "" });
+  const [pendingDeleteMenuPreset, setPendingDeleteMenuPreset] = useState(null);
+  const [pendingDeleteHero, setPendingDeleteHero] = useState(null);
+  const [heroItems, setHeroItems] = useState(() =>
+    Array.isArray(heroPresets) && heroPresets.length > 0
+      ? heroPresets
+      : [{ id: "hero-preset-1", name: "Hero 1" }]
+  );
+  const [activeHeroId, setActiveHeroId] = useState(activeHeroPresetId);
+  const [defaultHeroId, setDefaultHeroId] = useState(defaultHeroPresetId);
+  const activeMenuPresetName = useMemo(() => {
+    const activePreset = menuPresets.find((preset) => preset.id === activeMenuPresetId);
+    return activePreset?.name
+      ? `${activePreset.name} - กำลังทำงาน`
+      : "เลือกเมนู";
+  }, [menuPresets, activeMenuPresetId]);
+  const activeHeroName = useMemo(() => {
+    const activeHero = heroItems.find((hero) => hero.id === activeHeroId);
+    return activeHero?.name ? `${activeHero.name} - กำลังทำงาน` : "เลือก Hero";
+  }, [heroItems, activeHeroId]);
+  const showMenuPresetToast = (message) => {
+    setMenuPresetToast({ open: true, message });
+  };
+  const isDuplicateMenuPresetMessage =
+    menuPresetFooterMessage === DUPLICATE_MENU_NAME_MESSAGE;
+  const isDefaultMenuPresetSuccessMessage =
+    menuPresetFooterMessage === DEFAULT_MENU_SET_MESSAGE;
+  const isDuplicateHeroMessage = heroFooterMessage === DUPLICATE_HERO_NAME_MESSAGE;
+  const isDefaultHeroSuccessMessage = heroFooterMessage === DEFAULT_HERO_SET_MESSAGE;
+  useEffect(() => {
+    if (!isDuplicateMenuPresetMessage && !isDefaultMenuPresetSuccessMessage) return;
+    const timer = setTimeout(() => {
+      setMenuPresetFooterMessage("");
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [isDuplicateMenuPresetMessage, isDefaultMenuPresetSuccessMessage]);
+  useEffect(() => {
+    if (!isDefaultHeroSuccessMessage) return;
+    const timer = setTimeout(() => {
+      setHeroFooterMessage("");
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [isDefaultHeroSuccessMessage]);
+
+  useEffect(() => {
+    if (heroItems.length === 0) {
+      setActiveHeroId(null);
+      setDefaultHeroId(null);
+      return;
+    }
+    if (!activeHeroId || !heroItems.some((hero) => hero.id === activeHeroId)) {
+      setActiveHeroId(heroItems[0].id);
+    }
+    if (!defaultHeroId || !heroItems.some((hero) => hero.id === defaultHeroId)) {
+      setDefaultHeroId(heroItems[0].id);
+    }
+  }, [heroItems, activeHeroId, defaultHeroId]);
+  useEffect(() => {
+    if (!Array.isArray(heroPresets) || heroPresets.length === 0) return;
+    setHeroItems((prev) => {
+      if (
+        prev.length === heroPresets.length &&
+        prev.every(
+          (item, idx) =>
+            item?.id === heroPresets[idx]?.id && item?.name === heroPresets[idx]?.name
+        )
+      ) {
+        return prev;
+      }
+      return heroPresets;
+    });
+  }, [heroPresets]);
+  useEffect(() => {
+    if (typeof activeHeroPresetId === "string" && activeHeroPresetId !== activeHeroId) {
+      setActiveHeroId(activeHeroPresetId);
+    }
+  }, [activeHeroPresetId, activeHeroId]);
+  useEffect(() => {
+    if (typeof defaultHeroPresetId === "string" && defaultHeroPresetId !== defaultHeroId) {
+      setDefaultHeroId(defaultHeroPresetId);
+    }
+  }, [defaultHeroPresetId, defaultHeroId]);
+  useEffect(() => {
+    if (typeof onHeroStateChange !== "function") return;
+    onHeroStateChange({
+      heroPresets: heroItems,
+      activeHeroPresetId: activeHeroId,
+      defaultHeroPresetId: defaultHeroId,
+    });
+  }, [heroItems, activeHeroId, defaultHeroId, onHeroStateChange]);
+
+  const closeCreateMenuModal = () => {
+    setOpenCreateMenuModal(false);
+    setNewMenuName("");
+    setNewMenuNameError("");
+  };
+  const closeCreateHeroModal = () => {
+    setOpenCreateHeroModal(false);
+    setNewHeroName("");
+    setNewHeroNameError("");
+  };
+
+  const closeSelectMenuModal = () => {
+    setOpenSelectMenuModal(false);
+    setEditingMenuPresetId(null);
+    setEditingMenuPresetName("");
+    setMenuPresetFooterMessage("");
+    setPendingDeleteMenuPreset(null);
+  };
+  const closeSelectHeroModal = () => {
+    setOpenSelectHeroModal(false);
+    setEditingHeroId(null);
+    setEditingHeroName("");
+    setPendingDeleteHero(null);
+    setHeroFooterMessage("");
+  };
+
+  const buildHeroId = () => `hero-preset-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+  const normalizeHeroName = (value) => String(value || "").trim().toLowerCase();
+  const createUniqueHeroName = (baseName) => {
+    const cleanBase = String(baseName || "").trim() || "Hero";
+    let candidate = `${cleanBase} คัดลอก`;
+    let counter = 2;
+    const existing = new Set(heroItems.map((hero) => normalizeHeroName(hero.name)));
+    while (existing.has(normalizeHeroName(candidate))) {
+      candidate = `${cleanBase} คัดลอก ${counter}`;
+      counter += 1;
+    }
+    return candidate;
+  };
+  const commitRenameHero = (heroId, nextName) => {
+    const trimmed = String(nextName || "").trim();
+    if (trimmed.length < 3) {
+      setHeroFooterMessage("ชื่อ Hero ต้องอย่างน้อย 3 ตัวอักษร");
+      return { ok: false, reason: "too_short" };
+    }
+    const duplicate = heroItems.some(
+      (hero) => hero.id !== heroId && normalizeHeroName(hero.name) === normalizeHeroName(trimmed)
+    );
+    if (duplicate) {
+      setHeroFooterMessage(DUPLICATE_HERO_NAME_MESSAGE);
+      return { ok: false, reason: "duplicate_name" };
+    }
+    setHeroItems((prev) =>
+      prev.map((hero) => (hero.id === heroId ? { ...hero, name: trimmed } : hero))
+    );
+    setHeroFooterMessage("");
+    return { ok: true };
+  };
+
+  const commitRenameMenuPreset = (presetId, name) => {
+    if (typeof onRenameMenuPreset !== "function") return { ok: false, reason: "unavailable" };
+    const result = onRenameMenuPreset(presetId, name);
+    if (!result?.ok) {
+      if (result?.reason === "duplicate_name") {
+        setMenuPresetFooterMessage(DUPLICATE_MENU_NAME_MESSAGE);
+      } else if (result?.reason === "too_short") {
+        showMenuPresetToast("ชื่อเมนูต้องอย่างน้อย 3 ตัวอักษร");
+      } else {
+        showMenuPresetToast("แก้ไขชื่อเมนูไม่สำเร็จ");
+      }
+      return result;
+    }
+    setMenuPresetFooterMessage("");
+    return result;
+  };
+
+  const handleSaveMenuBar = () => {
+    if (typeof submitMenuBar === "function") {
+      submitMenuBar();
+      setDone(true);
+    }
+  };
 
   return (
     <>
@@ -967,9 +1290,24 @@ const Header = ({
         </button>
 
 
-        {(option !== "Menu" ||  deviceType === "Desktop") && (
+        {(!["Menu", "Hero"].includes(option) ||  deviceType === "Desktop") && (
           <NavBtn/>
         ) }
+        {["Menu", "Hero"].includes(option) && (
+          <button
+            type="button"
+            className="hidden sm:inline-flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-gray-700 dark:bg-teal-300/80 border border-0 rounded-md hover:bg-gray-700/60 dark:hover:bg-teal-200/100 hover:text-white dark:hover:text-teal-500 focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none"
+            onClick={() => {
+              if (option === "Hero") {
+                setOpenSelectHeroModal(true);
+                return;
+              }
+              setOpenSelectMenuModal(true);
+            }}
+          >
+            {option === "Hero" ? activeHeroName : activeMenuPresetName}
+          </button>
+        )}
         
 
         {option === "Builder" && <ChangeBuilderModeButton />}
@@ -980,8 +1318,6 @@ const Header = ({
         {[
           "AddPost",
           "editPost",
-          "HeroDesign-Desktop",
-          "HeroDesign-Mobile",
         ].includes(option) && (
           <button
             type="button"
@@ -995,7 +1331,7 @@ const Header = ({
           </button>
         )}
 
-        {["Builder", "Menu"].includes(option) && <DeviceSelector />}
+        {["Builder", "Menu", "Hero"].includes(option) && <DeviceSelector />}
 
         <div className="ml-auto shrink-0" />
 
@@ -1039,15 +1375,31 @@ const Header = ({
           )}
           
 
-          {option === "Menu" && (
-               <button
-               onClick={submitMenuBar}
-               type="button"
-               className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-gray-700 dark:bg-teal-300/80 border border-0 rounded-md hover:bg-gray-700/60 dark:hover:bg-teal-200/100 hover:text-white dark:hover:text-teal-500 focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none"
-             >
-                 <span className="material-icons-outlined text-[18px]">public</span>{" "}
-               บันทึกข้อมูล
-             </button>
+          {["Menu", "Hero"].includes(option) && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  if (option === "Hero") {
+                    setOpenCreateHeroModal(true);
+                    return;
+                  }
+                  setOpenCreateMenuModal(true);
+                }}
+                className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-gray-700 dark:bg-teal-300/80 border border-0 rounded-md hover:bg-gray-700/60 dark:hover:bg-teal-200/100 hover:text-white dark:hover:text-teal-500 focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none"
+              >
+                <Plus size={16} />
+                {option === "Hero" ? "สร้าง Hero" : "สร้างเมนู"}
+              </button>
+              <button
+                onClick={handleSaveMenuBar}
+                type="button"
+                className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-gray-700 dark:bg-teal-300/80 border border-0 rounded-md hover:bg-gray-700/60 dark:hover:bg-teal-200/100 hover:text-white dark:hover:text-teal-500 focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none"
+              >
+                <span className="material-icons-outlined text-[18px]">public</span>{" "}
+                บันทึกข้อมูล
+              </button>
+            </>
           )}
 
           <button
@@ -1069,10 +1421,686 @@ const Header = ({
           />
         </div>
       </header>
-      {option === "Menu" && (
-        <div className="z-[99]" style={{cursor:"pointer"}} id="header-bar">
+      {option === "Menu" && deviceType === "Desktop" && (
+        <div className="relative z-[120]" style={{cursor:"pointer"}} id="header-bar">
           <TopBar/>
           <MenuBar />
+        </div>
+      )}
+      {openCreateMenuModal && (
+        <div
+          className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/35 px-4"
+          onClick={closeCreateMenuModal}
+        >
+          <div
+            className="w-full max-w-[550px] rounded-[12px] bg-white dark:bg-zinc-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10">
+              <span className="text-[15px] font-semibold text-slate-700 dark:text-white/90">สร้างเมนูใหม่</span>
+              <button
+                type="button"
+                className="text-[13px] text-slate-500 hover:text-slate-700 dark:text-white/60 dark:hover:text-white/90"
+                onClick={closeCreateMenuModal}
+              >
+                ปิด
+              </button>
+            </div>
+            <div className="px-4 py-4">
+              <div className="mb-2 text-[12px] text-slate-500 dark:text-white/60">ชื่อเมนู</div>
+              <input
+                value={newMenuName}
+                onChange={(e) => {
+                  setNewMenuName(e.target.value);
+                  if (newMenuNameError) setNewMenuNameError("");
+                }}
+                placeholder="เช่น เมนูหลัก"
+                className="h-[38px] w-full rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-800 outline-none focus:border-slate-400 dark:border-white/10 dark:bg-zinc-800 dark:text-white/90"
+              />
+              {newMenuNameError && (
+                <div className="mt-2 text-[12px] text-red-500">{newMenuNameError}</div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3 dark:border-white/10">
+              <button
+                type="button"
+                className="rounded-md border border-slate-200 px-3 py-1 text-[13px] text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-white/80 dark:hover:bg-zinc-800"
+                onClick={closeCreateMenuModal}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-[#454b57] px-3 py-1 text-[13px] text-white hover:bg-[#3b414b]"
+                onClick={() => {
+                  if (typeof onCreateMenuPreset !== "function") return;
+                  const result = onCreateMenuPreset(newMenuName);
+                  if (!result?.ok) {
+                    if (result?.reason === "duplicate_name") {
+                      setNewMenuNameError("ชื่อเมนูนี้มีอยู่แล้ว");
+                    } else {
+                      setNewMenuNameError("กรุณาตั้งชื่อเมนูอย่างน้อย 3 ตัวอักษร");
+                    }
+                    return;
+                  }
+                  showMenuPresetToast(`สร้างเมนู ${result.name} แล้ว`);
+                  closeCreateMenuModal();
+                }}
+              >
+                สร้างเมนู
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {openCreateHeroModal && (
+        <div
+          className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/35 px-4"
+          onClick={closeCreateHeroModal}
+        >
+          <div
+            className="w-full max-w-[550px] rounded-[12px] bg-white dark:bg-zinc-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10">
+              <span className="text-[15px] font-semibold text-slate-700 dark:text-white/90">สร้าง Hero ใหม่</span>
+              <button
+                type="button"
+                className="text-[13px] text-slate-500 hover:text-slate-700 dark:text-white/60 dark:hover:text-white/90"
+                onClick={closeCreateHeroModal}
+              >
+                ปิด
+              </button>
+            </div>
+            <div className="px-4 py-4">
+              <div className="mb-2 text-[12px] text-slate-500 dark:text-white/60">ชื่อ Hero</div>
+              <input
+                value={newHeroName}
+                onChange={(e) => {
+                  setNewHeroName(e.target.value);
+                  if (newHeroNameError) setNewHeroNameError("");
+                }}
+                placeholder="เช่น Hero 2"
+                className="h-[38px] w-full rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-800 outline-none focus:border-slate-400 dark:border-white/10 dark:bg-zinc-800 dark:text-white/90"
+              />
+              {newHeroNameError && (
+                <div className="mt-2 text-[12px] text-red-500">{newHeroNameError}</div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3 dark:border-white/10">
+              <button
+                type="button"
+                className="rounded-md border border-slate-200 px-3 py-1 text-[13px] text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-white/80 dark:hover:bg-zinc-800"
+                onClick={closeCreateHeroModal}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-[#454b57] px-3 py-1 text-[13px] text-white hover:bg-[#3b414b]"
+                onClick={() => {
+                  const trimmedName = String(newHeroName || "").trim();
+                  if (trimmedName.length < 3) {
+                    setNewHeroNameError("กรุณาตั้งชื่อ Hero อย่างน้อย 3 ตัวอักษร");
+                    return;
+                  }
+                  const isDuplicate = heroItems.some(
+                    (hero) => normalizeHeroName(hero.name) === normalizeHeroName(trimmedName)
+                  );
+                  if (isDuplicate) {
+                    setNewHeroNameError("ชื่อ Hero นี้มีอยู่แล้ว");
+                    return;
+                  }
+                  const newHero = {
+                    id: buildHeroId(),
+                    name: trimmedName,
+                  };
+                  setHeroItems((prev) => [...prev, newHero]);
+                  setActiveHeroId(newHero.id);
+                  closeCreateHeroModal();
+                }}
+              >
+                สร้าง Hero
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {openSelectHeroModal && (
+        <div
+          className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/35 px-4"
+          onClick={closeSelectHeroModal}
+        >
+          <div
+            className="w-full max-w-[550px] rounded-[12px] bg-white dark:bg-zinc-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 pt-4 pb-2">
+              <div className="flex items-center gap-[20px]">
+                <span className="text-[15px] font-extrabold" style={{ color: "#333333" }}>
+                  เลือก Hero
+                </span>
+                {isDuplicateHeroMessage && (
+                  <span className="text-left text-[13px]" style={{ color: "#b91c1b" }}>
+                    {heroFooterMessage}
+                  </span>
+                )}
+                {isDefaultHeroSuccessMessage && (
+                  <span className="text-left text-[13px]" style={{ color: "#6b7280" }}>
+                    {heroFooterMessage}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="text-[13px]"
+                style={{ color: isDark === "dark" ? "#ffffff" : "#202020" }}
+                onClick={closeSelectHeroModal}
+              >
+                X
+              </button>
+            </div>
+            <div className="mt-1 border-b-[5px] border-solid border-[#e5e7eb]" />
+            <div className="max-h-[360px] overflow-y-auto px-3 py-3">
+              {heroItems.length === 0 ? (
+                <div className="rounded-md bg-[#f7f8fa] px-3 py-2 text-[13px] text-slate-500 dark:bg-zinc-800 dark:text-white/60">
+                  ยังไม่มีรายการ Hero
+                </div>
+              ) : (
+                <div className="w-full rounded-md px-[10px] pt-[4px] pb-[4px]">
+                  {heroItems.map((hero) => {
+                    const selected = hero.id === activeHeroId;
+                    const isDefaultHero = hero.id === defaultHeroId;
+                    const isEditingHero = editingHeroId === hero.id;
+                    const isPendingDeleteHero = pendingDeleteHero?.id === hero.id;
+                    return (
+                      <div
+                        key={hero.id}
+                        className={`border-b last:border-0 flex justify-between py-2 ${
+                          isDark === "dark" ? "border-b-[#a9a8a81c]" : "border-b-slate-200"
+                        }`}
+                        style={{ color: isDark === "dark" ? "#ffffff" : "#202020" }}
+                      >
+                        <div
+                          className={`flex min-w-0 items-center gap-[10px] text-left ${
+                            isEditingHero ? "cursor-default" : "cursor-pointer"
+                          }`}
+                          onClick={() => {
+                            if (isPendingDeleteHero) return;
+                            if (isEditingHero) return;
+                            setActiveHeroId(hero.id);
+                            closeSelectHeroModal();
+                          }}
+                        >
+                          <Menu size={14} strokeWidth={2.5} style={{ opacity: 0.45, color: "#9ca3af", flexShrink: 0 }} />
+                          {isEditingHero ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                value={editingHeroName}
+                                onChange={(e) => {
+                                  setEditingHeroName(e.target.value);
+                                  if (heroFooterMessage) {
+                                    setHeroFooterMessage("");
+                                  }
+                                }}
+                                className="h-[30px] min-w-[180px] rounded-md border border-[#e7e7e7] bg-transparent px-2 text-[13.5px] outline-none dark:border-[#494d54]"
+                                autoFocus
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    const result = commitRenameHero(hero.id, editingHeroName);
+                                    if (result.ok) {
+                                      setEditingHeroId(null);
+                                      setEditingHeroName("");
+                                    }
+                                  }
+                                  if (e.key === "Escape") {
+                                    setEditingHeroId(null);
+                                    setEditingHeroName("");
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="h-[30px] rounded-md bg-[#333333] px-3 text-[12px] text-white"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  const result = commitRenameHero(hero.id, editingHeroName);
+                                  if (result.ok) {
+                                    setEditingHeroId(null);
+                                    setEditingHeroName("");
+                                  }
+                                }}
+                              >
+                                บันทึก
+                              </button>
+                            </div>
+                          ) : (
+                            <span className={`truncate text-[13.5px] ${selected ? "font-semibold" : ""}`}>
+                              {hero.name}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 cursor-pointer ${
+                              isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"
+                            }`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteHero) return;
+                              setDefaultHeroId(hero.id);
+                              setHeroFooterMessage(DEFAULT_HERO_SET_MESSAGE);
+                            }}
+                          >
+                            <span
+                              className="mx-2 inline-flex h-4 w-4 items-center justify-center rounded-full"
+                              style={{
+                                backgroundColor: "#333333",
+                                opacity: isDefaultHero ? 1 : 0.35,
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Check size={10} strokeWidth={3} color="#ffffff" />
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 cursor-pointer ${
+                              isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"
+                            }`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteHero) return;
+                              setEditingHeroId(hero.id);
+                              setEditingHeroName(hero.name);
+                              setHeroFooterMessage("");
+                              setPendingDeleteHero(null);
+                            }}
+                          >
+                            <FilePenLine size={14} style={{ opacity: 0.6 }} className="mx-2" />
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 cursor-pointer ${
+                              isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"
+                            }`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteHero) return;
+                              const duplicateName = createUniqueHeroName(hero.name);
+                              const duplicatedHero = { id: buildHeroId(), name: duplicateName };
+                              setHeroItems((prev) => {
+                                const idx = prev.findIndex((item) => item.id === hero.id);
+                                if (idx < 0) return [...prev, duplicatedHero];
+                                const next = [...prev];
+                                next.splice(idx + 1, 0, duplicatedHero);
+                                return next;
+                              });
+                            }}
+                          >
+                            <Copy size={14} style={{ opacity: 0.6 }} className="mx-2" />
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 ${
+                              heroItems.length <= 1 ? "cursor-not-allowed opacity-40" : "cursor-pointer"
+                            } ${isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteHero) return;
+                              if (heroItems.length <= 1) return;
+                              setHeroFooterMessage("");
+                              setPendingDeleteHero(hero);
+                            }}
+                          >
+                            <Trash2 size={14} style={{ opacity: 0.6 }} className="mx-2" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {pendingDeleteHero && (
+              <div className="flex min-h-[56px] items-center justify-between gap-2 border-t border-[#e5e7eb] px-4 py-4 dark:border-white/10">
+                <div
+                  className="ml-[5px] text-left text-[13px] font-normal"
+                  style={{ color: "#333333" }}
+                >
+                  คุณต้องการลบ{" "}
+                  <span style={{ color: "#B91C1C", fontWeight: "normal" }}>
+                    {pendingDeleteHero.name}
+                  </span>{" "}
+                  ใช่หรือไม่ ?
+                </div>
+                <div className="ml-auto mr-[5px] flex items-center gap-2">
+                  <Button
+                    sx={{
+                      backgroundColor: "#B91C1C",
+                      color: "white",
+                      fontSize: 12,
+                      fontWeight: "normal",
+                      height: 28,
+                      minWidth: "auto",
+                      padding: "10px 10px",
+                    }}
+                    onClick={() => {
+                      const deletingHeroId = pendingDeleteHero.id;
+                      setHeroItems((prev) => prev.filter((hero) => hero.id !== deletingHeroId));
+                      if (activeHeroId === deletingHeroId) {
+                        setActiveHeroId(null);
+                      }
+                      if (defaultHeroId === deletingHeroId) {
+                        setDefaultHeroId(null);
+                      }
+                      setHeroFooterMessage("");
+                      setPendingDeleteHero(null);
+                    }}
+                  >
+                    ใช่...ฉันต้องการลบ
+                  </Button>
+                  <Button
+                    sx={{
+                      backgroundColor: "#333",
+                      color: "white",
+                      fontSize: 12,
+                      fontWeight: "normal",
+                      height: 28,
+                      minWidth: "auto",
+                      padding: "10px 10px",
+                    }}
+                    onClick={() => setPendingDeleteHero(null)}
+                  >
+                    ยกเลิก
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {openSelectMenuModal && (
+        <div
+          className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/35 px-4"
+          onClick={closeSelectMenuModal}
+        >
+          <div
+            className="w-full max-w-[550px] rounded-[12px] bg-white dark:bg-zinc-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 pt-4 pb-2">
+              <div className="flex items-center gap-[20px]">
+                <span className="text-[15px] font-extrabold" style={{ color: "#333333" }}>
+                  เลือกเมนู
+                </span>
+                {isDuplicateMenuPresetMessage && (
+                  <span className="text-left text-[13px]" style={{ color: "#b91c1b" }}>
+                    {menuPresetFooterMessage}
+                  </span>
+                )}
+                {isDefaultMenuPresetSuccessMessage && (
+                  <span className="text-left text-[13px]" style={{ color: "#6b7280" }}>
+                    {menuPresetFooterMessage}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="text-[13px]"
+                style={{ color: isDark === "dark" ? "#ffffff" : "#202020" }}
+                onClick={closeSelectMenuModal}
+              >
+                X
+              </button>
+            </div>
+            <div className="mt-1 border-b-[5px] border-solid border-[#e5e7eb]" />
+            <div className="max-h-[360px] overflow-y-auto px-3 py-3">
+              {menuPresets.length === 0 ? (
+                <div className="rounded-md bg-[#f7f8fa] px-3 py-2 text-[13px] text-slate-500 dark:bg-zinc-800 dark:text-white/60">
+                  ยังไม่มีรายการเมนู
+                </div>
+              ) : (
+                <div className="w-full rounded-md px-[10px] pt-[4px] pb-[4px]">
+                  {menuPresets.map((preset) => {
+                    const selected = preset.id === activeMenuPresetId;
+                    const isDefaultPreset = preset.id === defaultMenuPresetId;
+                    const isEditing = editingMenuPresetId === preset.id;
+                    return (
+                      <div
+                        key={preset.id}
+                        className={`border-b last:border-0 flex justify-between py-2 ${
+                          isDark === "dark" ? "border-b-[#a9a8a81c]" : "border-b-slate-200"
+                        }`}
+                        style={{ color: isDark === "dark" ? "#ffffff" : "#202020" }}
+                      >
+                        <div
+                          className={`flex min-w-0 items-center gap-[10px] text-left ${
+                            isEditing ? "cursor-default" : "cursor-pointer"
+                          }`}
+                          onClick={() => {
+                            if (pendingDeleteMenuPreset) return;
+                            if (isEditing) return;
+                            if (typeof onSelectMenuPreset === "function") {
+                              onSelectMenuPreset(preset.id);
+                            }
+                            closeSelectMenuModal();
+                          }}
+                        >
+                          <Menu size={14} strokeWidth={2.5} style={{ opacity: 0.45, color: "#9ca3af", flexShrink: 0 }} />
+                          {isEditing ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                value={editingMenuPresetName}
+                                onChange={(e) => {
+                                  setEditingMenuPresetName(e.target.value);
+                                  if (menuPresetFooterMessage) {
+                                    setMenuPresetFooterMessage("");
+                                  }
+                                }}
+                                className="h-[30px] min-w-[180px] rounded-md border border-[#e7e7e7] bg-transparent px-2 text-[13.5px] outline-none dark:border-[#494d54]"
+                                autoFocus
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    const result = commitRenameMenuPreset(
+                                      preset.id,
+                                      editingMenuPresetName
+                                    );
+                                    if (result?.ok) {
+                                      setEditingMenuPresetId(null);
+                                      setEditingMenuPresetName("");
+                                    }
+                                  }
+                                  if (e.key === "Escape") {
+                                    setEditingMenuPresetId(null);
+                                    setEditingMenuPresetName("");
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="h-[30px] rounded-md bg-[#333333] px-3 text-[12px] text-white"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  const result = commitRenameMenuPreset(
+                                    preset.id,
+                                    editingMenuPresetName
+                                  );
+                                  if (result?.ok) {
+                                    setEditingMenuPresetId(null);
+                                    setEditingMenuPresetName("");
+                                  }
+                                }}
+                              >
+                                บันทึก
+                              </button>
+                            </div>
+                          ) : (
+                            <span
+                              className={`truncate text-[13.5px] ${
+                                selected ? "font-semibold" : ""
+                              }`}
+                            >
+                              {preset.name}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 cursor-pointer ${
+                              isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"
+                            }`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteMenuPreset) return;
+                              if (typeof onSetDefaultMenuPreset === "function") {
+                                const result = onSetDefaultMenuPreset(preset.id);
+                                if (result?.ok && !result?.unchanged) {
+                                  setMenuPresetFooterMessage(DEFAULT_MENU_SET_MESSAGE);
+                                }
+                              }
+                            }}
+                            title="ตั้งเป็นเมนูเริ่มต้น"
+                          >
+                            <span
+                              className="mx-2 inline-flex h-4 w-4 items-center justify-center rounded-full"
+                              style={{
+                                backgroundColor: "#333333",
+                                opacity: isDefaultPreset ? 1 : 0.35,
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Check size={10} strokeWidth={3} color="#ffffff" />
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 cursor-pointer ${
+                              isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"
+                            }`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteMenuPreset) return;
+                              setMenuPresetFooterMessage("");
+                              setEditingMenuPresetId(preset.id);
+                              setEditingMenuPresetName(preset.name || "");
+                            }}
+                          >
+                            <FilePenLine size={14} style={{ opacity: 0.6 }} className="mx-2" />
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 cursor-pointer ${
+                              isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"
+                            }`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteMenuPreset) return;
+                              if (typeof onDuplicateMenuPreset === "function") {
+                                onDuplicateMenuPreset(preset.id);
+                              }
+                            }}
+                          >
+                            <Copy size={14} style={{ opacity: 0.6 }} className="mx-2" />
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 ${
+                              menuPresets.length <= 1 ? "cursor-not-allowed opacity-40" : "cursor-pointer"
+                            } ${isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteMenuPreset) return;
+                              if (menuPresets.length <= 1) return;
+                              setPendingDeleteMenuPreset({
+                                id: preset.id,
+                                name: preset.name || "",
+                              });
+                            }}
+                          >
+                            <Trash2 size={14} style={{ opacity: 0.6 }} className="mx-2" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {pendingDeleteMenuPreset && (
+              <div className="flex min-h-[56px] items-center justify-between gap-2 border-t border-[#e5e7eb] px-4 py-4 dark:border-white/10">
+                <div
+                  className="ml-[5px] text-left text-[13px] font-normal"
+                  style={{ color: "#333333" }}
+                >
+                  คุณต้องการลบเมนู{" "}
+                  <span style={{ color: "#B91C1C", fontWeight: "normal" }}>
+                    {pendingDeleteMenuPreset.name}
+                  </span>{" "}
+                  ใช่หรือไม่ ?
+                </div>
+                <div className="ml-auto mr-[5px] flex items-center gap-2">
+                <Button
+                  sx={{
+                    backgroundColor: "#B91C1C",
+                    color: "white",
+                    fontSize: 12,
+                    fontWeight: "normal",
+                    height: 28,
+                    minWidth: "auto",
+                    padding: "10px 10px",
+                  }}
+                  onClick={() => {
+                    if (typeof onDeleteMenuPreset === "function") {
+                      const result = onDeleteMenuPreset(pendingDeleteMenuPreset.id);
+                      if (result?.ok) {
+                        setPendingDeleteMenuPreset(null);
+                      }
+                      return;
+                    }
+                    setPendingDeleteMenuPreset(null);
+                  }}
+                >
+                  ใช่...ฉันต้องการลบ
+                </Button>
+                <Button
+                  sx={{
+                    backgroundColor: "#333",
+                    color: "white",
+                    fontSize: 12,
+                    fontWeight: "normal",
+                    height: 28,
+                    minWidth: "auto",
+                    padding: "10px 10px",
+                  }}
+                  onClick={() => setPendingDeleteMenuPreset(null)}
+                >
+                  ยกเลิก
+                </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
       <ServicePage darkMode={isDark} open={openPageModal} onClose={()=>setOpenPageModal(false)} complete={()=>setDone(true)}/>
@@ -1081,24 +2109,86 @@ const Header = ({
   anchorOrigin={{ vertical:"bottom", horizontal:"right" }}
   open={done}
   onClose={()=>setDone(false)}
+  ContentProps={{ elevation: 0 }}
   message={
-    <div className="flex gap-2">
-    <CircleCheckBig strokeWidth={3}/>
-    <Typography sx={{fontSize:14,mt:0.5}}>
-    ระบบบันทึกข้อมูลเรียบร้อยแล้ว
-    </Typography>
+    <div
+      style={{
+        display: "flex",
+        width: "100%",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        paddingTop: 6,
+        paddingBottom: 6,
+      }}
+    >
+      <AlertCircle size={20} strokeWidth={2.25} aria-hidden />
+      <span>สำเร็จ.....บันทึกข้อมูลเรียบร้อยแล้ว</span>
     </div>
   
   }
   key={0}
-  autoHideDuration={1000}
+  autoHideDuration={2400}
   sx={{
     "& .MuiSnackbarContent-root": {
-      backgroundColor: "#29b7a4", // สีพื้นหลัง
-      color: "#fff",              // สีข้อความ
-      boxShadow:"none",
-      width:250,
-      minWidth:250
+      backgroundColor: "#05966B",
+      color: "#fff",
+      fontSize: 13,
+      justifyContent: "center",
+      alignItems: "center",
+      py: 0.75,
+      boxShadow: "none",
+    },
+    "& .MuiSnackbarContent-message": {
+      display: "flex",
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 0,
+      py: 0.25,
+    },
+  }}
+/>
+<Snackbar
+  anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+  open={menuPresetToast.open}
+  onClose={() => setMenuPresetToast((prev) => ({ ...prev, open: false }))}
+  ContentProps={{ elevation: 0 }}
+  message={
+    <div
+      style={{
+        display: "flex",
+        width: "100%",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        paddingTop: 6,
+        paddingBottom: 6,
+      }}
+    >
+      <AlertCircle size={20} strokeWidth={2.25} aria-hidden />
+      <span>{menuPresetToast.message}</span>
+    </div>
+  }
+  key={1}
+  autoHideDuration={2400}
+  sx={{
+    "& .MuiSnackbarContent-root": {
+      backgroundColor: "#05966B",
+      color: "#fff",
+      fontSize: 13,
+      justifyContent: "center",
+      alignItems: "center",
+      py: 0.75,
+      boxShadow: "none",
+    },
+    "& .MuiSnackbarContent-message": {
+      display: "flex",
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 0,
+      py: 0.25,
     },
   }}
 />

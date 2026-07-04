@@ -4,7 +4,6 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 const Builder = lazy(() => import("./Builder/main"));
 const PreviewRuntime = lazy(() => import("./Builder/preview"));
-const Test = lazy(() => import("./test"));
 
 function App() {
   return (
@@ -12,7 +11,6 @@ function App() {
       <Suspense fallback={<div className="h-screen w-full bg-slate-50" />}>
         <Routes>
           <Route path="/preview" element={<PreviewRuntime />} />
-          <Route path="/test" element={<Test />} />
           <Route path="/*" element={<Builder />} />
         </Routes>
       </Suspense>

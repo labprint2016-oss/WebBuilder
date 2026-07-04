@@ -99,11 +99,11 @@ const Heading = ({
         </div>
         {useLayoutSelectionFrame && (
           <>
-            <div className="pointer-events-none absolute left-[-7px] right-[-7px] top-[-4px] bottom-[-4px] rounded-md bg-red-300/10" />
-            <span className="pointer-events-none absolute left-[-4px] top-[-3px] h-2.5 w-2.5 border-l-2 border-t-2 border-red-400" />
-            <span className="pointer-events-none absolute right-[-6px] top-[-3px] h-2.5 w-2.5 border-r-2 border-t-2 border-red-400" />
-            <span className="pointer-events-none absolute bottom-[-3px] left-[-4px] h-2.5 w-2.5 border-b-2 border-l-2 border-red-400" />
-            <span className="pointer-events-none absolute bottom-[-3px] right-[-6px] h-2.5 w-2.5 border-b-2 border-r-2 border-red-400" />
+            <div className="pointer-events-none absolute left-[-7px] right-[-7px] top-[1px] bottom-[1px] rounded-md bg-red-300/10" />
+            <span className="pointer-events-none absolute left-[-4px] top-[2px] h-2.5 w-2.5 border-l-2 border-t-2 border-red-400" />
+            <span className="pointer-events-none absolute right-[-6px] top-[2px] h-2.5 w-2.5 border-r-2 border-t-2 border-red-400" />
+            <span className="pointer-events-none absolute bottom-[2px] left-[-4px] h-2.5 w-2.5 border-b-2 border-l-2 border-red-400" />
+            <span className="pointer-events-none absolute bottom-[2px] right-[-6px] h-2.5 w-2.5 border-b-2 border-r-2 border-red-400" />
           </>
         )}
       </div>

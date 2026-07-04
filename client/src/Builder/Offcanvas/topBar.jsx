@@ -51,7 +51,7 @@ import IconLucide from "../../IconLucide";
 import Stack from "@mui/material/Stack";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
-import Service from "../Service";
+import ServiceColor from "../Services/ServiceColor";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser, faHouse, faGear } from "@fortawesome/free-solid-svg-icons";
 import {
@@ -64,13 +64,98 @@ import {
 import ServiceIcon from "../ServiceIcon";
 import IconAwsome from "../IconAwsome";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
+const TOPBAR_GRADIENT_STOPS = [
+  { value: "start", label: "จุดเริ่ม" },
+  { value: "end", label: "จุดสิ้น" },
+];
+const TOPBAR_DISPLAY_LAYOUT_OPTIONS = [
+  { value: true, label: "ความกว้างเต็มจอ" },
+  { value: false, label: "ความกว้างมาตรฐาน" },
+];
+const TOPBAR_FALLBACK_ICON = { type: "fas", name: "faHouse" };
+const normalizeTopBarIcon = (icon) =>
+  icon?.name && icon.name !== "fa0" ? icon : TOPBAR_FALLBACK_ICON;
+const CHIP_BORDER = "#e2e8f0";
+const CHIP_BORDER_DARK = "rgba(255, 255, 255, 0.1)";
+const CHIP_BG = "#ffffff";
+const CHIP_BG_HOVER = "#f8fafc";
+const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
+const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
+const OPTION_CHIP_RADIUS = "0.375rem";
+
+const topBarGroupButtonSx = (selected, accent) => {
+  const a = accent || "#0d9488";
+  return {
+    flex: 1,
+    fontSize: 11,
+    minHeight: 34,
+    py: 0.75,
+    px: 0.5,
+    textTransform: "none",
+    lineHeight: 1.25,
+    boxShadow: "none",
+    ...(selected
+      ? {
+          backgroundColor: a,
+          color: "#fff",
+          borderColor: "transparent",
+          "&:hover": { backgroundColor: a, borderColor: "transparent" },
+        }
+      : {
+          color: "#1e293b",
+          borderColor: `${CHIP_BORDER} !important`,
+          backgroundColor: CHIP_BG,
+          "&:hover": {
+            borderColor: `${CHIP_BORDER} !important`,
+            backgroundColor: CHIP_BG_HOVER,
+          },
+          ".dark &": {
+            color: "#f1f5f9",
+            borderColor: `${CHIP_BORDER_DARK} !important`,
+            backgroundColor: CHIP_BG_DARK,
+            "&:hover": {
+              borderColor: `${CHIP_BORDER_DARK} !important`,
+              backgroundColor: CHIP_BG_DARK_HOVER,
+            },
+          },
+        }),
+  };
+};
+
+const topBarGroupRootSx = {
+  width: "100%",
+  boxShadow: "none",
+  "& .MuiButton-root": { boxShadow: "none" },
+  "& .MuiButtonGroup-grouped": { borderRadius: "0 !important" },
+  "& .MuiButtonGroup-grouped:first-of-type": {
+    borderTopLeftRadius: `${OPTION_CHIP_RADIUS} !important`,
+    borderBottomLeftRadius: `${OPTION_CHIP_RADIUS} !important`,
+  },
+  "& .MuiButtonGroup-grouped:last-of-type": {
+    borderTopRightRadius: `${OPTION_CHIP_RADIUS} !important`,
+    borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
+  },
+  "& .MuiButtonGroup-grouped.MuiButton-outlined": {
+    borderColor: `${CHIP_BORDER} !important`,
+  },
+  "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
+    borderRightColor: `${CHIP_BORDER} !important`,
+  },
+  ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
+    borderColor: `${CHIP_BORDER_DARK} !important`,
+  },
+  ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
+    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+  },
+};
 
 const COMMON_FIELD_SX = (
   hasChildren,
   hasBtn,
   darkMode,
   height = 35,
-  fontSize = 12
+  fontSize = 12,
+  borderColorOverride = null
 ) => {
   const isDark = darkMode === "dark";
 
@@ -79,7 +164,8 @@ const COMMON_FIELD_SX = (
   const radiusLeft = hasBtn ? 0 : 5;
   const borderLeft = hasBtn ? 0 : 1;
 
-  const borderColor = isDark ? "#494d54" : "rgba(0,0,0,0.23)";
+  const borderColor =
+    borderColorOverride || (isDark ? "#494d54" : "rgba(0,0,0,0.23)");
   const textColor = isDark ? "#ffffff" : "#18181b";
   const bgcolor = "none" // เหมือน SocialList
 
@@ -337,6 +423,7 @@ function Btn({
   borderColor = "#A1A1AA",
   color = "white",
   iconSize=16,
+  hideBorder = false,
 }) {
   const radiusRArr = {
     normal: 5,
@@ -375,9 +462,9 @@ function Btn({
         borderBottomRightRadius: radiusRArr[radius],
         // 2) ให้ปุ่มมี "กรอบ" แบบเดียวกับ TextField
         border: "1px solid",
-        borderColor,
-        borderRightWidth: borderRight,
-        borderLeftWidth: 1,
+        borderColor: hideBorder ? "transparent" : borderColor,
+        borderRightWidth: hideBorder ? 0 : borderRight,
+        borderLeftWidth: hideBorder ? 0 : 1,
 
         // (ตัวเลือก) ถ้าไม่อยากให้มีเส้นหนาตรงรอยต่อกลาง
         // ให้ตัดเส้นซ้ายของปุ่มออก จะเหลือเส้นของ TextField ฝั่งเดียวพอดี
@@ -401,7 +488,7 @@ function Btn({
         // สีตัวอักษร - ให้สืบทอดจาก parent; คุณจะเปลี่ยนเป็นขาว/ดำเองก็ได้
         color: "inherit",
 
-        ".dark &": {
+        ".dark &": hideBorder ? {} : {
           borderColor: "#494d55", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
           "&:hover": { borderColor: "#494d55" },
         },
@@ -486,16 +573,25 @@ function FieldWithBtn({
   );
 }
 
-function Field({ name, value, handleChange, darkMode, children }) {
+function Field({
+  name,
+  value,
+  handleChange,
+  darkMode,
+  children,
+  placeholder = "",
+  borderColor = null,
+}) {
   return (
     <FormControl fullWidth>
       <Box sx={{ display: "flex", width: "100%" }}>
         <TextField
-          sx={COMMON_FIELD_SX(Boolean(children), false, darkMode)}
+          sx={COMMON_FIELD_SX(Boolean(children), false, darkMode, 35, 12, borderColor)}
           fullWidth
           name={name}
           value={value}
           onChange={handleChange}
+          placeholder={placeholder}
           type={name === "url" ? "url" : "text"}
         />
         {children && (
@@ -521,10 +617,8 @@ function Field({ name, value, handleChange, darkMode, children }) {
     colors,
   }) {
     const { icon, url, iconSize } = item;
-
-
-    const [anchorElIcon,setAnchorElIcon] = useState(null)
-    const anchorRefIcon  = useRef(null)
+    const safeIcon = normalizeTopBarIcon(icon);
+    const [socialColorMode, setSocialColorMode] = useState("bg");
 
     const [openIconModal,setOpenIconMoal] = useState(false)
 
@@ -596,7 +690,7 @@ function Field({ name, value, handleChange, darkMode, children }) {
             <span style={{ display: "inline-flex" }}></span>
             <Btn handleClick={()=>{
               setOpenIconMoal(true)
-            }} icon={icon}  bgColor={darkMode === "dark" ? "#494d54" : "#A1A1AA"} height={30}/>
+            }} icon={safeIcon} hideBorder bgColor={darkMode === "dark" ? "#494d54" : "#333333"} height={30}/>
             
             <Typography
               noWrap
@@ -616,12 +710,13 @@ function Field({ name, value, handleChange, darkMode, children }) {
 
             <Box
               sx={{
-                ml: 1,
-                mr: 1.5,
+                ml: 2,
+                mr: 0,
                 display: "flex",
                 alignItems: "center",
                 gap: 1.5,
                 flexShrink: 0,
+                transform: "translateX(8px)",
               }}
             >
               {menuButtons.map((b, i) => (
@@ -644,7 +739,7 @@ function Field({ name, value, handleChange, darkMode, children }) {
                 cursor: "pointer",
                 flexShrink: 0,
                 "&:hover": {
-                  backgroundColor: darkMode === "dark" ? "#494D54" : "#efefef",
+                  backgroundColor: "transparent",
                 },
               }}
             >
@@ -668,56 +763,28 @@ function Field({ name, value, handleChange, darkMode, children }) {
             }}
           >
             <div className="grid grid-cols-12 items-center">
-              <div className="col-span-3" > <FieldLabel color={textColor} label="Link URL"/></div>
-              <div className="col-span-9">
+              <div className="col-span-12">
                 <Field
                   name="url"
                   value={url}
                   handleChange={(e) => onFieldChange(e, index, "iconGroup")}
                   darkMode={darkMode}
+                  placeholder="Link URL"
+                  borderColor={darkMode === "dark" ? "#494D54" : "#e5e5e5"}
                 />
               </div>
             </div>
 
-            <>
-        {colors.map((item, i) => {
-          const {
-            label,
-            data,
-            field,
-            opacity,
-            opacityField,
-            open,
-            click,
-          } = item;
-
-
-
-
-          return (
-            <div className="grid grid-cols-12 mt-3" key={i}>
-           <div className="col-span-3" > <FieldLabel color={textColor} label={label}/></div>
-            <div className="col-span-9">
-            <Service  mainField="iconGroup" index={index} darkMode={darkMode} darkTextColor={darkTextColor} setAnchorEl={setAnchorElIcon} color={data} field={field} opacity={opacity} opacityField={opacityField} open={open} anchorRef={anchorRefIcon} anchorEl={anchorElIcon} click={()=>{
-              click()
-              setAnchorElIcon(anchorRefIcon.current)
-              }} handleColor={onSelectChange} handleOpcy={onRangeChange}/>
-            </div>
-          </div>
-          );
-        })}
-      </>
-
             <div className="grid grid-cols-2">
               <div className="col col-span-2 ml-[5px] mr-[5px]">
-                <div className="flex items-center gap-2 mt-5 mb-3">
+                <div className="flex items-center gap-2 mt-5 mb-1">
                   <span className="text-dark dark:text-white/80 text-[13px] font-bold">
                     ขนาดไอคอน
                   </span>
-                  <div className="border-b border-gray-500/50 flex-1"></div>
-                  <Typography sx={{ fontSize: 13, color: "gray" }}>
-                    {iconSize} PX
-                  </Typography>
+                  <span className="text-[13px] text-slate-400">
+                    {iconSize}
+                  </span>
+                  <div className="border-b border-slate-200 dark:border-white/15 flex-1"></div>
                 </div>
 
                 <Range
@@ -725,7 +792,7 @@ function Field({ name, value, handleChange, darkMode, children }) {
                   darkTextColor={darkTextColor}
                   name="iconSize"
                   value={iconSize}
-                  min={18}
+                  min={14}
                   max={30}
                   step={1}
                   handleChange={onRangeChange}
@@ -734,9 +801,74 @@ function Field({ name, value, handleChange, darkMode, children }) {
                 />
               </div>
             </div>
+
+            <>
+              <div className="grid grid-cols-12 mt-3">
+                <div className="col-span-12">
+                  <ButtonGroup
+                    fullWidth
+                    variant="outlined"
+                    disableElevation
+                    color="inherit"
+                    aria-label="เลือกสีโซเชียล"
+                    sx={{ ...topBarGroupRootSx, mb: 0.5 }}
+                  >
+                    {[
+                      { value: "bg", label: "สีพื้นหลัง", field: "bgColor" },
+                      { value: "icon", label: "สีไอคอน", field: "iconColor" },
+                    ].map((opt) => {
+                      const selected = socialColorMode === opt.value;
+                      return (
+                        <Button
+                          key={opt.value}
+                          color="inherit"
+                          onClick={() => setSocialColorMode(opt.value)}
+                          sx={topBarGroupButtonSx(
+                            selected,
+                            darkMode === "dark" ? darkTextColor : "#000000"
+                          )}
+                        >
+                          {opt.label}
+                        </Button>
+                      );
+                    })}
+                  </ButtonGroup>
+                </div>
+                <div className="col-span-12">
+                  <div className="-mt-1">
+                  {(() => {
+                    const selectedField =
+                      socialColorMode === "icon" ? "iconColor" : "bgColor";
+                    const selectedItem =
+                      colors.find((item) => item.field === selectedField) ?? colors[0];
+                    if (!selectedItem) return null;
+                    return (
+                      <ServiceColor
+                        color={selectedItem.data}
+                        opacity={selectedItem.opacity}
+                        handleColor={(value) =>
+                          onSelectChange(value, selectedItem.field, index, "iconGroup")
+                        }
+                        handleOpacity={(e) =>
+                          onRangeChange(
+                            selectedItem.opacityField,
+                            Number(e.target.value),
+                            index,
+                            "iconGroup"
+                          )
+                        }
+                        rangeColor={darkMode === "dark" ? darkTextColor : "#000000"}
+                        darkMode={darkMode}
+                      />
+                    );
+                  })()}
+                  </div>
+                </div>
+              </div>
+            </>
           </AccordionDetails>
         </Accordion>
-        <ServiceIcon header="ตั้งค่าไอคอน" icon={icon} open={openIconModal} onClose={()=>setOpenIconMoal(false)} darkMode={darkMode} darkColor={darkTextColor} handleChange={(icon)=>{
+        <ServiceIcon header="ไอคอน" icon={safeIcon} open={openIconModal} onClose={()=>setOpenIconMoal(false)} darkMode={darkMode} darkColor={darkTextColor} handleChange={(icon)=>{
           onFieldChange({target:{name:"icon",value:icon}},index,"iconGroup")
         }}/>
       </Box>
@@ -757,17 +889,11 @@ function Field({ name, value, handleChange, darkMode, children }) {
     onCopy,
     onRemove,
     colors,
-    openColorTable,
-    toggleColorTable,
   }) {
-    const { text,textSize,textOpacity,textColor:color,icon, iconSize } = item;
+    const { text, textSize, icon, iconSize } = item;
+    const safeIcon = normalizeTopBarIcon(icon);
+    const [textIconColorMode, setTextIconColorMode] = useState("bg");
 
-    const [anchorElText,setAnchorElText] = useState(null)
-    const anchorRefText  = useRef(null)
-
-
-    const [anchorElIcon,setAnchorElIcon] = useState(null)
-    const anchorRefIcon  = useRef(null)
 
     const [openIconModal,setOpenIconMoal] = useState(false)
 
@@ -840,7 +966,7 @@ function Field({ name, value, handleChange, darkMode, children }) {
 
             <Btn handleClick={()=>{
               setOpenIconMoal(true)
-            }} icon={icon}  bgColor={darkMode === "dark" ? "#494d54" : "#A1A1AA"} height={30}/>
+            }} icon={safeIcon} hideBorder bgColor={darkMode === "dark" ? "#494d54" : "#333333"} height={30}/>
 
           
             
@@ -862,12 +988,13 @@ function Field({ name, value, handleChange, darkMode, children }) {
 
             <Box
               sx={{
-                ml: 1,
-                mr: 1.5,
+                ml: 2,
+                mr: 0,
                 display: "flex",
                 alignItems: "center",
                 gap: 1.5,
                 flexShrink: 0,
+                transform: "translateX(8px)",
               }}
             >
               {menuButtons.map((b, i) => (
@@ -890,7 +1017,7 @@ function Field({ name, value, handleChange, darkMode, children }) {
                 cursor: "pointer",
                 flexShrink: 0,
                 "&:hover": {
-                  backgroundColor: darkMode === "dark" ? "#494D54" : "#efefef",
+                  backgroundColor: "transparent",
                 },
               }}
             >
@@ -914,26 +1041,16 @@ function Field({ name, value, handleChange, darkMode, children }) {
             }}
           >
             <div className="grid grid-cols-12">
-            <div className="col-span-3" > <FieldLabel color={textColor} label="ข้อความ"/></div>
-              <div className="col-span-9">
+              <div className="col-span-12">
                 <Field
                   name="text"
                   value={text}
                   handleChange={(e) => onFieldChange(e, index, "textGroup")}
                   darkMode={darkMode}
+                  borderColor={darkMode === "dark" ? CHIP_BORDER_DARK : CHIP_BORDER}
                 />
               </div>
             </div>
-
-            <div className="grid grid-cols-12 mt-3" >
-            <div className="col-span-3" > <FieldLabel color={textColor} label="สีข้อความ"/></div>
-            <div className="col-span-9">
-            <Service  mainField="textGroup" index={index} darkMode={darkMode} darkTextColor={darkTextColor} setAnchorEl={setAnchorElText} color={color} field="textColor" opacity={textOpacity} opacityField="textOpacity" open={openColorTable === 5} anchorRef={anchorRefText} anchorEl={anchorElText} click={()=>{
-              toggleColorTable(5)
-              setAnchorElText(anchorRefText.current)
-              }} handleColor={onSelectChange} handleOpcy={onRangeChange}/>
-            </div>
-          </div>
 
           <div className="grid grid-cols-2">
               <div className="col col-span-2 ml-[5px] mr-[5px]">
@@ -941,10 +1058,10 @@ function Field({ name, value, handleChange, darkMode, children }) {
                   <span className="text-dark dark:text-white/80 text-[13px] font-bold">
                     ขนาดข้อความ
                   </span>
-                  <div className="border-b border-gray-500/50 flex-1"></div>
-                  <Typography sx={{ fontSize: 13, color: "gray" }}>
-                    {textSize} PX
-                  </Typography>
+                  <span className="text-[13px]" style={{ color: "#94a3b8" }}>
+                    {textSize}
+                  </span>
+                  <div className="border-b border-slate-200 dark:border-white/15 flex-1"></div>
                 </div>
 
                 <Range
@@ -963,33 +1080,72 @@ function Field({ name, value, handleChange, darkMode, children }) {
             </div>
 
             <>
-        {colors.map((item, i) => {
-          const {
-            label,
-            data,
-            field,
-            opacity,
-            opacityField,
-            open,
-            click,
-          } = item;
-
-
-
-
-          return (
-            <div className="grid grid-cols-12 mt-3" key={i}>
-         <div className="col-span-3" > <FieldLabel color={textColor} label={label}/></div>
-            <div className="col-span-9">
-            <Service  mainField="textGroup" index={index} darkMode={darkMode} darkTextColor={darkTextColor} setAnchorEl={setAnchorElIcon} color={data} field={field} opacity={opacity} opacityField={opacityField} open={open} anchorRef={anchorRefIcon} anchorEl={anchorElIcon} click={()=>{
-              click()
-              setAnchorElIcon(anchorRefIcon.current)
-              }} handleColor={onSelectChange} handleOpcy={onRangeChange}/>
-            </div>
-          </div>
-          );
-        })}
-      </>
+              <div className="grid grid-cols-12 mt-3">
+                <div className="col-span-12">
+                  <ButtonGroup
+                    fullWidth
+                    variant="outlined"
+                    disableElevation
+                    color="inherit"
+                    aria-label="เลือกสีข้อความและไอคอน"
+                    sx={{ ...topBarGroupRootSx, mb: 0.5 }}
+                  >
+                    {[
+                      { value: "bg", label: "สีพื้นหลัง", field: "bgColor" },
+                      { value: "icon", label: "สีไอคอน", field: "iconColor" },
+                      { value: "text", label: "สีข้อความ", field: "textColor" },
+                    ].map((opt) => {
+                      const selected = textIconColorMode === opt.value;
+                      return (
+                        <Button
+                          key={opt.value}
+                          color="inherit"
+                          onClick={() => setTextIconColorMode(opt.value)}
+                          sx={topBarGroupButtonSx(
+                            selected,
+                            darkMode === "dark" ? darkTextColor : "#000000"
+                          )}
+                        >
+                          {opt.label}
+                        </Button>
+                      );
+                    })}
+                  </ButtonGroup>
+                  <div className="-mt-1">
+                    {(() => {
+                      const selectedField =
+                        textIconColorMode === "icon"
+                          ? "iconColor"
+                          : textIconColorMode === "text"
+                            ? "textColor"
+                            : "bgColor";
+                      const selectedItem =
+                        colors.find((item) => item.field === selectedField) ?? colors[0];
+                      if (!selectedItem) return null;
+                      return (
+                        <ServiceColor
+                          color={selectedItem.data}
+                          opacity={selectedItem.opacity}
+                          handleColor={(value) =>
+                            onSelectChange(value, selectedItem.field, index, "textGroup")
+                          }
+                          handleOpacity={(e) =>
+                            onRangeChange(
+                              selectedItem.opacityField,
+                              Number(e.target.value),
+                              index,
+                              "textGroup"
+                            )
+                          }
+                          rangeColor={darkMode === "dark" ? darkTextColor : "#000000"}
+                          darkMode={darkMode}
+                        />
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+            </>
 
             <div className="grid grid-cols-2">
               <div className="col col-span-2 ml-[5px] mr-[5px]">
@@ -997,10 +1153,10 @@ function Field({ name, value, handleChange, darkMode, children }) {
                   <span className="text-dark dark:text-white/80 text-[13px] font-bold">
                     ขนาดไอคอน
                   </span>
-                  <div className="border-b border-gray-500/50 flex-1"></div>
-                  <Typography sx={{ fontSize: 13, color: "gray" }}>
-                    {iconSize} PX
-                  </Typography>
+                  <span className="text-[13px]" style={{ color: "#94a3b8" }}>
+                    {iconSize}
+                  </span>
+                  <div className="border-b border-slate-200 dark:border-white/15 flex-1"></div>
                 </div>
 
                 <Range
@@ -1008,7 +1164,7 @@ function Field({ name, value, handleChange, darkMode, children }) {
                   darkTextColor={darkTextColor}
                   name="iconSize"
                   value={iconSize}
-                  min={18}
+                  min={14}
                   max={30}
                   step={1}
                   handleChange={onRangeChange}
@@ -1020,7 +1176,7 @@ function Field({ name, value, handleChange, darkMode, children }) {
 
           </AccordionDetails>
         </Accordion>
-        <ServiceIcon header="ตั้งค่าไอคอน" icon={icon} open={openIconModal} onClose={()=>setOpenIconMoal(false)} darkMode={darkMode} darkColor={darkTextColor} handleChange={(icon)=>{
+        <ServiceIcon header="ไอคอน" icon={safeIcon} open={openIconModal} onClose={()=>setOpenIconMoal(false)} darkMode={darkMode} darkColor={darkTextColor} handleChange={(icon)=>{
           onFieldChange({target:{name:"icon",value:icon}},index,"textGroup")
         }}/>
       </Box>
@@ -1030,23 +1186,13 @@ function Field({ name, value, handleChange, darkMode, children }) {
 
 
 const TopBarOffcanvas = ({
-  open,
   topBar,
   updateTopBar: onUpdate,
   close,
   darkMode,
   darkTextColor,
+  device,
 }) => {
-  const [width, setWidth] = useState(0);
-
-  useEffect(() => {
-    if (open) {
-      setWidth(400);
-    } else {
-      setWidth(0);
-    }
-  }, [open]);
-
   const AntSwitch = styled(Switch)(({ theme }) => ({
     width: 28,
     height: 16,
@@ -1104,6 +1250,8 @@ const TopBarOffcanvas = ({
 
   const [data, setData] = useState(topBar);
   const [menu, setMenu] = useState("Social");
+  const isTablet = device === "Tablet";
+  const tabletTopBarMode = data?.tabletTopBarMode || "social";
 
   const [openColorTable, setOpenColorTable] = useState(-1);
   const [updated, setUpdated] = useState(false);
@@ -1112,15 +1260,38 @@ const TopBarOffcanvas = ({
   const anchorRef = useRef(null);
   const anchorRefGradient = useRef(null);
 
+  useEffect(() => {
+    setData(lodash.cloneDeep(topBar));
+    setUpdated(false);
+  }, [topBar]);
+
 
   const menus = [
     { value: "Social", lable: "โซเชียล" },
     { value: "Text", lable: "ข้อความ" },
   ];
 
+  const changeTabletTopBarMode = (mode) => {
+    setData((prev) => ({ ...prev, tabletTopBarMode: mode }));
+    setUpdated(true);
+  };
+
+  useEffect(() => {
+    if (!isTablet) return;
+    const nextMenu =
+      tabletTopBarMode === "social"
+        ? "Social"
+        : tabletTopBarMode === "text"
+          ? "Text"
+          : "__OFF__";
+    if (menu !== nextMenu) setMenu(nextMenu);
+  }, [isTablet, tabletTopBarMode, menu]);
+
+
   const {
     ableLeft,
     topBarHeight,
+    isFluidLayout = false,
     isGradient,
     bgColor,
     bgOpacity,
@@ -1234,6 +1405,11 @@ const TopBarOffcanvas = ({
     setUpdated(true);
   };
 
+  const changeTopBarDisplayLayout = (value) => {
+    setData((prev) => ({ ...prev, isFluidLayout: value === true }));
+    setUpdated(true);
+  };
+
 
   const handleRange = useCallback((field, value, index = -1, mainField = null) => {
     setData((prev) => {
@@ -1312,9 +1488,16 @@ const TopBarOffcanvas = ({
 
 
   const [openIcon,setOpenIcon] = useState(-1)
+  const [barGradientPicker, setBarGradientPicker] = useState("start");
 
 
   const colorlabels = ["สีพื้นหลังแบบสีพื้น", "สีพื้นหลังแบบไล่โทน"];
+
+  useEffect(() => {
+    if (!isGradient) {
+      setBarGradientPicker("start");
+    }
+  }, [isGradient]);
 
   useEffect(() => {
     const onClick = (e) => {
@@ -1376,17 +1559,7 @@ const TopBarOffcanvas = ({
 
   return (
     <div
-      className="
-      sm:block overflow-hidden bg-white dark:bg-gray-900/80
-      border-r border-slate-200 dark:border-white/10
-      transition-[width,opacity,transform] duration-300 ease-in-out
-    "
-      style={{
-        width: open ? width : 0,
-        transform: `translateX(${open ? 0 : 16}px)`,
-        pointerEvents: open ? "auto" : "none",
-        flexShrink: 0,
-      }}
+      className="sm:block h-full min-h-0 w-full overflow-hidden bg-white dark:bg-gray-900/80"
     >
       <TabContext value={menu}>
         <div className="px-6 mt-5 flex items-center justify-between">
@@ -1414,6 +1587,7 @@ const TopBarOffcanvas = ({
         <nav className="overflow-y-auto h-[calc(100%-64px)]">
           <ul>
             <li>
+              {!isTablet && (
               <div className="w-full mt-[12px]">
                 <TabList
                   variant="fullWidth"
@@ -1463,31 +1637,111 @@ const TopBarOffcanvas = ({
                   })}
                 </TabList>
               </div>
+              )}
+              {isTablet && (
+                <div className="mt-4 px-5">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                      โหมดการแสดงผล
+                    </span>
+                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  </div>
+                  <ButtonGroup
+                    fullWidth
+                    variant="outlined"
+                    disableElevation
+                    color="inherit"
+                    aria-label="โหมดการแสดงผล Top Bar Tablet"
+                    sx={topBarGroupRootSx}
+                  >
+                    {[
+                      { value: "off", label: "ปิดทั้งหมด" },
+                      { value: "social", label: "เปิดโซเชียล" },
+                      { value: "text", label: "เปิดข้อความ" },
+                    ].map((opt) => {
+                      const selected = tabletTopBarMode === opt.value;
+                      return (
+                        <Button
+                          key={opt.value}
+                          color="inherit"
+                          onClick={() => changeTabletTopBarMode(opt.value)}
+                          sx={topBarGroupButtonSx(
+                            selected,
+                            darkMode === "dark" ? darkTextColor : "#000000"
+                          )}
+                        >
+                          {opt.label}
+                        </Button>
+                      );
+                    })}
+                  </ButtonGroup>
+                </div>
+              )}
 
               <TabPanel value="Social" sx={{ marginTop: -3 }}>
                 <div>
-                  <Stack
-                    direction="row"
-                    spacng={1}
-                    sx={{ alignItems: "center", marginTop: "20px" }}
-                  >
-                    <AntSwitch
-                      inputProps={{ "aria-label": "ant design" }}
-                      checked={ableLeft}
-                      onChange={() => {
-                        setUpdated(true)
-                        setData((prev) => {
-                          
-                          return { ...prev, ableLeft: !prev.ableLeft };
-                        });
-                      }}
-                    />
-                    <Typography sx={{ fontSize: 13, ml: 2 }}>เปิด</Typography>
-                  </Stack>
+                  {!isTablet && (
+                    <Stack
+                      direction="row"
+                      spacng={1}
+                      sx={{ alignItems: "center", marginTop: "20px" }}
+                    >
+                      <AntSwitch
+                        inputProps={{ "aria-label": "ant design" }}
+                        checked={ableLeft}
+                        onChange={() => {
+                          setUpdated(true)
+                          setData((prev) => {
+                            
+                            return { ...prev, ableLeft: !prev.ableLeft };
+                          });
+                        }}
+                      />
+                      <Typography sx={{ fontSize: 13, ml: 2 }}>เปิด</Typography>
+                    </Stack>
+                  )}
 
                   <div className="grid grid-cols-2">
+                    {device !== "Tablet" && (
+                      <div className={`col col-span-2 ml-[5px] mr-[5px]`}>
+                        <div className="mb-3 mt-4 flex items-center gap-2">
+                          <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                            รูปแบบการแสดงผล
+                          </span>
+                          <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                        </div>
+                        <ButtonGroup
+                          fullWidth
+                          variant="outlined"
+                          disableElevation
+                          color="inherit"
+                          aria-label="รูปแบบการแสดงผล Top Bar"
+                          sx={topBarGroupRootSx}
+                        >
+                          {TOPBAR_DISPLAY_LAYOUT_OPTIONS.map((opt) => {
+                            const selected = opt.value === (isFluidLayout === true);
+                            return (
+                              <Button
+                                key={String(opt.value)}
+                                color="inherit"
+                                onClick={() => changeTopBarDisplayLayout(opt.value)}
+                                sx={topBarGroupButtonSx(selected, darkMode === "dark" ? darkTextColor : "#000000")}
+                              >
+                                {opt.label}
+                              </Button>
+                            );
+                          })}
+                        </ButtonGroup>
+                      </div>
+                    )}
                     <div className={`col col-span-2 ml-[5px] mr-[5px]`}>
-                      <MainLabel label="ความสูง" value={topBarHeight} />
+                      <MainLabel
+                        label="ความสูง"
+                        value={topBarHeight}
+                        valueInline
+                        valueSuffix=""
+                        valueColor="#94a3b8"
+                      />
                       <Range
                         darkMode={darkMode}
                         darkTextColor={darkTextColor}
@@ -1502,61 +1756,70 @@ const TopBarOffcanvas = ({
                   </div>
 
                   {/* BG color */}
-                  <MainLabel label="สีพื้นหลังบาร์" />
+                  <MainLabel label={isGradient ? colorlabels[1] : colorlabels[0]} />
 
                   {!isGradient ? (
-                    <Service
-                      darkMode={darkMode}
-                      darkTextColor={darkTextColor}
-                      setAnchorEl={setAnchorEl}
+                    <ServiceColor
                       color={bgColor}
-                      field="bgColor"
                       opacity={bgOpacity}
-                      opacityField="bgOpacity"
-                      open={openColorTable === 0}
-                      anchorRef={anchorRef}
-                      anchorEl={anchorEl}
-                      click={() => {
-                        toggleColorTable(0);
-                        setAnchorEl(anchorRef.current);
-                      }}
-                      handleColor={handleSelect}
-                      handleOpcy={handleRange}
+                      handleColor={(value) => handleSelect(value, "bgColor")}
+                      handleOpacity={(e) =>
+                        handleRange("bgOpacity", Number(e.target.value))
+                      }
+                      rangeColor={darkMode === "dark" ? darkTextColor : "#000000"}
+                      darkMode={darkMode}
                     />
                   ) : (
                     // Gradient
                     <>
-                      {[1, 2].map((i) => {
-                        const click = () => {
-                          toggleColorTable(i);
-                          setAnchorElGradient(anchorRefGradient.current);
-                        };
-
-                        const open = openColorTable === i;
-                        const currentColor = bgColorGradient[i - 1];
-                        const currentOpacity = bgOpacityGradient[i - 1];
-
-                        return (
-                          <div key={i} className={`${i === 2 ? "mt-3" : ""}`}>
-                            <Service
-                              darkMode={darkMode}
-                              darkTextColor={darkTextColor}
-                              setAnchorEl={setAnchorElGradient}
-                              color={currentColor}
-                              field="bgColorGradient"
-                              opacity={currentOpacity}
-                              opacityField="bgOpacityGradient"
-                              open={open}
-                              anchorRef={anchorRefGradient}
-                              anchorEl={anchorElGradient}
-                              click={() => click()}
-                              handleColor={handleSelect}
-                              handleOpcy={handleRange}
-                              index={i - 1}
-                            />
-                          </div>
-                        );
-                      })}
+                      <ButtonGroup
+                        fullWidth
+                        variant="outlined"
+                        disableElevation
+                        color="inherit"
+                        aria-label="เลือกจุดไล่โทนพื้นหลังบาร์"
+                        sx={{ ...topBarGroupRootSx, mb: 0, mt: 0.5 }}
+                      >
+                        {TOPBAR_GRADIENT_STOPS.map((opt) => {
+                          const selected =
+                            (opt.value === "end" && barGradientPicker === "end") ||
+                            (opt.value === "start" && barGradientPicker !== "end");
+                          return (
+                            <Button
+                              key={opt.value}
+                              color="inherit"
+                              onClick={() =>
+                                setBarGradientPicker(
+                                  opt.value === "end" ? "end" : "start"
+                                )
+                              }
+                              sx={topBarGroupButtonSx(selected, darkMode === "dark" ? darkTextColor : "#000000")}
+                            >
+                              {opt.label}
+                            </Button>
+                          );
+                        })}
+                      </ButtonGroup>
+                      <ServiceColor
+                        color={bgColorGradient[barGradientPicker === "end" ? 1 : 0]}
+                        opacity={bgOpacityGradient[barGradientPicker === "end" ? 1 : 0]}
+                        handleColor={(value) =>
+                          handleSelect(
+                            value,
+                            "bgColorGradient",
+                            barGradientPicker === "end" ? 1 : 0
+                          )
+                        }
+                        handleOpacity={(e) =>
+                          handleRange(
+                            "bgOpacityGradient",
+                            Number(e.target.value),
+                            barGradientPicker === "end" ? 1 : 0
+                          )
+                        }
+                        rangeColor={darkMode === "dark" ? darkTextColor : "#000000"}
+                        darkMode={darkMode}
+                      />
 
                       <MainLabel label={`${bgDegree} องศา`} />
 
@@ -1573,15 +1836,24 @@ const TopBarOffcanvas = ({
                     </>
                   )}
 
+                  {!isTablet && (
                   <div className="grid grid-cols-2">
                     {rangeValue.map((item, i) => {
                       const { data, label, name, min, max, step } = item;
+                      const isInlineMetric =
+                        label === "ขนาดกรอบ" || label === "ความโค้งมน";
                       return (
                         <div
                           className={`col col-span-1 ml-[5px] mr-[5px]`}
                           key={i}
                         >
-                          <MainLabel label={label} value={data} />
+                          <MainLabel
+                            label={label}
+                            value={data}
+                            valueInline={isInlineMetric}
+                            valueSuffix={isInlineMetric ? "" : "PX"}
+                            valueColor={isInlineMetric ? "#94a3b8" : "gray"}
+                          />
                           <Range
                             darkMode={darkMode}
                             darkTextColor={darkTextColor}
@@ -1596,8 +1868,9 @@ const TopBarOffcanvas = ({
                       );
                     })}
                   </div>
-                  <MainLabel label="โซเชียล" />
-                  {iconGroup.map((item, i) => {
+                  )}
+                  {!isTablet && <MainLabel label="โซเชียล" />}
+                  {!isTablet && iconGroup.map((item, i) => {
 
                     const {iconColor,iconOpacity,bgColor,bgOpacity} = item
                   const colors = [
@@ -1634,34 +1907,45 @@ const TopBarOffcanvas = ({
 
               <TabPanel value="Text" sx={{ marginTop: -3 }}>
                 <div>
-                  <Stack
-                    direction="row"
-                    spacng={1}
-                    sx={{ alignItems: "center", marginTop: "20px" }}
-                  >
-                    <AntSwitch
-                      inputProps={{ "aria-label": "ant design" }}
-                      checked={ableRight}
-                      onChange={() => {
-                        setUpdated(true)
-                        setData((prev) => {
-                          return { ...prev, ableRight: !prev.ableRight };
-                        });
-                      }}
-                    />
-                    <Typography sx={{ fontSize: 13, ml: 2 }}>เปิด</Typography>
-                  </Stack>
+                  {!isTablet && (
+                    <Stack
+                      direction="row"
+                      spacng={1}
+                      sx={{ alignItems: "center", marginTop: "20px" }}
+                    >
+                      <AntSwitch
+                        inputProps={{ "aria-label": "ant design" }}
+                        checked={ableRight}
+                        onChange={() => {
+                          setUpdated(true)
+                          setData((prev) => {
+                            return { ...prev, ableRight: !prev.ableRight };
+                          });
+                        }}
+                      />
+                      <Typography sx={{ fontSize: 13, ml: 2 }}>เปิด</Typography>
+                    </Stack>
+                  )}
 
 
+                  {!isTablet && (
                   <div className="grid grid-cols-2">
                     {rangeValue2.map((item, i) => {
                       const { data, label, name, min, max, step } = item;
+                      const isInlineMetric =
+                        label === "ขนาดกรอบ" || label === "ความโค้งมน";
                       return (
                         <div
                           className={`col col-span-1 ml-[5px] mr-[5px]`}
                           key={i}
                         >
-                          <MainLabel label={label} value={data} />
+                          <MainLabel
+                            label={label}
+                            value={data}
+                            valueInline={isInlineMetric}
+                            valueSuffix={isInlineMetric ? "" : "PX"}
+                            valueColor={isInlineMetric ? "#94a3b8" : "gray"}
+                          />
                           <Range
                             darkMode={darkMode}
                             darkTextColor={darkTextColor}
@@ -1676,19 +1960,15 @@ const TopBarOffcanvas = ({
                       );
                     })}
                   </div>
+                  )}
                   <MainLabel label="ข้อความ" />
                   {textGroup.map((item, i) => {
 
-                    const {iconColor,iconOpacity,bgColor,bgOpacity} = item
+                    const { iconColor, iconOpacity, bgColor, bgOpacity, textColor, textOpacity } = item
                   const colors = [
-                    {label:"สีพื้นหลัง",field:"bgColor",data:bgColor,opacity:bgOpacity,opacityField:"bgOpacity",open:openColorTable === 6,click:()=>{
-
-                      toggleColorTable(6)
-                    }},
-                    {label:"สีไอคอน",field:"iconColor",data:iconColor,opacity:iconOpacity,opacityField:"iconOpacity",open:openColorTable === 7,click:()=>{
-
-                      toggleColorTable(7)
-                    }}
+                    { label: "สีพื้นหลัง", field: "bgColor", data: bgColor, opacity: bgOpacity, opacityField: "bgOpacity" },
+                    { label: "สีไอคอน", field: "iconColor", data: iconColor, opacity: iconOpacity, opacityField: "iconOpacity" },
+                    { label: "สีข้อความ", field: "textColor", data: textColor, opacity: textOpacity, opacityField: "textOpacity" },
                   ]
   return (
     <TextList
@@ -1705,8 +1985,6 @@ const TopBarOffcanvas = ({
       onCopy={copy}
       onRemove={remove}
       onSelectChange={handleSelect}
-      openColorTable={openColorTable}
-      toggleColorTable={toggleColorTable}
 
     />
   );
@@ -1720,24 +1998,30 @@ const TopBarOffcanvas = ({
     </div>
   );
 
-  function MainLabel({ label, value = NaN }) {
+  function MainLabel({
+    label,
+    value = NaN,
+    valueSuffix = "PX",
+    valueInline = false,
+    valueColor = "gray",
+  }) {
     const w = "flex-1";
-    let colorSwitchList = ["สีพื้นหลังบาร์"];
+    let colorSwitchList = [
+      "สีพื้นหลังบาร์",
+      "สีพื้นหลังแบบสีพื้น",
+      "สีพื้นหลังแบบไล่โทน",
+    ];
 
     const colorSwitch = colorSwitchList.includes(label);
 
     const checked = () => {
-      if (label === "สีพื้นหลังบาร์") {
+      if (colorSwitchList.includes(label)) {
         return isGradient;
       }
     };
 
     const typography = () => {
-      if (checked()) {
-        return "สีพื้น";
-      } else {
-        return "สีไล่โทน";
-      }
+      return "สีไล่โทน";
     };
 
     let mb = "mb-3";
@@ -1746,7 +2030,7 @@ const TopBarOffcanvas = ({
       setUpdated(true);
       setData((prev) => {
         toggleColorTable(-1);
-        if (label === "สีพื้นหลังบาร์") {
+        if (colorSwitchList.includes(label)) {
           return { ...prev, isGradient: !prev.isGradient };
         }
       });
@@ -1757,7 +2041,13 @@ const TopBarOffcanvas = ({
         <span className="text-dark dark:text-white/80 text-[13px] font-bold">
           {label}
         </span>
-        <div className={`border-b border-gray-500/50 ${w}`}></div>
+        {valueInline && !Number.isNaN(value) && (
+          <span className="text-[13px]" style={{ color: valueColor }}>
+            {value}
+            {valueSuffix ? ` ${valueSuffix}` : ""}
+          </span>
+        )}
+        <div className={`border-b border-slate-200 dark:border-white/15 ${w}`}></div>
         {colorSwitch && (
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             <AntSwitch
@@ -1770,10 +2060,11 @@ const TopBarOffcanvas = ({
             <Typography sx={{ fontSize: 13 }}>{typography()}</Typography>
           </Stack>
         )}
-        {!Number.isNaN(value) && (
+        {!valueInline && !Number.isNaN(value) && (
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-            <Typography sx={{ fontSize: 13, color: "gray" }}>
-              {value} PX
+            <Typography sx={{ fontSize: 13, color: valueColor }}>
+              {value}
+              {valueSuffix ? ` ${valueSuffix}` : ""}
             </Typography>
           </Stack>
         )}

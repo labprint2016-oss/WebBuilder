@@ -40,7 +40,17 @@ import {
 
 
 
-const ServiceColor = ({color,opacity,handleColor,handleOpacity,rangeColor,darkMode="light"})=>{
+const ServiceColor = ({
+  color,
+  opacity,
+  handleColor,
+  handleOpacity,
+  rangeColor,
+  darkMode = "light",
+  compact = false,
+})=>{
+    const normalizeColorString = (value) =>
+      typeof value === "string" ? value.trim().toLowerCase() : value;
     const [theme, setTheme] = useState(null);
 
     const loadTheme = () => {
@@ -93,7 +103,7 @@ const ServiceColor = ({color,opacity,handleColor,handleOpacity,rangeColor,darkMo
 
 
     return(   
-        <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+        <div className={`${compact ? "mt-0" : "mt-2"} w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800`}>
         <div className="px-[5px] pb-2">
             <Range min={0} max={255} step={1} value={opacity} pos={(opacity / 255) * 100} handleChange={handleOpacity} color={rangeColor}/>
         </div>
@@ -104,7 +114,12 @@ const ServiceColor = ({color,opacity,handleColor,handleOpacity,rangeColor,darkMo
               ? c
               : theme?.[c.type]?.[c.index];
             const value = c;
-            const selected = value === color || lodash.isEqual(value,color)
+            const selected =
+              (typeof value === "string" && typeof color === "string"
+                ? normalizeColorString(value) === normalizeColorString(color)
+                : false) ||
+              value === color ||
+              lodash.isEqual(value,color)
             let margin = "";
             if (i % 8 !== 0 && (i + 1) % 8 !== 0) {
               margin += "mx-[65.75px] ";

@@ -27,7 +27,8 @@ import {
   Container,
   Bluetooth,
   LayoutGrid,
-  UserStar
+  UserStar,
+  Trash2,
 } from "lucide-react";
 import Nestable from "react-nestable";
 import "react-nestable/dist/styles/index.css";
@@ -85,7 +86,6 @@ import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { SketchPicker } from "react-color";
 import lodash, { head, isNull, set, update } from "lodash";
 import { getTheme, updateTheme } from "../../Functions/theme";
-import HeroSlider from "./heroSlider";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation, Pagination, Autoplay } from "swiper/modules";
 import "swiper/css";
@@ -147,8 +147,18 @@ const AntSwitch = styled(Switch)(({ theme }) => ({
   },
 }));
 
+const hasVisibleIcon = (icon) =>
+  Boolean(icon?.name && icon?.type && icon.name !== "fa0");
 
-const COMMON_FIELD_SX =  (hasChildren,hasBtn,darkMode,height=40,fontSize=13)=>{
+
+const COMMON_FIELD_SX = (
+  hasChildren,
+  hasBtn,
+  darkMode,
+  height = 40,
+  fontSize = 13,
+  useInputBottomOffset = true
+) => {
 
   const radiusRight = hasChildren ? 0 : 5;
   const broderRight = hasChildren ? 0 : 1;
@@ -159,7 +169,7 @@ const COMMON_FIELD_SX =  (hasChildren,hasBtn,darkMode,height=40,fontSize=13)=>{
 
   const mb = 0.5*height/40
 
-  const borderColor = darkMode === "dark"?"#494d54":"rgba(0,0,0,0.23)"
+  const borderColor = darkMode === "dark" ? "#494d54" : "#e2e8f0"
   const textColor = darkMode === "dark"?"#ffffff":"#18181b"
   
 
@@ -183,13 +193,40 @@ const COMMON_FIELD_SX =  (hasChildren,hasBtn,darkMode,height=40,fontSize=13)=>{
       boxSizing: "border-box",
       padding: 0,
       alignItems: "center",
+      overflow: "hidden",
+      boxShadow: "none",
+      "&.Mui-focused": {
+        boxShadow: "none",
+      },
     },
     "& .MuiOutlinedInput-input": {
       fontSize,
       color:textColor,
       height: "100%",
       boxSizing: "border-box",
-      marginBottom: mb,
+      marginBottom: useInputBottomOffset ? mb : 0,
+      WebkitTextFillColor: textColor,
+      caretColor: textColor,
+      "&:-webkit-autofill": {
+        WebkitBoxShadow: "0 0 0 1000px transparent inset !important",
+        boxShadow: "0 0 0 1000px transparent inset !important",
+        backgroundColor: "transparent !important",
+        WebkitTextFillColor: `${textColor} !important`,
+        caretColor: textColor,
+        transition: "background-color 9999s ease-out 0s",
+      },
+      "&:-webkit-autofill:hover": {
+        WebkitBoxShadow: "0 0 0 1000px transparent inset !important",
+        boxShadow: "0 0 0 1000px transparent inset !important",
+        backgroundColor: "transparent !important",
+        WebkitTextFillColor: `${textColor} !important`,
+      },
+      "&:-webkit-autofill:focus": {
+        WebkitBoxShadow: "0 0 0 1000px transparent inset !important",
+        boxShadow: "0 0 0 1000px transparent inset !important",
+        backgroundColor: "transparent !important",
+        WebkitTextFillColor: `${textColor} !important`,
+      },
     },
     "& .MuiSelect-select": { fontSize: 12,mb:2.5,pl:2,},
   
@@ -249,47 +286,6 @@ function RadioInput({ label,name, value,datas,handleChange, color,textColor,gap=
   );
 }
 
-function CheckInput({ label, field, index, display, heroData, setHero, miniField = null }) {
-
-
-  const checked = miniField ? heroData[field][miniField] : heroData[field];
-
-
-  return (
-    <FormControlLabel
-      control={
-        <Checkbox
-          checked={checked}
-          sx={{
-            "&.Mui-checked": {
-              color: "black", // สีตอน 'ถูกติ๊ก'
-            },
-          }}
-        />
-      }
-      label={label}
-      onChange={(e) => {
-        setHero((prev) => {
-          const hero = lodash.cloneDeep(prev);
-          if (miniField) {
-            hero[display][index][field][miniField] = e.target.checked;
-          } else {
-            hero[display][index][field] = e.target.checked;
-          }
-
-          return hero;
-        });
-      }}
-      sx={{
-        "& .MuiFormControlLabel-label": {
-          fontSize: 13, // ปรับฟอนต์ของตัวหนังสือ
-          whiteSpace: "nowrap",
-        },
-      }}
-    />
-  );
-}
-
 
 function Btn({
   handleClick,
@@ -301,6 +297,7 @@ function Btn({
   bgColor="#454b58",
   borderColor="#A1A1AA",
   color="white",
+  hideBorder = false,
 
 
   
@@ -351,9 +348,9 @@ function Btn({
           radiusRArr[radius],
           // 2) ให้ปุ่มมี "กรอบ" แบบเดียวกับ TextField
           border: "1px solid",
-          borderColor,
-          borderRightWidth:  borderRight,
-          borderLeftWidth:1,
+          borderColor: hideBorder ? "transparent" : borderColor,
+          borderRightWidth: hideBorder ? 0 : borderRight,
+          borderLeftWidth: hideBorder ? 0 : 1,
 
           // (ตัวเลือก) ถ้าไม่อยากให้มีเส้นหนาตรงรอยต่อกลาง
           // ให้ตัดเส้นซ้ายของปุ่มออก จะเหลือเส้นของ TextField ฝั่งเดียวพอดี
@@ -377,7 +374,7 @@ function Btn({
           // สีตัวอักษร - ให้สืบทอดจาก parent; คุณจะเปลี่ยนเป็นขาว/ดำเองก็ได้
           color: "inherit",
 
-          ".dark &": {
+          ".dark &": hideBorder ? {} : {
             borderColor: "#494d55", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
             "&:hover": { borderColor: "#494d55" },
           },
@@ -395,7 +392,7 @@ function Btn({
 
           >
 
-{Icon &&   <IconAwsome
+{hasVisibleIcon(Icon) &&   <IconAwsome
                 style={{color,fontSize:size}}
                 iconType={Icon.type}
                 iconName={Icon.name}
@@ -476,7 +473,7 @@ const Range = ({ value, handleChange, min, max, step }) => {
   );
 };
 
-function Field({label,name,value,handleChange,darkMode,children}) {
+function Field({label,name,value,handleChange,darkMode,children,fieldHeight=40}) {
 
 
 
@@ -484,7 +481,7 @@ function Field({label,name,value,handleChange,darkMode,children}) {
     <FormControl fullWidth>
       <Box sx={{ display: "flex", width: "100%" }}>
         <TextField
-          sx={COMMON_FIELD_SX(Boolean(children),false,darkMode)}
+          sx={COMMON_FIELD_SX(Boolean(children),false,darkMode,fieldHeight)}
           fullWidth
           placeholder={label}
           name={name}
@@ -502,15 +499,49 @@ function Field({label,name,value,handleChange,darkMode,children}) {
   );
 }
 
-function FieldWithBtn({label,name,value,handleChange,handleClick,darkMode,Icon=null,children}) {
+function FieldWithBtn({
+  label,
+  name,
+  value,
+  handleChange,
+  handleClick,
+  darkMode,
+  Icon = null,
+  children,
+  fieldHeight = 40,
+}) {
+  const iconBoxHeight = Math.max(35, fieldHeight - 4);
+  const baseFieldSx = COMMON_FIELD_SX(Boolean(children), true, darkMode, fieldHeight, 13, false);
 
 
   return (
     <FormControl fullWidth>
-      <Box sx={{ display: "flex", width: "100%" , alignItems: "stretch" }}>
-        <Btn radius="noR" Icon={Icon} bgColor={darkMode === "dark"?"#494d54":"#A1A1AA"} handleClick={handleClick}/>
+      <Box sx={{ display: "flex", width: "100%" , alignItems: "stretch", minHeight: fieldHeight, gap: 0 }}>
+        <Box sx={{ position: "relative", zIndex: 2 }}>
+          <Btn
+            radius="noR"
+            lastChild={true}
+            height={iconBoxHeight}
+            Icon={Icon}
+            bgColor={darkMode === "dark" ? "#494d54" : "#333333"}
+            borderColor={darkMode === "dark" ? "#494d54" : "#e2e8f0"}
+            handleClick={handleClick}
+          />
+        </Box>
         <TextField
-          sx={COMMON_FIELD_SX(Boolean(children),true,darkMode)}
+          sx={{
+            ...baseFieldSx,
+            ml: "-2px",
+            position: "relative",
+            zIndex: 1,
+            "& .MuiOutlinedInput-input": {
+              ...(baseFieldSx["& .MuiOutlinedInput-input"] || {}),
+              lineHeight: `${fieldHeight}px`,
+              paddingTop: 0,
+              paddingBottom: "2px",
+              marginBottom: 0,
+            },
+          }}
           onChange={handleChange}
           fullWidth
           placeholder={label}
@@ -528,20 +559,29 @@ function FieldWithBtn({label,name,value,handleChange,handleClick,darkMode,Icon=n
   );
 }
 
-function SelectInput({ label, name, value, datas, handleChange ,darkMode}) {
+function SelectInput({
+  label,
+  name,
+  value,
+  datas,
+  handleChange,
+  darkMode,
+  selectHeight = 35,
+  optionHeight = 35,
+}) {
   const textColor = darkMode === "dark"?"#ffffff":"#050505"
-  const borderColor = darkMode === "dark"?"#494d55":"#cbd5e1"
+  const borderColor = darkMode === "dark" ? "#494d54" : "#e2e8f0"
   const bgcolor = darkMode === "dark" ? "#27272a" : "#ffffff"
 
   const selectStyle = {
     "& .MuiSvgIcon-root": { color: textColor },
   
     "& .MuiSelect-select": {
-      height: 35,
-    minHeight: 35,
+      height: selectHeight,
+    minHeight: selectHeight,
       display: "flex",
       alignItems: "center",
-      lineHeight: "35px",   
+      lineHeight: `${selectHeight}px`,   
       py: 0,
       bgcolor,fontSize: 12,color:textColor
     },
@@ -584,7 +624,8 @@ function SelectInput({ label, name, value, datas, handleChange ,darkMode}) {
             borderColor,
             "& .MuiList-root": { py: 0 ,bgcolor},
             "& .MuiMenuItem-root": {
-              height: darkMode === "dark"?35:35,
+              height: optionHeight,
+              minHeight: optionHeight,
               py: 0.25,
               px: 1.0,
               fontSize: 13,
@@ -600,11 +641,44 @@ function SelectInput({ label, name, value, datas, handleChange ,darkMode}) {
         MenuListProps: { dense: true },
       }}
     >
-      {datas.map((data,i) => (
-        <MenuItem value={data} key={i} sx={{"& .MuiListItemText-primary": { fontSize: 12 }, }}>
-          <ListItemText primary={data} />
-        </MenuItem>
-      ))}
+      {datas.map((data,i) => {
+        const isSelected = data === value;
+        const isBeforeSelected = datas[i + 1] === value;
+        return (
+          <MenuItem
+            value={data}
+            key={i}
+            sx={{
+              minHeight: optionHeight,
+              borderBottomWidth: isSelected || isBeforeSelected ? 0 : 1,
+              borderBottomStyle: "solid",
+              borderBottomColor: borderColor,
+              "& .MuiListItemText-primary": { fontSize: 12 },
+              "&.Mui-selected": {
+                backgroundColor: "#333333",
+                border: "none",
+                outline: "none",
+                boxShadow: "none",
+                marginTop: "-1px",
+                position: "relative",
+                zIndex: 1,
+                "& .MuiListItemText-primary": { color: "#ffffff" },
+              },
+              "&.Mui-selected:hover": {
+                backgroundColor: "#333333",
+                border: "none",
+                outline: "none",
+                boxShadow: "none",
+              },
+              "&:last-child": {
+                borderBottomWidth: 0,
+              },
+            }}
+          >
+            <ListItemText primary={data} />
+          </MenuItem>
+        );
+      })}
     </Select>
   </FormControl>
   );
@@ -625,7 +699,7 @@ const MenuList = memo(function MenuList({
   collapseIcon,
   isDraggable,
   darkMode,
-  darkTextColor,setOpenIconModal,openIconModal
+  darkTextColor,setOpenIconModal,openIconModal,
 }) {
   const { id,icon, name, type, page,menuDisplay, url, target } = item;
 
@@ -667,8 +741,8 @@ const MenuList = memo(function MenuList({
       lastChild={true}
       height={28}
       bgColor={darkMode === "dark"?"#494D54":"#ececec"}
-      borderColor={darkMode === "dark"?"#494D54":"#e5e5e5"}
-      color={darkMode === "dark"?"#ffffff":"#505050"}
+      hideBorder
+      color={darkMode === "dark" ? "#a1a1aa" : "#9ca3af"}
      
     />
   );
@@ -712,11 +786,13 @@ const MenuList = memo(function MenuList({
         }}
       >
           <span style={{ display: "inline-flex" }}>{collapseIcon}</span>
-          <IconAwsome iconType={icon.type} iconName={icon.name} style={{
-            fontSize:15,
-            marginLeft:12,
-            color:textColor
-          }}/>
+          {hasVisibleIcon(icon) && (
+            <IconAwsome iconType={icon.type} iconName={icon.name} style={{
+              fontSize:15,
+              marginLeft:12,
+              color:textColor
+            }}/>
+          )}
 
         <Typography
           noWrap
@@ -742,11 +818,12 @@ const MenuList = memo(function MenuList({
         <Box
           sx={{
             ml: 1,
-            mr: 1.5,
+            mr: 0,
             display: "flex",
             alignItems: "center",
             gap: 1.5,
             flexShrink: 0,
+            transform: "translateX(8px)",
           }}
         >
           {menuButtons.map((b, i) => (
@@ -770,7 +847,7 @@ const MenuList = memo(function MenuList({
             cursor: "pointer",
             flexShrink: 0,
 
-            "&:hover": { backgroundColor: darkMode === "dark"?"#494D54":"#efefef" },
+            "&:hover": { backgroundColor: "transparent" },
           }}
         >
           <ChevronDown
@@ -788,6 +865,7 @@ const MenuList = memo(function MenuList({
       <FieldWithBtn
           label="Home"
           Icon={icon}
+          fieldHeight={48}
           name="name"
           value={name}
           handleChange={(e) => handleChange(e, id)}
@@ -807,6 +885,8 @@ const MenuList = memo(function MenuList({
         {type === "page" && (
           <SelectInput
           darkMode={darkMode}
+            selectHeight={44}
+            optionHeight={44}
             datas={pageNames}
             name="page"
             handleChange={(e) => handleChange(e, id)}
@@ -815,7 +895,7 @@ const MenuList = memo(function MenuList({
           />
         )}
         {type === "URL" && (
-          <Field label="#" name="url" value={url} handleChange={(e) => handleChange(e, id)}  darkMode={darkMode}/>
+          <Field label="#" name="url" value={url} handleChange={(e) => handleChange(e, id)}  darkMode={darkMode} fieldHeight={44}/>
         )}
         <RadioInput
         color={darkMode === "dark"?darkTextColor:"black"}
@@ -831,7 +911,7 @@ const MenuList = memo(function MenuList({
       </AccordionDetails>
     </Accordion>
 
-      <ServiceIcon darkColor={darkTextColor} header="ตั้งค่าไอคอน" icon={icon} open={openIconModal === id} onClose={()=>setOpenIconModal(false)} handleChange={(icon)=>handleChange({target:{name:"icon",value:icon}},id)} darkMode={darkMode}/>
+      <ServiceIcon darkColor={darkTextColor} header="ไอคอน" icon={icon} open={openIconModal === id} onClose={()=>setOpenIconModal(false)} handleChange={(icon)=>handleChange({target:{name:"icon",value:icon}},id)} darkMode={darkMode}/>
 
     
     </Box>
@@ -841,10 +921,16 @@ const MenuList = memo(function MenuList({
 
 
 
-function MenuPage({menus, setMenus,navOpen,device,menuBar,theme,setNavOpen,navBottom,setFont,darkMode,darkTextColor,menuButtonRef}){
+function MenuPage({menus, setMenus,navOpen,device,menuBar,theme,setNavOpen,navBottom,setFont,darkMode,darkTextColor,menuButtonRef,topBar,setOpenBar}){
 
 
 
+
+const [previewNavOpen, setPreviewNavOpen] = useState(navOpen);
+
+useEffect(() => {
+  setPreviewNavOpen(navOpen);
+}, [navOpen]);
 
 const handleChange = useCallback((e, id) => {
   const { name, value } = e.target;
@@ -967,6 +1053,41 @@ const toggleOpen = useCallback((id) => {
 
 const [pages,setPages] = useState([])
 
+const getTotalScrollFromElement = useCallback((element) => {
+  let top = window.scrollY || window.pageYOffset || 0;
+  let left = window.scrollX || window.pageXOffset || 0;
+  let current = element?.parentElement ?? null;
+
+  while (current) {
+    top += current.scrollTop || 0;
+    left += current.scrollLeft || 0;
+    current = current.parentElement;
+  }
+
+  return { top, left };
+}, []);
+
+const applyDragScrollCompensation = useCallback(({ dragItem }) => {
+  const root = document.documentElement;
+  const dragEl = document.querySelector(`.menuTree .nestable-item-${dragItem?.id}`);
+
+  if (!(dragEl instanceof HTMLElement)) {
+    root.style.setProperty("--menu-drag-compensate-x", "0px");
+    root.style.setProperty("--menu-drag-compensate-y", "0px");
+    return;
+  }
+
+  const { top, left } = getTotalScrollFromElement(dragEl);
+  root.style.setProperty("--menu-drag-compensate-x", `${left}px`);
+  root.style.setProperty("--menu-drag-compensate-y", `${top}px`);
+}, [getTotalScrollFromElement]);
+
+const clearDragScrollCompensation = useCallback(() => {
+  const root = document.documentElement;
+  root.style.setProperty("--menu-drag-compensate-x", "0px");
+  root.style.setProperty("--menu-drag-compensate-y", "0px");
+}, []);
+
 
    const loadPages = ()=>{
     listPages()
@@ -1028,6 +1149,7 @@ const{
   bgButtonOpacity,
   borderButtonOpacity,
   iconButtonOpacity,
+  borderWidth = 1,
 
   bgMenuColor,
   bgMenuOpacity,
@@ -1057,7 +1179,10 @@ const{
 
 const {  
   navBottoms,
+  navText,
+  navIcon,
   isAbleNavBottom,
+  navBottomDesign = "classic",
   navBottomDisplay,
 
 
@@ -1078,6 +1203,26 @@ const {
   navDividerColor,
   navDividerOpacity,
   navDividerStyle,} = navBottom
+
+const {
+  hideTopBarEverywhere = false,
+  tabletTopBarMode = "social",
+  ableLeft = true,
+  ableRight = true,
+  topBarHeight = 52,
+  isGradient: topBarIsGradient = false,
+  bgColor: topBarBgColor = "#000000",
+  bgOpacity: topBarBgOpacity = 255,
+  bgColorGradient: topBarBgColorGradient = ["#000000", "#000000"],
+  bgOpacityGradient: topBarBgOpacityGradient = [255, 255],
+  bgDegree: topBarBgDegree = 0,
+  borderSize = 26,
+  radius = 50,
+  iconGroup = [],
+  radiusText = 50,
+  borderTextSize = 26,
+  textGroup = [],
+} = topBar || {};
 
 
 
@@ -1170,29 +1315,212 @@ const closeSubTree = (menus) => {
 
 
 useEffect(()=>{
-  if(!navOpen){
+  if(!previewNavOpen){
     closeSubTree(menus)
   }
-},[navOpen])
+},[previewNavOpen])
 
 
 const mainBG = setColor(
   bgMenuColor,
   bgMenuOpacity)
+const navBottomBg = setColor(bgNav, bgNavOpacity)
 
 
 const paddingDivider = (10*navHeight)/56
+const isModernNavBottom = navBottomDesign === "modern";
+const modernCenterIndex = Math.floor((navBottoms?.length || 1) / 2);
+const modernActiveIndex = Math.min(1, Math.max((navBottoms?.length || 1) - 1, 0));
+const isTextNavBottomDisplay = navBottomDisplay === "text";
+const textModeIcon =
+  navIcon &&
+  typeof navIcon === "object" &&
+  navIcon.name &&
+  navIcon.type &&
+  navIcon.name !== "fa0"
+    ? navIcon
+    : { type: "fas", name: "faCopyright" };
+const textModeLabel = navText || "Domain.com All rights reserved.";
+const navBottomItemsForDisplay = isTextNavBottomDisplay
+  ? [{ icon: textModeIcon, label: textModeLabel, link: "Page1" }]
+  : navBottoms;
+const modernCenterIndexForDisplay = Math.floor((navBottomItemsForDisplay?.length || 1) / 2);
+const modernActiveIndexForDisplay = Math.min(
+  1,
+  Math.max((navBottomItemsForDisplay?.length || 1) - 1, 0)
+);
+const allowModernCenterBubble = isModernNavBottom && !isTextNavBottomDisplay;
+const showModernNotch = isModernNavBottom && !isTextNavBottomDisplay;
+const navIconSelectedColor = setColor(iconColor, iconOpacity);
+const modernBaseNavHeight = 56;
+const modernExtraVerticalSpace = Math.max(navHeight - modernBaseNavHeight, 0) / 2;
+const navItemWidthTighten = Math.max(0, 6 - Math.max(navSpace, 1));
+const modernCenterSize = 56;
+const modernNotchRadius = Math.floor(modernCenterSize / 2) + 5;
+const modernNotchCenterY = 0;
+const modernCenterTop =
+  modernNotchCenterY - modernCenterSize / 2 - 8 - modernExtraVerticalSpace;
+const navBottomDesignConfig =
+  isModernNavBottom
+    ? {
+        actionMinWidth: 64,
+        actionMaxWidth: 64,
+        actionRadius: 18,
+        actionMarginY: 8,
+        actionBg: "transparent",
+        showDivider: false,
+      }
+    : navBottomDesign === "standard"
+      ? {
+          actionMinWidth: 74,
+          actionMaxWidth: 74,
+          actionRadius: 8,
+          actionMarginY: 3,
+          actionBg: "transparent",
+          showDivider: navDivider,
+        }
+      : {
+          actionMinWidth: 70,
+          actionMaxWidth: 70,
+          actionRadius: 0,
+          actionMarginY: 0,
+          actionBg: "transparent",
+          showDivider: navDivider,
+        };
+const navItemWidth = Math.max(navBottomDesignConfig.actionMinWidth - navItemWidthTighten, 52);
+const navGap = Math.max(navSpace - 1, 0);
 
 
 
 
-const displayHeight = device === "Mobile" ? 600 : 800
+const displayHeight = device === "Mobile" ? 700 : 800
 const displayWidth = device === "Mobile" ? 375 : 768
+const drawerWidth = 250;
+const isMobilePreview = device === "Mobile";
+const isTabletPreview = device === "Tablet";
+const mobileFrameBg = darkMode === "dark" ? "#3b4250" : "#000000";
+const mobileNotchBg = darkMode === "dark" ? "#474f5f" : "#000000";
+const mobileEarpieceBg = darkMode === "dark" ? "#8b94a5" : "#2f2f2f";
+const tabletFrameBg = darkMode === "dark" ? mobileFrameBg : "#111111";
+const mobileSkeletonSvg = `
+<svg xmlns='http://www.w3.org/2000/svg' width='375' height='1320' viewBox='0 0 375 1320'>
+  <rect width='375' height='1320' fill='#f5f5f6'/>
+
+  <rect x='16' y='16' width='170' height='30' rx='15' fill='#d6d6d9'/>
+  <rect x='196' y='16' width='80' height='30' rx='15' fill='#d8d8db'/>
+  <rect x='286' y='16' width='73' height='30' rx='15' fill='#d6d6d9'/>
+
+  <rect x='16' y='62' width='343' height='210' rx='5' fill='#d2d2d6'/>
+  <rect x='16' y='288' width='220' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='316' width='120' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='16' y='352' width='250' height='16' rx='5' fill='#d4d4d8'/>
+  <rect x='274' y='352' width='85' height='16' rx='5' fill='#d6d6d9'/>
+  <rect x='0' y='400' width='375' height='2' fill='#c9c9cd'/>
+
+  <rect x='16' y='430' width='160' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='186' y='430' width='90' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='286' y='430' width='73' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='460' width='343' height='170' rx='5' fill='#d3d3d7'/>
+  <rect x='16' y='646' width='120' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='674' width='200' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='224' y='674' width='135' height='16' rx='5' fill='#d6d6d9'/>
+  <rect x='0' y='714' width='375' height='2' fill='#c9c9cd'/>
+
+  <rect x='16' y='744' width='343' height='120' rx='5' fill='#d2d2d6'/>
+  <rect x='16' y='880' width='180' height='14' rx='5' fill='#d6d6d9'/>
+  <rect x='16' y='906' width='95' height='14' rx='5' fill='#d8d8db'/>
+  <rect x='16' y='932' width='250' height='14' rx='5' fill='#d6d6d9'/>
+  <rect x='16' y='958' width='145' height='14' rx='5' fill='#d8d8db'/>
+  <rect x='0' y='988' width='375' height='2' fill='#c9c9cd'/>
+
+  <rect x='16' y='1020' width='105' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='131' y='1020' width='120' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='261' y='1020' width='98' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='16' y='1052' width='343' height='220' rx='5' fill='#d2d2d6'/>
+</svg>
+`.trim();
+const tabletSkeletonSvg = `
+<svg xmlns='http://www.w3.org/2000/svg' width='768' height='1320' viewBox='0 0 768 1320'>
+  <rect width='768' height='1320' fill='#f5f5f6'/>
+
+  <rect x='24' y='20' width='220' height='30' rx='15' fill='#d6d6d9'/>
+  <rect x='254' y='20' width='120' height='30' rx='15' fill='#d8d8db'/>
+  <rect x='384' y='20' width='120' height='30' rx='15' fill='#d6d6d9'/>
+
+  <rect x='24' y='70' width='720' height='250' rx='5' fill='#d2d2d6'/>
+  <rect x='24' y='338' width='420' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='24' y='366' width='240' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='24' y='402' width='520' height='16' rx='5' fill='#d4d4d8'/>
+  <rect x='560' y='392' width='184' height='36' rx='5' fill='#d6d6d9'/>
+  <rect x='0' y='452' width='768' height='2' fill='#c9c9cd'/>
+
+  <rect x='24' y='484' width='220' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='254' y='484' width='140' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='404' y='484' width='140' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='24' y='516' width='720' height='190' rx='5' fill='#d3d3d7'/>
+  <rect x='24' y='724' width='200' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='24' y='752' width='340' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='570' y='724' width='174' height='44' rx='5' fill='#d6d6d9'/>
+  <rect x='0' y='792' width='768' height='2' fill='#c9c9cd'/>
+
+  <rect x='24' y='824' width='720' height='150' rx='5' fill='#d2d2d6'/>
+  <rect x='24' y='990' width='320' height='14' rx='5' fill='#d6d6d9'/>
+  <rect x='24' y='1016' width='180' height='14' rx='5' fill='#d8d8db'/>
+  <rect x='24' y='1042' width='430' height='14' rx='5' fill='#d6d6d9'/>
+  <rect x='24' y='1068' width='240' height='14' rx='5' fill='#d8d8db'/>
+  <rect x='0' y='1098' width='768' height='2' fill='#c9c9cd'/>
+
+  <rect x='24' y='1130' width='160' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='194' y='1130' width='190' height='16' rx='5' fill='#d7d7da'/>
+  <rect x='394' y='1130' width='170' height='16' rx='5' fill='#d5d5d8'/>
+  <rect x='24' y='1162' width='720' height='130' rx='5' fill='#d2d2d6'/>
+</svg>
+`.trim();
+const previewScreenSkeletonStyle = isMobilePreview
+  ? {
+      backgroundColor: "#f5f5f6",
+      backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(mobileSkeletonSvg)}")`,
+      backgroundSize: "375px 1320px",
+      backgroundPosition: "center top",
+      backgroundRepeat: "repeat-y",
+      borderRadius: 30,
+    }
+  : isTabletPreview
+    ? {
+        backgroundColor: "#f5f5f6",
+        backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(tabletSkeletonSvg)}")`,
+        backgroundSize: "768px 1320px",
+        backgroundPosition: "center top",
+        backgroundRepeat: "repeat-y",
+        borderRadius: 24,
+      }
+  : {};
+const showTopBarPreview =
+  !hideTopBarEverywhere && (tabletTopBarMode || "social") !== "off";
+const isTextTopBarPreviewMode = (tabletTopBarMode || "social") === "text";
+const previewTopOffset = (showTopBarPreview ? topBarHeight : 0) + barHeight;
+const previewBottomOffset =
+  device === "Mobile" && isAbleNavBottom === true ? navHeight : 0;
+const menuBarBg = setColor(
+  isMenuBarGradient ? bgMenuBarColorGradient : bgMenuBarColor,
+  isMenuBarGradient ? bgMenuBarOpacityGradient : bgMenuBarOpacity,
+  isMenuBarGradient,
+  isMenuBarGradient ? bgMenuBarDegree : null
+);
+const topBarBg = setColor(
+  topBarIsGradient ? topBarBgColorGradient : topBarBgColor,
+  topBarIsGradient ? topBarBgOpacityGradient : topBarBgOpacity,
+  topBarIsGradient,
+  topBarIsGradient ? topBarBgDegree : null
+);
 
 const SubMenu = ({menus})=>{
 
   return (
-    <List sx={{background:mainBG,p:0}}>
+    <List
+      sx={{ background: mainBG, p: 0, cursor: "pointer" }}
+      onClickCapture={() => setOpenBar?.("Menu")}
+    >
             {menus.map((m,i)=>{
             const {name,id,icon,children} = m
 
@@ -1231,7 +1559,9 @@ primary={
 style={menuStyle}
 className="pl-[10px]"
 >
-<IconAwsome iconName={icon.name} iconType={icon.type} style={{marginRight:5}}/>
+{hasVisibleIcon(icon) && (
+  <IconAwsome iconName={icon.name} iconType={icon.type} style={{marginRight:5}}/>
+)}
 {name}
 </span>
 }
@@ -1285,24 +1615,28 @@ const closeDrawer = () => {
 
   // ย้าย focus กลับไปที่ปุ่มเปิดก่อน/พร้อมปิด
   menuButtonRef.current?.focus?.();
+  setPreviewNavOpen(false);
   setNavOpen(false);
 };
 
 useEffect(() => {
-  if (!navOpen) {
+  if (!previewNavOpen) {
     requestAnimationFrame(() => {
       menuButtonRef.current?.focus?.();
     });
   }
-}, [navOpen]);
+}, [previewNavOpen]);
 
 
 
 
     return( <main className="content-area flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden" area="main">
 
-<div className="min-h-[600px] rounded-xl border border-white/10 bg-white/5">
-<div className="container mx-auto relative z-10">
+<div
+  className="min-h-[600px] rounded-xl border border-white/10 bg-white/5"
+  style={["Mobile", "Tablet"].includes(device) ? { borderTopWidth: 0 } : undefined}
+>
+<div className={`${["Mobile", "Tablet"].includes(device) ? "relative z-10 w-full" : "container mx-auto relative z-10"}`}>
 {device === "Desktop" && (
 
 
@@ -1312,6 +1646,8 @@ useEffect(() => {
             items={menus}
             renderItem={renderMenu}
             onChange={({ items: newItems }) => setMenus(newItems)}
+            onDragStart={applyDragScrollCompensation}
+            onDragEnd={clearDragScrollCompensation}
             maxDepth={4}
             threshold={30}
             disableDrag={disableDrag}
@@ -1324,56 +1660,270 @@ useEffect(() => {
 )}
 {['Mobile',"Tablet"].includes(device) && (
 
-<div className="w-full flex justify-center">
-  <div ref={phoneRef} className="bg-gray-500/10 relative overflow-hidden" style={{height:displayHeight,width:displayWidth}}>
+<div
+  className="grid w-full place-items-center"
+  style={{
+    height: "calc(100vh - 220px)",
+    minHeight: "calc(100vh - 220px)",
+    paddingInline: isTabletPreview ? 16 : 0,
+  }}
+>
+  <div
+    className={
+      isMobilePreview
+        ? "relative flex-none rounded-[42px] p-[12px] shadow-[0_6px_14px_rgba(0,0,0,0.22)]"
+        : isTabletPreview
+          ? "relative mx-auto flex-none rounded-[32px] p-[10px] shadow-[0_8px_18px_rgba(0,0,0,0.2)]"
+          : ""
+    }
+    style={
+      isMobilePreview
+        ? {
+            width: displayWidth + 24,
+            height: displayHeight + 24,
+            backgroundColor: mobileFrameBg,
+          }
+        : isTabletPreview
+          ? {
+              width: displayWidth + 20,
+              height: displayHeight + 20,
+              backgroundColor: tabletFrameBg,
+            }
+          : undefined
+    }
+  >
+  {isMobilePreview && (
+    <>
+      <div
+        className="absolute left-1/2 -translate-x-1/2 rounded-b-[18px] z-[20]"
+        style={{ top: 2, width: 156, height: 14, backgroundColor: mobileNotchBg }}
+      />
+      <div
+        className="absolute left-1/2 -translate-x-1/2 rounded-full z-[21]"
+        style={{ top: 6, width: 58, height: 4, backgroundColor: mobileEarpieceBg }}
+      />
+    </>
+  )}
+  <div
+    ref={phoneRef}
+    className={`relative overflow-hidden ${(isMobilePreview || isTabletPreview) ? "bg-white" : "bg-gray-500/10"} ${isMobilePreview ? "rounded-[30px]" : ""} ${isTabletPreview ? "rounded-[22px]" : ""}`}
+    style={{
+      height:displayHeight,
+      width:displayWidth,
+      ...previewScreenSkeletonStyle,
+    }}
+  >
     
+  {showTopBarPreview && (
+    <div
+      className={`flex items-center px-3 ${
+        device === "Mobile" && isTextTopBarPreviewMode
+          ? "justify-start overflow-hidden"
+          : "justify-center"
+      }`}
+      style={
+        device === "Mobile" && isTextTopBarPreviewMode
+          ? { height: topBarHeight, background: topBarBg, scrollbarWidth: "none", msOverflowStyle: "none" }
+          : { height: topBarHeight, background: topBarBg }
+      }
+    >
+      {isTextTopBarPreviewMode ? (
+        <div
+          className={`${device === "Mobile" ? "w-full overflow-x-auto [&::-webkit-scrollbar]:hidden" : ""}`}
+          style={device === "Mobile" ? { scrollbarWidth: "none", msOverflowStyle: "none" } : undefined}
+        >
+        <div className={`flex items-center gap-3 ${device === "Mobile" ? "min-w-max" : ""}`}>
+          {ableRight &&
+            textGroup.map((item, i) => {
+              const safeIcon =
+                item?.icon?.name && item?.icon?.name !== "fa0"
+                  ? item.icon
+                  : { type: "fas", name: "faHouse" };
+              return (
+                <div key={i} className="flex shrink-0 items-center text-[10px]">
+                  <div
+                    className="flex items-center justify-center"
+                    style={{
+                      width: borderTextSize,
+                      height: borderTextSize,
+                      background: setColor(item.bgColor, item.bgOpacity),
+                      borderRadius: `${radiusText}%`,
+                    }}
+                  >
+                    <IconAwsome
+                      iconType={safeIcon.type}
+                      iconName={safeIcon.name}
+                      style={{
+                        color: setColor(item.iconColor, item.iconOpacity),
+                        fontSize: item.iconSize,
+                      }}
+                    />
+                  </div>
+                  <span
+                    className="ml-2 whitespace-nowrap"
+                    style={{
+                      color: setColor(item.textColor, item.textOpacity),
+                      fontSize: item.textSize,
+                    }}
+                  >
+                    {item.text}
+                  </span>
+                </div>
+              );
+            })}
+        </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          {ableLeft &&
+            iconGroup.map((item, i) => {
+              const safeIcon =
+                item?.icon?.name && item?.icon?.name !== "fa0"
+                  ? item.icon
+                  : { type: "fas", name: "faHouse" };
+              return (
+                <div
+                  key={i}
+                  className="flex items-center justify-center"
+                  style={{
+                    width: borderSize,
+                    height: borderSize,
+                    background: setColor(item.bgColor, item.bgOpacity),
+                    borderRadius: `${radius}%`,
+                  }}
+                >
+                  <IconAwsome
+                    iconType={safeIcon.type}
+                    iconName={safeIcon.name}
+                    style={{
+                      color: setColor(item.iconColor, item.iconOpacity),
+                      fontSize: item.iconSize,
+                    }}
+                  />
+                </div>
+              );
+            })}
+        </div>
+      )}
+    </div>
+  )}
+
+  <div
+    style={{
+      height: barHeight,
+      background: menuBarBg,
+    }}
+    className="flex items-center justify-between px-4 cursor-pointer"
+    onClick={() => setOpenBar?.("Menu")}
+  >
+    {display === "left" && (
+      <button
+        type="button"
+        className="inline-flex p-[5px] rounded-lg border items-center justify-center"
+        style={{
+          backgroundColor: setColor(bgButtonColor, bgButtonOpacity),
+          borderColor: setColor(borderButtonColor, borderButtonOpacity),
+          color: setColor(iconButtonColor, iconButtonOpacity),
+          borderWidth,
+        }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setPreviewNavOpen((prev) => {
+            const next = !prev;
+            setNavOpen(next);
+            return next;
+          });
+        }}
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+    )}
+
+    <div
+      className={`flex-1 min-w-0 px-2 ${
+        display === "left" ? "flex justify-end text-right" : ""
+      }`}
+    >
+      {logo ? (
+        <img
+          src={logo}
+          alt="logo"
+          style={{ height: logoHeight }}
+          className={`object-contain ${display === "left" ? "ml-auto" : ""}`}
+        />
+      ) : (
+        <div className="font-bold text-[18px] text-[#374151] truncate">Logo App</div>
+      )}
+    </div>
+
+    {display === "right" && (
+      <button
+        type="button"
+        className="inline-flex p-[5px] rounded-lg border items-center justify-center"
+        style={{
+          backgroundColor: setColor(bgButtonColor, bgButtonOpacity),
+          borderColor: setColor(borderButtonColor, borderButtonOpacity),
+          color: setColor(iconButtonColor, iconButtonOpacity),
+          borderWidth,
+        }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setPreviewNavOpen((prev) => {
+            const next = !prev;
+            setNavOpen(next);
+            return next;
+          });
+        }}
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+    )}
+  </div>
+
   <Drawer
-  open={navOpen}
-  onClose={closeDrawer}
-  variant="temporary"
+  open={previewNavOpen}
+  variant="persistent"
   sx={{
     position: "absolute",
     inset: 0,
+    pointerEvents: "none",
     "& .MuiDrawer-paper": {
       position: "absolute",
-      top: 0,
+      top: previewTopOffset,
+      bottom: previewBottomOffset,
       left: 0,
-      height: "100%",
-      maxHeight: "100%",
+      height: `calc(100% - ${previewTopOffset + previewBottomOffset}px)`,
+      maxHeight: `calc(100% - ${previewTopOffset + previewBottomOffset}px)`,
       overflowY: "auto",
+      overscrollBehavior: "contain",
+      WebkitOverflowScrolling: "touch",
       background: mainBG,
-      width: 250,
-      paddingBottom: "56px",
+      width: drawerWidth,
+      paddingBottom: 0,
       boxSizing: "border-box",
+      pointerEvents: "auto",
     },
   }}
   PaperProps={{
     ref: drawerPaperRef,
+    onClickCapture: () => setOpenBar?.("Menu"),
     sx: {
       background: mainBG,
       boxShadow: "none",
       border: "none",
-    },
-  }}
-  ModalProps={{
-    container: () => phoneRef.current,
-    disablePortal:true,
-    keepMounted: true,
-    onTransitionExited: () => {
-      menuButtonRef.current?.focus?.();
-    },
-    BackdropProps: {
-      sx: {
-        position: "absolute",
-        inset: 0,
-        backgroundColor: "rgba(0,0,0,0.35)",
-      },
+      cursor: "pointer",
     },
   }}
 >
 
-  <Box sx={{ width: 250}} role="presentation">
-    <List>
+  <Box
+    sx={{ width: drawerWidth, minHeight: "100%", cursor: "pointer", background: mainBG }}
+    role="presentation"
+    onClick={() => setOpenBar?.("Menu")}
+  >
+    <List onClickCapture={() => setOpenBar?.("Menu")}>
     {menus.map((m,i)=>{
           const {name,icon,id,children} = m
 
@@ -1411,7 +1961,9 @@ primary={
 <span
   style={menuStyle}
 >
-  <IconAwsome iconName={icon.name} iconType={icon.type} style={{marginRight:5}}/>
+  {hasVisibleIcon(icon) && (
+    <IconAwsome iconName={icon.name} iconType={icon.type} style={{marginRight:5}}/>
+  )}
   {name}
 </span>
 }
@@ -1447,8 +1999,10 @@ size={menuFontSize}
   
 </Box>
 </Drawer>
+{device === "Mobile" && isAbleNavBottom === true && (
 <BottomNavigation
-
+  value={isModernNavBottom ? modernActiveIndexForDisplay : 0}
+  onChange={() => {}}
   showLabels
   sx={{
     position: "absolute",
@@ -1457,53 +2011,222 @@ size={menuFontSize}
     bottom: 0,
     height: navHeight,
     zIndex: 9999999999,
-    bgcolor: setColor(bgNav, bgNavOpacity),
-
+    bgcolor: showModernNotch ? "transparent" : navBottomBg,
+    justifyContent: "center",
+    borderRadius:
+      navBottomDesign === "modern"
+        ? "24px"
+        : navBottomDesign === "standard"
+          ? "24px"
+          : 0,
+    px: isModernNavBottom ? 1.2 : 0,
+    gap: `${navGap}px`,
+    overflow: "visible",
+    "&::before": {
+      content: showModernNotch ? '""' : "none",
+      position: "absolute",
+      inset: 0,
+      borderRadius: "24px",
+      background: navBottomBg,
+      WebkitMaskImage: showModernNotch
+        ? `radial-gradient(circle ${modernNotchRadius}px at 50% ${modernNotchCenterY}px, transparent ${modernNotchRadius - 1}px, #000 ${modernNotchRadius}px)`
+        : "none",
+      maskImage: showModernNotch
+        ? `radial-gradient(circle ${modernNotchRadius}px at 50% ${modernNotchCenterY}px, transparent ${modernNotchRadius - 1}px, #000 ${modernNotchRadius}px)`
+        : "none",
+      WebkitMaskRepeat: "no-repeat",
+      maskRepeat: "no-repeat",
+      WebkitMaskSize: "100% 100%",
+      maskSize: "100% 100%",
+      boxShadow: showModernNotch ? "0 8px 22px rgba(15, 23, 42, 0.09)" : "none",
+      zIndex: 0,
+      pointerEvents: "none",
+    },
     "& .MuiBottomNavigationAction-root": {
       flex: "0 0 auto",
-      minWidth: 70,
-      maxWidth: 70,
-      px: navSpace / 2,
-      position: "relative", // ✅ ต้องมีเพื่อให้ ::after อ้างอิงได้
+      minWidth: navItemWidth,
+      maxWidth: Math.max(navBottomDesignConfig.actionMaxWidth - navItemWidthTighten, 52),
+      px: 0,
+      position: "relative",
+      zIndex: 1,
+      borderRadius: navBottomDesignConfig.actionRadius,
+      ...(isTextNavBottomDisplay
+        ? {
+            minWidth: "100%",
+            maxWidth: "100%",
+            flexDirection: "row",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 1,
+          }
+        : {}),
+      marginTop: `${navBottomDesignConfig.actionMarginY + modernExtraVerticalSpace}px`,
+      marginBottom: `${navBottomDesignConfig.actionMarginY + modernExtraVerticalSpace}px`,
+      backgroundColor: navBottomDesignConfig.actionBg,
+      color: navIconSelectedColor,
+      transition: "all 220ms ease",
+      transform: !isModernNavBottom ? "translateY(2px)" : "none",
     },
-
-    // ✅ เส้นคั่นแบบสั้นลง (ปรับ top/bottom ได้)
+    "& .MuiBottomNavigationAction-label": {
+      fontSize: `${labelSize}px !important`,
+      lineHeight: "1.1 !important",
+      transform: showModernNotch ? "translateX(-50%) !important" : "none !important",
+      opacity: "1 !important",
+      marginTop: isTextNavBottomDisplay
+        ? "0 !important"
+        : isModernNavBottom
+          ? "0 !important"
+          : "6px !important",
+      marginLeft: isTextNavBottomDisplay ? "0 !important" : undefined,
+      ...(showModernNotch
+        ? {
+            position: "absolute",
+            left: "50%",
+            bottom: -4,
+            width: "100%",
+            textAlign: "center",
+            pointerEvents: "none",
+          }
+        : {}),
+    },
     "& .MuiBottomNavigationAction-root:not(:last-of-type)::after": {
       content: '""',
       position: "absolute",
       right: 0,
-      top: paddingDivider,      // 👈 ระยะห่างจากด้านบน
-      bottom: paddingDivider,   // 👈 ระยะห่างจากด้านล่าง
-      borderRightWidth: navDivider ? 1 : 0,
+      top: paddingDivider,
+      bottom: paddingDivider,
+      borderRightWidth: navBottomDesignConfig.showDivider ? 1 : 0,
       borderRightStyle: navDividerStyle,
       borderRightColor: setColor(navDividerColor, navDividerOpacity),
       pointerEvents: "none",
     },
   }}
 >
-{navBottoms.map((nav, i) => {
+{navBottomItemsForDisplay.map((nav, i) => {
   const { icon, label, link } = nav;
+  const isTextModeItem = isTextNavBottomDisplay;
 
   return (
     <BottomNavigationAction
-      label={label}
+      label={isTextModeItem ? "" : label}
       key={i}
+      disableRipple
+      disableTouchRipple
       sx={{
+        pointerEvents: "none",
+        ...(allowModernCenterBubble && i === modernCenterIndexForDisplay
+          ? {
+              overflow: "visible",
+              "& .MuiSvgIcon-root, & i": { color: `${navIconSelectedColor} !important` },
+            }
+          : {}),
+        ...(allowModernCenterBubble && i !== modernCenterIndexForDisplay
+          ? {
+              "&.Mui-selected": {
+                color: navIconSelectedColor,
+              },
+              "&.Mui-selected::after": {
+                content: '""',
+                position: "absolute",
+                bottom: 6,
+                left: "50%",
+                width: 12,
+                height: 12,
+                borderRadius: "9999px",
+                transform: "translateX(-50%)",
+                backgroundColor: i === 1 ? "transparent" : "#2f9666",
+              },
+            }
+          : {}),
         "& .MuiBottomNavigationAction-label": {
           color: setColor(labelColor, labelOpacity),
-          marginTop: 0.5,
-          fontSize: labelSize,
+          marginTop: isModernNavBottom ? 0 : 0.5,
+          fontSize: `${labelSize}px`,
+          lineHeight: 1.1,
+          transform: isModernNavBottom ? "translateX(-50%)" : "none",
+          opacity: 1,
+          display: isTextModeItem ? "none" : undefined,
         },
       }}
       icon={
-        <IconAwsome
-          iconType={icon.type}
-          iconName={icon.name}
-          style={{
-            color: setColor(iconColor, iconOpacity),
-            fontSize:iconSize
-          }}
-        />
+        isTextModeItem ? (
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              width: "100%",
+              color: setColor(labelColor, labelOpacity),
+              fontSize: `${labelSize}px`,
+              lineHeight: 1.1,
+            }}
+          >
+            {hasVisibleIcon(icon) && (
+              <IconAwsome
+                iconType={icon.type}
+                iconName={icon.name}
+                style={{
+                  color: navIconSelectedColor,
+                  fontSize: iconSize,
+                  flexShrink: 0,
+                }}
+              />
+            )}
+            <span>{label}</span>
+          </div>
+        ) :
+        allowModernCenterBubble && i === modernCenterIndexForDisplay ? (
+          <div
+            style={{
+              width: modernCenterSize,
+              height: modernCenterSize,
+              minWidth: modernCenterSize,
+              minHeight: modernCenterSize,
+              position: "absolute",
+              top: modernCenterTop,
+              left: "50%",
+              borderRadius: "50%",
+              backgroundColor: navBottomBg,
+              display: "flex",
+              flexShrink: 0,
+              alignItems: "center",
+              justifyContent: "center",
+              aspectRatio: "1 / 1",
+              transform: "translateX(-50%)",
+              boxShadow: "none",
+              zIndex: 2,
+            }}
+          >
+            {hasVisibleIcon(icon) && (
+              <IconAwsome
+                iconType={icon.type}
+                iconName={icon.name}
+                style={{
+                  color: navIconSelectedColor,
+                  fontSize: iconSize * 1.5,
+                }}
+              />
+            )}
+          </div>
+        ) : (
+          hasVisibleIcon(icon) ? (
+            <IconAwsome
+              iconType={icon.type}
+              iconName={icon.name}
+              style={{
+                color: navIconSelectedColor,
+                fontSize: iconSize,
+                transform:
+                  isModernNavBottom && i !== modernCenterIndexForDisplay
+                    ? "translateY(-9px)"
+                    : !isModernNavBottom
+                      ? "translateY(-2px)"
+                      : "none",
+              }}
+            />
+          ) : null
+        )
       }
     />
   );
@@ -1511,9 +2234,11 @@ size={menuFontSize}
 
 
 </BottomNavigation>
+)}
   </div>
 
 </div>
+  </div>
  
 
 
@@ -1622,13 +2347,92 @@ size={menuFontSize}
   cursor: inherit !important;
 }
 
+/* สีพื้นหลังตอน Drag/Drop */
+.menuTree .nestable-item-copy,
+.menuTree .nestable-item-copy .nestable-item-name,
+.menuTree .nestable-item-copy .dd-item > div {
+  background: rgba(255, 255, 255, 0) !important;
+  border-radius: 3px !important;
+}
+
+.menuTree .nestable-item-copy > * {
+  border-radius: 3px !important;
+}
+
+.menuTree .nestable-item.is-dragging,
+.menuTree .dd-item.is-dragging {
+  background: #e3e3e3 !important;
+  border: none !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+  outline: none !important;
+  overflow: hidden !important;
+}
+
+
+.menuTree .nestable-item.is-dragging:before,
+.menuTree .dd-item.is-dragging:before {
+  content: none !important;
+}
+
+/* Global fallback: drag layer อาจอยู่นอก .menuTree */
+.nestable-item.is-dragging,
+.dd-item.is-dragging {
+  background: #e3e3e3 !important;
+  border: none !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+  outline: none !important;
+  overflow: hidden !important;
+}
+
+/* กรอบแดงเฉพาะไอเทมที่ติดเม้าส์ (drag copy) */
+.nestable-drag-layer .nestable-item-copy .MuiAccordion-root {
+  border: 1px solid #e5e5e5 !important;
+  border-width: 1px !important;
+}
+
+.nestable-drag-layer .nestable-item-copy .MuiAccordionSummary-root,
+.nestable-drag-layer .nestable-item-copy .MuiAccordionDetails-root {
+  border: none !important;
+}
+
+.nestable-item.is-dragging:before,
+.dd-item.is-dragging:before {
+  content: none !important;
+  display: none !important;
+}
+
+.nestable-drag-layer,
+.nestable-drag-layer .nestable-list {
+  background: transparent !important;
+}
+
+.nestable-drag-layer {
+  transform: translate3d(
+    var(--menu-drag-compensate-x, 0px),
+    var(--menu-drag-compensate-y, 0px),
+    0
+  ) !important;
+}
+
+.nestable-drag-layer .nestable-item-copy,
+.nestable-drag-layer .nestable-item-copy > * {
+  border-radius: 3px !important;
+  background: rgba(255, 255, 255, 0) !important;
+  box-shadow: none !important;
+  outline: none !important;
+  overflow: hidden !important;
+}
+
+
 /* (ถ้าอยากให้เส้นจางลงใน dark mode ก็เพิ่มได้)
 .dark .menuTree .nestable-list .nestable-list::before,
 .dark .menuTree .dd-list .dd-list::before {
   background: rgba(255,255,255,0.18);
 }
 */
- `}</style>
+`}</style>
  
 
     </main>
