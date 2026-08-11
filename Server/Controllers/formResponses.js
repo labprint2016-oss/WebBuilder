@@ -1,9 +1,10 @@
 const FormResponse = require("../Models/formResponses");
-
-const sanitizeAnswers = (raw) => {
-  if (!Array.isArray(raw)) return [];
-  return raw;
-};
+const {
+  validateAndSanitizeSubmission,
+  validateHoneypot,
+  validateOrigin,
+  validateTiming,
+} = require("../Utils/formSubmissionSecurity");
 
 exports.createFormResponse = async (req, res) => {
   try {
@@ -12,13 +13,35 @@ exports.createFormResponse = async (req, res) => {
     if (!menuBarId) return res.status(400).send("menuBarId is required");
     if (!formPresetId) return res.status(400).send("formPresetId is required");
 
+    if (!validateOrigin(req)) {
+      return res.status(403).send("Invalid submission");
+    }
+    if (!validateHoneypot(req.body)) {
+      return res.status(400).send("Invalid submission");
+    }
+    const meta =
+      req.body?.meta && typeof req.body.meta === "object" ? req.body.meta : {};
+    if (!validateTiming(meta)) {
+      return res.status(400).send("Invalid submission");
+    }
+
+    const validated = await validateAndSanitizeSubmission({
+      menuBarId,
+      formPresetId,
+      formName: req.body?.formName,
+      answers: req.body?.answers,
+      meta,
+    });
+    if (!validated.ok) {
+      return res.status(validated.status || 400).send(validated.message);
+    }
+
     const doc = await FormResponse.create({
       menuBarId,
       formPresetId,
-      formName: String(req.body?.formName || "").trim(),
-      answers: sanitizeAnswers(req.body?.answers),
-      meta:
-        req.body?.meta && typeof req.body.meta === "object" ? req.body.meta : {},
+      formName: validated.data.formName,
+      answers: validated.data.answers,
+      meta: validated.data.meta,
       read: false,
       starred: false,
     });

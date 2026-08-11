@@ -239,7 +239,7 @@ export default function SettingsPage({
           </div>
         </div>
 
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-4 grid w-full grid-cols-4 gap-2">
           {DASHBOARD_CHROME_TOKEN_GROUPS.map((group) => {
             const active = group.id === activeSection;
             return (
@@ -247,7 +247,7 @@ export default function SettingsPage({
                 key={group.id}
                 type="button"
                 onClick={() => setActiveSection(group.id)}
-                className="rounded-lg border px-3.5 py-2 text-left transition-colors"
+                className="min-w-0 w-full rounded-lg border px-3.5 py-2 text-left transition-colors"
                 style={
                   active
                     ? {

@@ -1,8 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Check } from "lucide-react";
+import { AlertCircle, Check } from "lucide-react";
 import { setColor, setFont } from "../../../../function";
 import IconAwsome from "../../IconAwsome";
 import { isValidFaIconRef } from "./iconElementConfig";
+import {
+  DEFAULT_TEL_PLACEHOLDER,
+  formatThaiPhoneDisplay,
+} from "../../formPhoneValidation";
 
 const renderOptions = (options, fallbackPrefix) => {
   if (Array.isArray(options) && options.length > 0) return options;
@@ -43,6 +47,7 @@ function FormElementView({
   onSubmitClick = null,
   submitPending = false,
   submitMessage = "",
+  submitMessageKind = "",
   /** Override options for cascading Select */
   selectOptions = null,
   /** Force Select disabled (design cascade) */
@@ -59,6 +64,8 @@ function FormElementView({
   onToggleLinkedOption = null,
   /** Controlled display value (e.g. computed Sum) */
   controlledValue = undefined,
+  /** Website form: required field empty after submit attempt */
+  fieldInvalid = false,
 }) {
   const { id } = elementData;
   const type = String(elementData?.type || "");
@@ -152,18 +159,23 @@ function FormElementView({
       : "Field Label";
   const isNumberInput = type === "frmNum" || type === "frmSum";
   const isSumReadOnly = type === "frmSum";
+  const validationType =
+    type === "frmInput" ? String(elementData?.formValidationType || "none") : "none";
+  const isTelValidation = type === "frmInput" && validationType === "tel";
   const sumUnit =
     typeof elementData?.placeholder === "string"
       ? elementData.placeholder.trim()
       : "";
   const inputPlaceholder =
-    typeof elementData?.placeholder === "string"
+    typeof elementData?.placeholder === "string" && elementData.placeholder.trim()
       ? elementData.placeholder
       : isSumReadOnly
         ? "Unit"
         : isNumberInput
           ? "0"
-          : "Type your message...";
+          : isTelValidation
+            ? DEFAULT_TEL_PLACEHOLDER
+            : "Type your message...";
   const sumDisplayValue = (() => {
     if (!isSumReadOnly) return "";
     const raw =
@@ -387,15 +399,86 @@ function FormElementView({
     const submitScaleClass = useLayoutSelectionFrame
       ? "origin-left scale-[0.94] transform-gpu transition-transform duration-150"
       : "";
+    const successIcon = isValidFaIconRef(elementData?.formSuccessIcon)
+      ? elementData.formSuccessIcon
+      : null;
+    const successLabelColorRef = normalizeColorRef(
+      elementData?.formSuccessLabelColor,
+      "#059669"
+    );
+    const successIconColorRef = normalizeColorRef(
+      elementData?.formSuccessIconColor,
+      "#059669"
+    );
+    const successBackgroundColorRef = normalizeColorRef(
+      elementData?.formSuccessBackgroundColor,
+      "#ecfdf5"
+    );
+    const successTextColor =
+      setColor(
+        theme,
+        successLabelColorRef,
+        clampOpacity(elementData?.formSuccessLabelColorOpacity, 255)
+      ) || "#059669";
+    const successIconColor =
+      setColor(
+        theme,
+        successIconColorRef,
+        clampOpacity(elementData?.formSuccessIconColorOpacity, 255)
+      ) || successTextColor;
+    const successBackgroundColor =
+      setColor(
+        theme,
+        successBackgroundColorRef,
+        clampOpacity(elementData?.formSuccessBackgroundColorOpacity, 255)
+      ) || "#ecfdf5";
+    const configuredSuccessMessage =
+      typeof elementData?.formSuccessMessage === "string" &&
+      elementData.formSuccessMessage.trim()
+        ? elementData.formSuccessMessage.trim()
+        : "ส่งข้อความเรียบร้อยแล้ว ขอบคุณมากค่ะ";
+    const showSuccessPreview =
+      isLayoutMode &&
+      !submitMessage &&
+      elementData?.formSuccessPreview === true;
+    const showSuccessMessage =
+      submitMessageKind === "success" && Boolean(submitMessage);
+    const successDisplayText = showSuccessMessage
+      ? submitMessage
+      : showSuccessPreview
+        ? configuredSuccessMessage
+        : "";
+    const renderSubmitErrorBanner = (message) => (
+      <div
+        role="alert"
+        className={`form-error-message-enter mt-2 flex w-full items-start gap-2 rounded-md border px-3 py-2.5 ${themeTextClass}`}
+        style={{
+          ...themeTextStyle,
+          color: "#b91c1c",
+          backgroundColor: "#fef2f2",
+          borderColor: "rgba(239, 68, 68, 0.28)",
+          fontSize: `${labelFontSize}px`,
+        }}
+      >
+        <AlertCircle
+          size={Math.max(15, labelFontSize + 1)}
+          strokeWidth={2.25}
+          className="mt-0.5 shrink-0"
+          style={{ color: "#dc2626" }}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 leading-snug">{message}</span>
+      </div>
+    );
     return (
       <div
         className={`flex w-full justify-start text-left ${formFieldSpacingClass} ${shellClass}`}
         onMouseEnter={() => hover?.({ id })}
         onMouseLeave={() => hover?.(false)}
       >
-        <div className="relative inline-block max-w-full">
+        <div className="relative w-full">
           <div
-            className={`${submitScaleClass} ${selectedFrameInnerBottomSpaceClass} ${controlsPeClass}`}
+            className={`${submitScaleClass} ${selectedFrameInnerBottomSpaceClass} ${controlsPeClass} flex w-full flex-col items-stretch`}
           >
             <button
               type="button"
@@ -404,7 +487,7 @@ function FormElementView({
                 if (!isInteractive || submitPending) return;
                 onSubmitClick?.();
               }}
-              className={`inline-flex min-h-[40px] min-w-[140px] w-auto items-center justify-center gap-2 self-start rounded-md px-4 py-2 font-semibold ${themeTextClass} ${
+              className={`inline-flex min-h-[40px] min-w-[140px] w-auto shrink-0 self-start items-center justify-center gap-2 rounded-md px-4 py-2 font-semibold ${themeTextClass} ${
                 !isInteractive || submitPending ? "opacity-70" : ""
               }`}
               style={{
@@ -423,18 +506,32 @@ function FormElementView({
               ) : null}
               {submitPending ? "กำลังส่ง..." : label || "Submit"}
             </button>
-            {submitMessage ? (
+            {successDisplayText ? (
               <div
-                className="mt-2 text-[12px]"
+                className={`form-success-message-enter mt-2 flex w-full items-center gap-2 rounded-md px-3 py-2 ${themeTextClass}`}
                 style={{
-                  color: submitMessage.startsWith("ส่งแล้ว")
-                    ? "#059669"
-                    : "#dc2626",
+                  ...themeTextStyle,
+                  color: successTextColor,
+                  backgroundColor: successBackgroundColor,
+                  fontSize: `${labelFontSize}px`,
                 }}
               >
-                {submitMessage}
+                {successIcon ? (
+                  <IconAwsome
+                    iconName={successIcon.name}
+                    iconType={successIcon.type}
+                    style={{
+                      fontSize: Math.max(13, labelFontSize),
+                      color: successIconColor,
+                    }}
+                  />
+                ) : null}
+                <span>{successDisplayText}</span>
               </div>
             ) : null}
+            {submitMessageKind === "error" && submitMessage
+              ? renderSubmitErrorBanner(submitMessage)
+              : null}
           </div>
         {useLayoutSelectionFrame && (
           <>
@@ -453,11 +550,16 @@ function FormElementView({
   const baseFieldClass =
     `w-full rounded-md border px-3 text-[13px] outline-none transition-colors [&::placeholder]:text-[var(--form-placeholder-color)] ${themeTextClass}`.trim();
   const fieldControlHeightPx = 38;
+  const invalidBorderColor = "rgba(239, 68, 68, 0.5)";
+  const effectiveBorderColor = fieldInvalid ? invalidBorderColor : borderColor;
   const baseInputStyle = {
-    borderColor,
+    borderColor: effectiveBorderColor,
     color: labelColor,
     ...themeTextStyle,
   };
+  const choiceGroupInvalidClass = fieldInvalid
+    ? "rounded-md border border-[rgba(239,68,68,0.5)] px-2 py-2"
+    : "";
 
   return (
     <div
@@ -494,9 +596,15 @@ function FormElementView({
                 </span>
               ) : null}
               <input
-                type={isSumReadOnly ? "text" : isNumberInput ? "number" : "text"}
+                type={isSumReadOnly ? "text" : isNumberInput ? "number" : isTelValidation ? "tel" : "text"}
                 step={!isSumReadOnly && isNumberInput ? "any" : undefined}
-                inputMode={isNumberInput && !isSumReadOnly ? "decimal" : undefined}
+                inputMode={
+                  isTelValidation
+                    ? "numeric"
+                    : isNumberInput && !isSumReadOnly
+                      ? "decimal"
+                      : undefined
+                }
                 readOnly={isSumReadOnly}
                 aria-readonly={isSumReadOnly || undefined}
                 tabIndex={isSumReadOnly ? -1 : undefined}
@@ -511,9 +619,29 @@ function FormElementView({
                 onChange={
                   isInteractive && !isSumReadOnly
                     ? (event) => {
-                        const next = event.target.value;
+                        const raw = event.target.value;
+                        const next = isTelValidation ? formatThaiPhoneDisplay(raw) : raw;
                         setTextValue(next);
                         emitFieldChange(next);
+                      }
+                    : undefined
+                }
+                onKeyDown={
+                  isInteractive && isTelValidation
+                    ? (event) => {
+                        if (event.ctrlKey || event.metaKey || event.altKey) return;
+                        const allowed = [
+                          "Backspace",
+                          "Delete",
+                          "Tab",
+                          "ArrowLeft",
+                          "ArrowRight",
+                          "Home",
+                          "End",
+                        ];
+                        if (allowed.includes(event.key)) return;
+                        if (/^\d$/.test(event.key)) return;
+                        event.preventDefault();
                       }
                     : undefined
                 }
@@ -618,7 +746,7 @@ function FormElementView({
                   className="absolute left-0 right-0 top-full z-40 max-h-48 overflow-y-auto rounded-md rounded-t-none border border-t-0 py-1"
                   style={{
                     backgroundColor: fieldBackgroundColor,
-                    borderColor,
+                    borderColor: effectiveBorderColor,
                     fontFamily: inputFont,
                   }}
                 >
@@ -670,10 +798,22 @@ function FormElementView({
                                 className="sr-only"
                                 checked={linked}
                                 onChange={(event) => {
-                                  onToggleLinkedOption?.(
-                                    item,
-                                    event.target.checked
-                                  );
+                                  const checked = event.target.checked;
+                                  onToggleLinkedOption?.(item, checked);
+                                  if (checked) {
+                                    if (!String(selectValue || "").trim()) {
+                                      setSelectValue(item);
+                                      emitFieldChange(item);
+                                    }
+                                  } else if (selectValue === item) {
+                                    const remaining = optionList.filter(
+                                      (opt) =>
+                                        opt !== item && linkedSet.has(String(opt))
+                                    );
+                                    const next = remaining[0] ?? "";
+                                    setSelectValue(next);
+                                    emitFieldChange(next);
+                                  }
                                 }}
                               />
                               <span
@@ -777,7 +917,7 @@ function FormElementView({
           )}
           {type === "frmRadio" && (
             <div
-              className={`flex flex-row flex-wrap items-center gap-x-4 gap-y-2 ${controlsPeClass}`}
+              className={`flex flex-row flex-wrap items-center gap-x-4 gap-y-2 ${controlsPeClass} ${choiceGroupInvalidClass}`}
             >
               {renderOptions(elementData?.options, "Option").map((item, index) => {
                 const isChecked = isInteractive
@@ -798,7 +938,11 @@ function FormElementView({
                     <span
                       className="relative inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px]"
                       style={{
-                        borderColor: isChecked ? optionAccentColor : borderColor,
+                        borderColor: isChecked
+                          ? optionAccentColor
+                          : fieldInvalid
+                            ? invalidBorderColor
+                            : borderColor,
                         backgroundColor: fieldBackgroundColor,
                       }}
                       aria-hidden
@@ -835,7 +979,7 @@ function FormElementView({
           )}
           {type === "frmCheckbox" && (
             <div
-              className={`flex flex-row flex-wrap items-center gap-x-4 gap-y-2 ${controlsPeClass}`}
+              className={`flex flex-row flex-wrap items-center gap-x-4 gap-y-2 ${controlsPeClass} ${choiceGroupInvalidClass}`}
             >
               {renderOptions(elementData?.options, "Option").map((item, index) => {
                 const isChecked = isInteractive
@@ -856,7 +1000,11 @@ function FormElementView({
                     <span
                       className="relative inline-flex size-[18px] shrink-0 items-center justify-center rounded-[4px] border-[1.5px]"
                       style={{
-                        borderColor: isChecked ? optionAccentColor : borderColor,
+                        borderColor: isChecked
+                          ? optionAccentColor
+                          : fieldInvalid
+                            ? invalidBorderColor
+                            : borderColor,
                         backgroundColor: isChecked
                           ? optionAccentColor
                           : fieldBackgroundColor,

@@ -31,6 +31,8 @@ import {
   Sun,
   Moon,
   Container,
+  SendHorizontal,
+  ArrowUp,
 } from "lucide-react";
 import TextField from "@mui/material/TextField";
 import {
@@ -1851,7 +1853,7 @@ const getDefaultMenuPresetState = () => {
   const defaultItems = createDefaultMenuItems();
   return {
     menuPresets: [buildMenuPreset({ id: "menu-preset-1", name: "Menu 1", items: defaultItems })],
-    activeMenuPresetId: "menu-preset-1",
+    activeMenuPresetId: null,
     defaultMenuPresetId: "menu-preset-1",
     menus: _.cloneDeep(defaultItems),
     nextCounter: 2,
@@ -1873,7 +1875,7 @@ const didInitMenuBarLoadRef = useRef(false);
 const latestMenuBarStateRef = useRef(null);
 const getDefaultHeroPresetState = () => ({
   heroPresets: [{ id: "hero-preset-1", name: "Hero 1" }],
-  activeHeroPresetId: "hero-preset-1",
+  activeHeroPresetId: null,
   defaultHeroPresetId: "hero-preset-1",
   nextCounter: 2,
 });
@@ -1890,6 +1892,8 @@ const [heroResetTokenFromHeader, setHeroResetTokenFromHeader] = useState(0);
 const [heroMutationEventFromHeader, setHeroMutationEventFromHeader] = useState(null);
 const processedHeroMutationEventIdRef = useRef(null);
 const previousHeroPresetIdForSectionSyncRef = useRef(null);
+const [heroSaveBaseline, setHeroSaveBaseline] = useState(null);
+const [menuSaveBaseline, setMenuSaveBaseline] = useState(null);
 
 const FORMS_MENU_BAR_ID = "69db17211be82fe7637ea096";
 const createDefaultFormRows = () => [
@@ -1914,7 +1918,7 @@ const getDefaultFormPresetState = () => {
         calculations: [],
       },
     ],
-    activeFormPresetId: "form-preset-1",
+    activeFormPresetId: null,
     defaultFormPresetId: "form-preset-1",
   };
 };
@@ -1924,9 +1928,7 @@ if (initialFormPresetStateRef.current == null) {
 }
 const initialFormPresetState = initialFormPresetStateRef.current;
 const [formPresets, setFormPresets] = useState(initialFormPresetState.formPresets);
-const [activeFormPresetId, setActiveFormPresetId] = useState(
-  initialFormPresetState.activeFormPresetId
-);
+const [activeFormPresetId, setActiveFormPresetId] = useState(null);
 const [defaultFormPresetId, setDefaultFormPresetId] = useState(
   initialFormPresetState.defaultFormPresetId
 );
@@ -1955,10 +1957,12 @@ const isFormsStateDirty = useMemo(() => {
   return !_.isEqual(
     {
       formPresets,
-      activeFormPresetId,
       defaultFormPresetId,
     },
-    formsBaseline
+    {
+      formPresets: formsBaseline.formPresets,
+      defaultFormPresetId: formsBaseline.defaultFormPresetId,
+    }
   );
 }, [
   isFormsHydrated,
@@ -2029,7 +2033,9 @@ const handleFormStateChange = useCallback(
         return _.isEqual(prev, merged) ? prev : merged;
       });
     }
-    if (typeof nextActiveFormPresetId === "string") {
+    if (nextActiveFormPresetId === null || nextActiveFormPresetId === "") {
+      setActiveFormPresetId((prev) => (prev == null ? prev : null));
+    } else if (typeof nextActiveFormPresetId === "string") {
       setActiveFormPresetId((prev) =>
         prev === nextActiveFormPresetId ? prev : nextActiveFormPresetId
       );
@@ -2110,13 +2116,10 @@ useEffect(() => {
   });
 }, [formMutationEventFromHeader, activeFormPresetId]);
 
-const activeFormPreset = useMemo(
-  () =>
-    formPresets.find((preset) => preset.id === activeFormPresetId) ||
-    formPresets[0] ||
-    null,
-  [formPresets, activeFormPresetId]
-);
+const activeFormPreset = useMemo(() => {
+  if (!activeFormPresetId) return null;
+  return formPresets.find((preset) => preset.id === activeFormPresetId) || null;
+}, [formPresets, activeFormPresetId]);
 
 const handleActiveFormRowsChange = useCallback(
   (nextRows) => {
@@ -2199,18 +2202,15 @@ const loadForms = useCallback(() => {
         serverPresets.length > 0
           ? serverPresets.map((preset, index) => normalizeFormPreset(preset, index))
           : getDefaultFormPresetState().formPresets;
-      const nextActive = normalized.some((preset) => preset.id === data.activeFormPresetId)
-        ? data.activeFormPresetId
-        : normalized[0].id;
       const nextDefault = normalized.some((preset) => preset.id === data.defaultFormPresetId)
         ? data.defaultFormPresetId
-        : nextActive;
+        : normalized[0]?.id ?? null;
       setFormPresets(normalized);
-      setActiveFormPresetId(nextActive);
+      setActiveFormPresetId(null);
       setDefaultFormPresetId(nextDefault);
       formPresetsRef.current = normalized;
-      activeFormPresetIdRef.current = nextActive;
-      captureFormsBaseline(normalized, nextActive, nextDefault);
+      activeFormPresetIdRef.current = null;
+      captureFormsBaseline(normalized, null, nextDefault);
       setIsFormsHydrated(true);
       return { ok: true };
     })
@@ -2218,13 +2218,13 @@ const loadForms = useCallback(() => {
       console.error("Load forms failed:", error);
       const fallback = getDefaultFormPresetState();
       setFormPresets(fallback.formPresets);
-      setActiveFormPresetId(fallback.activeFormPresetId);
+      setActiveFormPresetId(null);
       setDefaultFormPresetId(fallback.defaultFormPresetId);
       formPresetsRef.current = fallback.formPresets;
-      activeFormPresetIdRef.current = fallback.activeFormPresetId;
+      activeFormPresetIdRef.current = null;
       captureFormsBaseline(
         fallback.formPresets,
-        fallback.activeFormPresetId,
+        null,
         fallback.defaultFormPresetId
       );
       setIsFormsHydrated(true);
@@ -2395,7 +2395,9 @@ const handleHeroStateChange = useCallback(
         _.isEqual(prev, nextHeroPresets) ? prev : _.cloneDeep(nextHeroPresets)
       );
     }
-    if (typeof nextActiveHeroPresetId === "string") {
+    if (nextActiveHeroPresetId === null || nextActiveHeroPresetId === "") {
+      setActiveHeroPresetId((prev) => (prev == null ? prev : null));
+    } else if (typeof nextActiveHeroPresetId === "string") {
       setActiveHeroPresetId((prev) =>
         prev === nextActiveHeroPresetId ? prev : nextActiveHeroPresetId
       );
@@ -2587,7 +2589,10 @@ useEffect(() => {
   });
 }, [heroMutationEventFromHeader, activeHeroPresetId, heroSection]);
 useEffect(() => {
-  if (!activeHeroPresetId) return;
+  if (!activeHeroPresetId) {
+    previousHeroPresetIdForSectionSyncRef.current = null;
+    return;
+  }
   if (previousHeroPresetIdForSectionSyncRef.current === activeHeroPresetId) return;
   previousHeroPresetIdForSectionSyncRef.current = activeHeroPresetId;
   const nextSection = heroSectionsByPreset?.[activeHeroPresetId];
@@ -2761,19 +2766,7 @@ const deleteMenuPreset = useCallback(
       }
     }
     if (String(activeMenuPresetId) === targetId) {
-      const fallbackPreset = nextPresets[Math.max(removeIndex - 1, 0)] || nextPresets[0];
-      if (!fallbackPreset) return;
-      setActiveMenuPresetId(fallbackPreset.id);
-      setMenus(_.cloneDeep(fallbackPreset.items || createDefaultMenuItems()));
-      if (fallbackPreset?.menuBarDesktop) setMenuBarDesktop(_.cloneDeep(fallbackPreset.menuBarDesktop));
-      if (fallbackPreset?.menuBarMobile) setMenuBarMobile(_.cloneDeep(fallbackPreset.menuBarMobile));
-      if (Object.prototype.hasOwnProperty.call(fallbackPreset || {}, "menuBarMobilePhone")) {
-        setMenuBarMobilePhone(_.cloneDeep(fallbackPreset.menuBarMobilePhone ?? null));
-      }
-      if (fallbackPreset?.navBottomMobile) setNavBottomMobile(_.cloneDeep(fallbackPreset.navBottomMobile));
-      if (fallbackPreset?.navBottomTablet) setNavBottomTablet(_.cloneDeep(fallbackPreset.navBottomTablet));
-      if (fallbackPreset?.topBar) setTopBar(_.cloneDeep(fallbackPreset.topBar));
-      if (fallbackPreset?.footerBar) setFooterBar(_.cloneDeep(fallbackPreset.footerBar));
+      setActiveMenuPresetId(null);
     }
     return { ok: true, name: removedPreset?.name || "" };
   },
@@ -3304,6 +3297,13 @@ useEffect(() => {
   });
 }, [activeMenuPresetId, menus]);
 
+useEffect(() => {
+  if (activeMenuPresetId) return;
+  setNavOpen(false);
+  setOffcanvas((prev) =>
+    ["Top", "Menu", "Nav", "Footer"].includes(prev) ? null : prev
+  );
+}, [activeMenuPresetId]);
 
 const menuButtonRef = useRef(null);
 
@@ -3631,46 +3631,26 @@ const loadMenuBar = () => {
               fallbackVisualConfig
             ),
           ];
-    const restoredActiveId = presetsToUse.some(
-      (preset) => preset.id === serverActiveMenuPresetId
-    )
-      ? serverActiveMenuPresetId
-      : presetsToUse[0].id;
     const restoredDefaultId = presetsToUse.some(
       (preset) => preset.id === serverDefaultMenuPresetId
     )
       ? serverDefaultMenuPresetId
-      : restoredActiveId;
-    const restoredActivePreset =
-      presetsToUse.find((preset) => preset.id === restoredActiveId) ||
-      presetsToUse[0];
+      : presetsToUse[0]?.id ?? null;
     setMenuPresets(presetsToUse);
-    setActiveMenuPresetId(restoredActiveId);
+    setActiveMenuPresetId(null);
     setDefaultMenuPresetId(restoredDefaultId);
-    setMenus(_.cloneDeep(restoredActivePreset?.items || createDefaultMenuItems()));
-    if (restoredActivePreset?.menuBarDesktop) {
-      setMenuBarDesktop(_.cloneDeep(restoredActivePreset.menuBarDesktop));
-    }
-    if (restoredActivePreset?.menuBarMobile) {
-      setMenuBarMobile(_.cloneDeep(restoredActivePreset.menuBarMobile));
-    }
-    if (Object.prototype.hasOwnProperty.call(restoredActivePreset || {}, "menuBarMobilePhone")) {
-      setMenuBarMobilePhone(_.cloneDeep(restoredActivePreset.menuBarMobilePhone ?? null));
-    }
-    if (restoredActivePreset?.navBottomMobile) {
-      setNavBottomMobile(_.cloneDeep(restoredActivePreset.navBottomMobile));
-    }
-    if (restoredActivePreset?.navBottomTablet) {
-      setNavBottomTablet(_.cloneDeep(restoredActivePreset.navBottomTablet));
-    }
-    if (restoredActivePreset?.topBar) {
-      setTopBar(_.cloneDeep(restoredActivePreset.topBar));
-    }
-    if (restoredActivePreset?.footerBar) {
-      setFooterBar(_.cloneDeep(restoredActivePreset.footerBar));
-    } else {
-      setFooterBar(_.cloneDeep(normalizedFooterBar));
-    }
+    setMenus(createDefaultMenuItems());
+    setMenuBarDesktop(_.cloneDeep(normalizedMenuBarDesktop));
+    setMenuBarMobile(_.cloneDeep(normalizedMenuBarMobile));
+    setMenuBarMobilePhone(
+      normalizedMenuBarMobilePhone
+        ? _.cloneDeep(normalizedMenuBarMobilePhone)
+        : null
+    );
+    setNavBottomMobile(_.cloneDeep(normalizedMobileNavBottom));
+    setNavBottomTablet(_.cloneDeep(normalizedTabletNavBottom));
+    setTopBar(_.cloneDeep(normalizedTopBar));
+    setFooterBar(_.cloneDeep(normalizedFooterBar));
     const maxCounter = presetsToUse.reduce((acc, preset) => {
       const match = String(preset.id || "").match(/menu-preset-(\d+)/);
       if (!match) return acc;
@@ -3689,18 +3669,13 @@ const loadMenuBar = () => {
       normalizedHeroPresets.length > 0
         ? normalizedHeroPresets
         : getDefaultHeroPresetState().heroPresets;
-    const restoredActiveHeroId = heroPresetsToUse.some(
-      (preset) => preset.id === serverActiveHeroPresetId
-    )
-      ? serverActiveHeroPresetId
-      : heroPresetsToUse[0].id;
     const restoredDefaultHeroId = heroPresetsToUse.some(
       (preset) => preset.id === serverDefaultHeroPresetId
     )
       ? serverDefaultHeroPresetId
-      : restoredActiveHeroId;
+      : heroPresetsToUse[0]?.id ?? null;
     setHeroPresets(heroPresetsToUse);
-    setActiveHeroPresetId(restoredActiveHeroId);
+    setActiveHeroPresetId(null);
     setDefaultHeroPresetId(restoredDefaultHeroId);
     const maxHeroCounter = heroPresetsToUse.reduce((acc, preset) => {
       const match = String(preset.id || "").match(/hero-preset-(\d+)/);
@@ -3726,12 +3701,16 @@ const loadMenuBar = () => {
       );
     });
     setHeroSectionsByPreset(normalizedHeroSections);
-    setHeroSection(
-      _.cloneDeep(
-        normalizedHeroSections[restoredActiveHeroId] ||
-          normalizeHeroSection(serverHeroSection || createDefaultHeroSection())
-      )
-    );
+    setHeroSection(normalizeHeroSection(createDefaultHeroSection()));
+    setMenuSaveBaseline({
+      menuPresets: _.cloneDeep(presetsToUse),
+      defaultMenuPresetId: restoredDefaultId,
+    });
+    setHeroSaveBaseline({
+      heroPresets: _.cloneDeep(heroPresetsToUse),
+      defaultHeroPresetId: restoredDefaultHeroId,
+      heroSectionsByPreset: _.cloneDeep(normalizedHeroSections),
+    });
     setIsMenuPresetHydrated(true);
   }).catch(() => {
     setIsMenuPresetHydrated(true);
@@ -3756,6 +3735,35 @@ useEffect(()=>{
 const navBottom = device === "Mobile" ? navBottomMobile:navBottomTablet
 const menuBarForCurrentDevice =
   device === "Mobile" ? (menuBarMobilePhone || menuBarMobile) : menuBarMobile;
+
+const isHeroDirty = useMemo(() => {
+  if (!isMenuPresetHydrated || !heroSaveBaseline) return false;
+  return !_.isEqual(
+    {
+      heroPresets,
+      defaultHeroPresetId,
+      heroSectionsByPreset,
+    },
+    heroSaveBaseline
+  );
+}, [
+  isMenuPresetHydrated,
+  heroSaveBaseline,
+  heroPresets,
+  defaultHeroPresetId,
+  heroSectionsByPreset,
+]);
+
+const isMenuDirty = useMemo(() => {
+  if (!isMenuPresetHydrated || !menuSaveBaseline) return false;
+  return !_.isEqual(
+    {
+      menuPresets,
+      defaultMenuPresetId,
+    },
+    menuSaveBaseline
+  );
+}, [isMenuPresetHydrated, menuSaveBaseline, menuPresets, defaultMenuPresetId]);
 
 const syncActivePresetVisualField = useCallback((field, value) => {
   if (!activeMenuPresetId) return;
@@ -3924,6 +3932,16 @@ const submitMenuBar = (options = {})=>{
   .then(()=>{
     if (shouldReloadAfterSave) {
       loadMenuBar();
+    } else {
+      setMenuSaveBaseline({
+        menuPresets: _.cloneDeep(latest.menuPresets ?? menuPresets),
+        defaultMenuPresetId: latest.defaultMenuPresetId ?? defaultMenuPresetId,
+      });
+      setHeroSaveBaseline({
+        heroPresets: _.cloneDeep(latest.heroPresets ?? heroPresets),
+        defaultHeroPresetId: latest.defaultHeroPresetId ?? defaultHeroPresetId,
+        heroSectionsByPreset: _.cloneDeep(latest.heroSections ?? heroSectionsByPreset),
+      });
     }
     return { ok: true }
   }).catch((error) => ({
@@ -4332,6 +4350,8 @@ useEffect(() => {
                       defaultFormPresetId={defaultFormPresetId}
                       isFormsHydrated={isFormsHydrated}
                       isFormsDirty={isFormsDirty}
+                      isHeroDirty={isHeroDirty}
+                      isMenuDirty={isMenuDirty}
                       onFormStateChange={handleFormStateChange}
                       submitForms={submitForms}
                     />
@@ -4340,16 +4360,181 @@ useEffect(() => {
                 <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
                   <Suspense fallback={<div className="h-full min-h-0 flex-1 bg-transparent" />}>
                     <Routes>
-                    <Route path="heros" element={<HeroPage key={`hero-${device}`} heroSection={heroSection} theme={theme} openOffcavanas={openOffcavanas} updateHeroSection={updateHeroSectionFromPanel} device={device} />} />
-                    <Route path="menus" element={isMenuPresetHydrated ? <MenuPage menuButtonRef={menuButtonRef} menus={menus} setMenus={setMenus} navBottom={navBottom} navOpen={navOpen} setNavOpen={setNavOpen} setOpenBar={setOffcanvas} device={device} menuBar={menuBarForCurrentDevice} topBar={topBar} footerBar={footerBar} theme={theme} setFont={setFont} darkMode={darkMode} darkTextColor={darkTextColor}/> : <div className="h-full w-full bg-transparent" />} />
+                    <Route
+                      path="heros"
+                      element={
+                        isMenuPresetHydrated ? (
+                          activeHeroPresetId ? (
+                            <HeroPage
+                              key={`hero-${device}`}
+                              heroSection={heroSection}
+                              theme={theme}
+                              openOffcavanas={openOffcavanas}
+                              updateHeroSection={updateHeroSectionFromPanel}
+                              device={device}
+                            />
+                          ) : (
+                            <div
+                              className="flex h-full min-h-0 w-full items-center justify-center px-6 py-10"
+                              style={{ background: "var(--dash-bg, #f8fafc)" }}
+                            >
+                              <div
+                                className="w-full max-w-[440px] rounded-2xl border px-8 py-10 text-center shadow-sm"
+                                style={{
+                                  background: "var(--dash-bg, #f8fafc)",
+                                  borderColor: "var(--dash-border, #e2e8f0)",
+                                  boxShadow:
+                                    darkMode === "dark"
+                                      ? "0 4px 24px color-mix(in srgb, var(--dash-bg, #030712) 40%, transparent)"
+                                      : undefined,
+                                }}
+                              >
+                                <div
+                                  className="mx-auto mb-5 flex h-[56px] w-[56px] items-center justify-center rounded-2xl"
+                                  style={{
+                                    background:
+                                      "color-mix(in srgb, var(--dash-accent, var(--dash-panel-btn-group-active, #333333)) 14%, var(--dash-bg, #f8fafc))",
+                                    color: "var(--dash-accent, var(--dash-panel-btn-group-active, #333333))",
+                                  }}
+                                >
+                                  <Layers size={26} strokeWidth={1.75} />
+                                </div>
+                                <h2 className="dash-heading text-[16px] font-semibold tracking-wide">
+                                  กรุณาเลือก Hero เพื่อเริ่มออกแบบ
+                                </h2>
+                                <p className="dash-muted mt-2 text-[13px] leading-relaxed">
+                                  เลือก Hero จากรายการด้านบนเพื่อแก้ไขรายละเอียดและปรับแต่ง
+                                </p>
+                                <div
+                                  className="mt-6 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[12px] font-medium"
+                                  style={{
+                                    borderColor: "var(--dash-border, #e2e8f0)",
+                                    background: "var(--dash-panel, var(--dash-bg, #f8fafc))",
+                                    color: "var(--dash-text-muted, #64748b)",
+                                  }}
+                                >
+                                  <ArrowUp
+                                    size={14}
+                                    strokeWidth={2.25}
+                                    aria-hidden
+                                    style={{ color: "var(--dash-accent, var(--dash-nav-active, #334155))" }}
+                                  />
+                                  <span>
+                                    กดปุ่ม{" "}
+                                    <span
+                                      className="font-semibold"
+                                      style={{ color: "var(--dash-heading, #0f172a)" }}
+                                    >
+                                      เลือก Hero
+                                    </span>{" "}
+                                    ที่แถบด้านบน
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        ) : (
+                          <div className="h-full w-full bg-transparent" />
+                        )
+                      }
+                    />
+                    <Route
+                      path="menus"
+                      element={
+                        isMenuPresetHydrated ? (
+                          activeMenuPresetId ? (
+                            <MenuPage
+                              menuButtonRef={menuButtonRef}
+                              menus={menus}
+                              setMenus={setMenus}
+                              navBottom={navBottom}
+                              navOpen={navOpen}
+                              setNavOpen={setNavOpen}
+                              setOpenBar={setOffcanvas}
+                              device={device}
+                              menuBar={menuBarForCurrentDevice}
+                              topBar={topBar}
+                              footerBar={footerBar}
+                              theme={theme}
+                              setFont={setFont}
+                              darkMode={darkMode}
+                              darkTextColor={darkTextColor}
+                            />
+                          ) : (
+                            <div
+                              className="flex h-full min-h-0 w-full items-center justify-center px-6 py-10"
+                              style={{ background: "var(--dash-bg, #f8fafc)" }}
+                            >
+                              <div
+                                className="w-full max-w-[440px] rounded-2xl border px-8 py-10 text-center shadow-sm"
+                                style={{
+                                  background: "var(--dash-bg, #f8fafc)",
+                                  borderColor: "var(--dash-border, #e2e8f0)",
+                                  boxShadow:
+                                    darkMode === "dark"
+                                      ? "0 4px 24px color-mix(in srgb, var(--dash-bg, #030712) 40%, transparent)"
+                                      : undefined,
+                                }}
+                              >
+                                <div
+                                  className="mx-auto mb-5 flex h-[56px] w-[56px] items-center justify-center rounded-2xl"
+                                  style={{
+                                    background:
+                                      "color-mix(in srgb, var(--dash-accent, var(--dash-panel-btn-group-active, #333333)) 14%, var(--dash-bg, #f8fafc))",
+                                    color: "var(--dash-accent, var(--dash-panel-btn-group-active, #333333))",
+                                  }}
+                                >
+                                  <Menu size={26} strokeWidth={1.75} />
+                                </div>
+                                <h2 className="dash-heading text-[16px] font-semibold tracking-wide">
+                                  กรุณาเลือกเมนูเพื่อเริ่มออกแบบ
+                                </h2>
+                                <p className="dash-muted mt-2 text-[13px] leading-relaxed">
+                                  เลือกเมนูจากรายการด้านบนเพื่อแก้ไขรายละเอียดและปรับแต่ง
+                                </p>
+                                <div
+                                  className="mt-6 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[12px] font-medium"
+                                  style={{
+                                    borderColor: "var(--dash-border, #e2e8f0)",
+                                    background: "var(--dash-panel, var(--dash-bg, #f8fafc))",
+                                    color: "var(--dash-text-muted, #64748b)",
+                                  }}
+                                >
+                                  <ArrowUp
+                                    size={14}
+                                    strokeWidth={2.25}
+                                    aria-hidden
+                                    style={{ color: "var(--dash-accent, var(--dash-nav-active, #334155))" }}
+                                  />
+                                  <span>
+                                    กดปุ่ม{" "}
+                                    <span
+                                      className="font-semibold"
+                                      style={{ color: "var(--dash-heading, #0f172a)" }}
+                                    >
+                                      เลือกเมนู
+                                    </span>{" "}
+                                    ที่แถบด้านบน
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        ) : (
+                          <div className="h-full w-full bg-transparent" />
+                        )
+                      }
+                    />
                     <Route
                       path="forms"
                       element={
                         isFormsHydrated ? (
+                          activeFormPresetId && activeFormPreset ? (
                           <FormsPage
                             theme={theme}
                             darkMode={darkMode}
                             textColor={darkTextColor}
+                            formName={activeFormPreset?.name || ""}
                             activeFormPresetId={activeFormPresetId}
                             rows={activeFormPreset?.gridRows || []}
                             currentRowId={activeFormPreset?.selectedRowId ?? null}
@@ -4373,6 +4558,66 @@ useEffect(() => {
                             }}
                             onFormsPanelDraftDirtyChange={setFormsPanelDraftDirty}
                           />
+                          ) : (
+                            <div
+                              className="flex h-full min-h-0 w-full items-center justify-center px-6 py-10"
+                              style={{ background: "var(--dash-bg, #f8fafc)" }}
+                            >
+                              <div
+                                className="w-full max-w-[440px] rounded-2xl border px-8 py-10 text-center shadow-sm"
+                                style={{
+                                  background: "var(--dash-bg, #f8fafc)",
+                                  borderColor: "var(--dash-border, #e2e8f0)",
+                                  boxShadow:
+                                    darkMode === "dark"
+                                      ? "0 4px 24px color-mix(in srgb, var(--dash-bg, #030712) 40%, transparent)"
+                                      : undefined,
+                                }}
+                              >
+                                <div
+                                  className="mx-auto mb-5 flex h-[56px] w-[56px] items-center justify-center rounded-2xl"
+                                  style={{
+                                    background:
+                                      "color-mix(in srgb, var(--dash-accent, var(--dash-panel-btn-group-active, #333333)) 14%, var(--dash-bg, #f8fafc))",
+                                    color: "var(--dash-accent, var(--dash-panel-btn-group-active, #333333))",
+                                  }}
+                                >
+                                  <SendHorizontal size={26} strokeWidth={1.75} />
+                                </div>
+                                <h2 className="dash-heading text-[16px] font-semibold tracking-wide">
+                                  กรุณาเลือกฟอร์มเพื่อเริ่มออกแบบ
+                                </h2>
+                                <p className="dash-muted mt-2 text-[13px] leading-relaxed">
+                                  เลือกฟอร์มจากรายการด้านบนเพื่อแก้ไขรายละเอียดและปรับแต่ง
+                                </p>
+                                <div
+                                  className="mt-6 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[12px] font-medium"
+                                  style={{
+                                    borderColor: "var(--dash-border, #e2e8f0)",
+                                    background: "var(--dash-panel, var(--dash-bg, #f8fafc))",
+                                    color: "var(--dash-text-muted, #64748b)",
+                                  }}
+                                >
+                                  <ArrowUp
+                                    size={14}
+                                    strokeWidth={2.25}
+                                    aria-hidden
+                                    style={{ color: "var(--dash-accent, var(--dash-nav-active, #334155))" }}
+                                  />
+                                  <span>
+                                    กดปุ่ม{" "}
+                                    <span
+                                      className="font-semibold"
+                                      style={{ color: "var(--dash-heading, #0f172a)" }}
+                                    >
+                                      เลือกฟอร์ม
+                                    </span>{" "}
+                                    ที่แถบด้านบน
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )
                         ) : (
                           <div className="h-full w-full bg-transparent" />
                         )
@@ -4416,9 +4661,62 @@ useEffect(() => {
                             openListBoxTextEditRef={openListBoxTextEditRef}
                           />
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center px-6">
-                            <div className="rounded-lg border border-dashed border-slate-300 bg-white px-5 py-4 text-center text-[13px] text-slate-500 dark:border-white/20 dark:bg-slate-900/40 dark:text-white/55">
-                              กรุณาเลือกหน้าก่อนเริ่มออกแบบ
+                          <div
+                            className="flex h-full min-h-0 w-full items-center justify-center px-6 py-10"
+                            style={{ background: "var(--dash-bg, #f8fafc)" }}
+                          >
+                            <div
+                              className="w-full max-w-[440px] rounded-2xl border px-8 py-10 text-center shadow-sm"
+                              style={{
+                                background: "var(--dash-bg, #f8fafc)",
+                                borderColor: "var(--dash-border, #e2e8f0)",
+                                boxShadow:
+                                  darkMode === "dark"
+                                    ? "0 4px 24px color-mix(in srgb, var(--dash-bg, #030712) 40%, transparent)"
+                                    : undefined,
+                              }}
+                            >
+                              <div
+                                className="mx-auto mb-5 flex h-[56px] w-[56px] items-center justify-center rounded-2xl"
+                                style={{
+                                  background:
+                                    "color-mix(in srgb, var(--dash-accent, var(--dash-panel-btn-group-active, #333333)) 14%, var(--dash-bg, #f8fafc))",
+                                  color: "var(--dash-accent, var(--dash-panel-btn-group-active, #333333))",
+                                }}
+                              >
+                                <FileText size={26} strokeWidth={1.75} />
+                              </div>
+                              <h2 className="dash-heading text-[16px] font-semibold tracking-wide">
+                                กรุณาเลือกหน้าก่อนเริ่มออกแบบ
+                              </h2>
+                              <p className="dash-muted mt-2 text-[13px] leading-relaxed">
+                                เลือกหน้าจากรายการด้านบนเพื่อแก้ไขรายละเอียดและปรับแต่ง
+                              </p>
+                              <div
+                                className="mt-6 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[12px] font-medium"
+                                style={{
+                                  borderColor: "var(--dash-border, #e2e8f0)",
+                                  background: "var(--dash-panel, var(--dash-bg, #f8fafc))",
+                                  color: "var(--dash-text-muted, #64748b)",
+                                }}
+                              >
+                                <ArrowUp
+                                  size={14}
+                                  strokeWidth={2.25}
+                                  aria-hidden
+                                  style={{ color: "var(--dash-accent, var(--dash-nav-active, #334155))" }}
+                                />
+                                <span>
+                                  กดปุ่ม{" "}
+                                  <span
+                                    className="font-semibold"
+                                    style={{ color: "var(--dash-heading, #0f172a)" }}
+                                  >
+                                    เลือกหน้า
+                                  </span>{" "}
+                                  ที่แถบด้านบน
+                                </span>
+                              </div>
                             </div>
                           </div>
                         )

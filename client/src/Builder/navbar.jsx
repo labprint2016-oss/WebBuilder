@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef, use } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef, use } from "react";
 import {
   Home,
   SwatchBook,
@@ -28,6 +28,7 @@ import {
   Mail,
 } from "lucide-react";
 import IconLucide from "../IconLucide";
+import { getFormResponses } from "../../Functions/forms";
 import TextField from "@mui/material/TextField";
 import { styled } from "@mui/material/styles";
 import {
@@ -516,9 +517,39 @@ function SelectInput({ label, name, value, datas, handleChange }) {
 
 
 function Navbar({ handleDragElement,isDark,updateNewTheme,navOpen,setNavOpen,selectedMenuId,setSelectedMenuId, railExpanded = false }) {
+ const FORMS_MENU_BAR_ID = "69db17211be82fe7637ea096";
+ const countUnreadMessages = (rows) =>
+   (Array.isArray(rows) ? rows : []).filter(
+     (row) => !(row?.read === true || row?.meta?.read === true)
+   ).length;
 
 
  const navigate = useNavigate()
+ const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+
+ const refreshUnreadMessageCount = useCallback(async () => {
+   try {
+     const res = await getFormResponses(FORMS_MENU_BAR_ID);
+     const rows = Array.isArray(res?.data) ? res.data : [];
+     setUnreadMessageCount(countUnreadMessages(rows));
+   } catch {
+     // keep previous count when fetch fails
+   }
+ }, []);
+
+ useEffect(() => {
+   refreshUnreadMessageCount();
+   const intervalId = window.setInterval(refreshUnreadMessageCount, 30000);
+   const onFocus = () => refreshUnreadMessageCount();
+   const onMessagesChanged = () => refreshUnreadMessageCount();
+   window.addEventListener("focus", onFocus);
+   window.addEventListener("wb:messages-changed", onMessagesChanged);
+   return () => {
+     window.clearInterval(intervalId);
+     window.removeEventListener("focus", onFocus);
+     window.removeEventListener("wb:messages-changed", onMessagesChanged);
+   };
+ }, [refreshUnreadMessageCount]);
 
   const bgMenu = "#efefef"
   const bgMenuOption = "#f8f8f8"
@@ -1154,6 +1185,7 @@ const pages = ["Page1","Page2","Page3"]
               label={item.label}
               expanded={railExpanded}
               active={selectedMenuId === item.label}
+              badge={item.label === "Message" ? unreadMessageCount : 0}
               onClick={() => {
                 setSelectedMenuId(item.label);
                 setNavOpen(true);
@@ -1665,7 +1697,15 @@ const pages = ["Page1","Page2","Page3"]
   );
 }
 
-function IconButton({ icon: Icon, label, onClick, active = false, expanded = false }) {
+function IconButton({ icon: Icon, label, onClick, active = false, expanded = false, badge = 0 }) {
+  const badgeCount = Math.max(0, Number(badge) || 0);
+  const showBadge = badgeCount > 0;
+  const badgeLabel = badgeCount > 99 ? "99+" : String(badgeCount);
+  const ariaLabel =
+    label === "Message" && showBadge
+      ? `${label}, ${badgeCount} ข้อความที่ยังไม่ได้อ่าน`
+      : label;
+
   return (
     <button
       type="button"
@@ -1681,11 +1721,21 @@ function IconButton({ icon: Icon, label, onClick, active = false, expanded = fal
           ? "color-mix(in srgb, var(--dash-nav-active) 14%, transparent)"
           : "transparent",
       }}
-      aria-label={label}
+      aria-label={ariaLabel}
       aria-current={active ? "page" : undefined}
-      title={expanded ? undefined : label}
+      title={expanded ? undefined : ariaLabel}
     >
-      <Icon className={`shrink-0 ${expanded ? "h-6 w-6" : "h-5 w-5"}`} />
+      <span className="relative inline-flex shrink-0">
+        <Icon className={`shrink-0 ${expanded ? "h-6 w-6" : "h-5 w-5"}`} />
+        {showBadge ? (
+          <span
+            className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[9px] font-bold leading-none text-white"
+            style={{ background: "var(--dash-nav-active, #ef4444)" }}
+          >
+            {badgeLabel}
+          </span>
+        ) : null}
+      </span>
       {expanded ? (
         <span className="max-w-full truncate text-center text-[12px] font-medium leading-tight tracking-tight opacity-40">
           {label}
@@ -1693,6 +1743,7 @@ function IconButton({ icon: Icon, label, onClick, active = false, expanded = fal
       ) : (
         <span className="pointer-events-none absolute left-11 top-1/2 z-[999999] -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-700/40 bg-slate-800 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 dark:border-white/10 dark:bg-gray-800">
           {label}
+          {showBadge ? ` (${badgeLabel})` : ""}
         </span>
       )}
     </button>

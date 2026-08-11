@@ -20,6 +20,11 @@ import {
 
 const FORMS_MENU_BAR_ID = "69db17211be82fe7637ea096";
 
+const notifyMessagesChanged = () => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("wb:messages-changed"));
+};
+
 /** สีจาก Dashboard Settings — สลับ Light/Dark ตาม CSS vars อัตโนมัติ */
 const C = {
   bg: "var(--dash-bg, #f8fafc)",
@@ -30,6 +35,9 @@ const C = {
   heading: "var(--dash-panel-heading, var(--dash-heading, #0f172a))",
   active: "var(--dash-panel-btn-group-active, var(--dash-panel-accent, #333333))",
   activeText: "var(--dash-panel-btn-group-active-text, #ffffff)",
+  panelInactive: "var(--dash-panel-btn-group-inactive, #ffffff)",
+  panelBorder:
+    "var(--dash-panel-btn-group-border, var(--dash-border, #e2e8f0))",
   activeSoft: "color-mix(in srgb, var(--dash-panel-btn-group-active, #333333) 12%, transparent)",
   activeSofter: "color-mix(in srgb, var(--dash-panel-btn-group-active, #333333) 7%, transparent)",
   unreadRow: "color-mix(in srgb, var(--dash-bg, #f8fafc) 92%, var(--dash-panel-btn-group-active, #333333))",
@@ -70,8 +78,8 @@ function ThemeCheckbox({
       <span
         className="inline-flex size-[18px] items-center justify-center rounded-[4px] border-[1.5px] transition"
         style={{
-          borderColor: isOn ? C.active : C.border,
-          background: isOn ? C.active : C.surface,
+          borderColor: isOn ? C.active : C.panelBorder,
+          background: isOn ? C.active : C.panelInactive,
         }}
         aria-hidden
       >
@@ -120,9 +128,33 @@ const answerValueText = (item) => {
   return String(item?.value ?? "").trim();
 };
 
+const PRIMARY_LABEL_PATTERNS = [
+  /ชื่อลูกค้า/i,
+  /ชื่อ[-\s]?นาม/i,
+  /^ชื่อ$/i,
+  /^name$/i,
+  /customer\s*name/i,
+  /full\s*name/i,
+];
+
+const pickPrimaryAnswerValue = (answers) => {
+  if (!Array.isArray(answers) || answers.length === 0) return "";
+  const parts = answers
+    .map((item) => ({
+      label: String(item?.label || "").trim(),
+      value: answerValueText(item),
+    }))
+    .filter((item) => item.value);
+  if (parts.length === 0) return "";
+  const matched = parts.find((item) =>
+    PRIMARY_LABEL_PATTERNS.some((pattern) => pattern.test(item.label))
+  );
+  return matched?.value || parts[0].value;
+};
+
 const answerLineParts = (answers) => {
   if (!Array.isArray(answers) || answers.length === 0) {
-    return { title: "", preview: "" };
+    return { primaryTitle: "", preview: "" };
   }
   const parts = answers
     .map((item) => {
@@ -133,14 +165,14 @@ const answerLineParts = (answers) => {
     })
     .filter(Boolean);
 
-  if (parts.length === 0) return { title: "", preview: "" };
+  if (parts.length === 0) return { primaryTitle: "", preview: "" };
 
-  const title = parts[0].value;
+  const primaryTitle = pickPrimaryAnswerValue(answers);
   const preview = parts
     .slice(1)
     .map((item) => (item.label ? `${item.label}: ${item.value}` : item.value))
     .join(" · ");
-  return { title, preview };
+  return { primaryTitle, preview };
 };
 
 const normalizeMessage = (row) => {
@@ -148,7 +180,7 @@ const normalizeMessage = (row) => {
   const answers = Array.isArray(row?.answers) ? row.answers : [];
   const meta = row?.meta && typeof row.meta === "object" ? row.meta : {};
   const formName = String(row?.formName || "").trim() || "ฟอร์ม";
-  const { title, preview } = answerLineParts(answers);
+  const { primaryTitle, preview } = answerLineParts(answers);
   return {
     id,
     formPresetId: String(row?.formPresetId || ""),
@@ -158,8 +190,10 @@ const normalizeMessage = (row) => {
     read: row?.read === true || meta?.read === true,
     starred: row?.starred === true || meta?.starred === true,
     createdAt: row?.createdAt || null,
-    /** บรรทัดแรกในรายการ: คำตอบแรกจากฟอร์ม */
-    title: title || formName,
+    /** ชื่อหลักจากฟิลด์ เช่น ชื่อลูกค้า */
+    primaryTitle,
+    /** บรรทัดแรกในรายการ: ชื่อหลักเท่านั้น (ไม่รวมชื่อฟอร์ม) */
+    title: primaryTitle || formName,
     preview,
   };
 };
@@ -280,6 +314,7 @@ export default function MessagesPage() {
       setError("โหลดข้อความไม่สำเร็จ");
     } finally {
       setLoading(false);
+      notifyMessagesChanged();
     }
   }, []);
 
@@ -365,6 +400,7 @@ export default function MessagesPage() {
     );
     try {
       await updateFormResponse(message.id, { read: true });
+      notifyMessagesChanged();
     } catch {
       /* keep optimistic UI */
     }
@@ -446,6 +482,7 @@ export default function MessagesPage() {
         setError("ลบข้อความไม่สำเร็จ");
       } finally {
         setBusyId("");
+        notifyMessagesChanged();
       }
       return;
     }
@@ -469,6 +506,7 @@ export default function MessagesPage() {
       setError("ลบข้อความที่เลือกไม่สำเร็จ");
     } finally {
       setDeletingChecked(false);
+      notifyMessagesChanged();
     }
   };
 
@@ -602,21 +640,21 @@ export default function MessagesPage() {
             {checkedCount > 0 ? (
               <button
                 type="button"
-                title="ลบที่เลือก"
+                title="ลบรายการที่เลือก"
                 disabled={deletingChecked}
                 onClick={requestDeleteChecked}
-                className="dash-button inline-flex h-9 items-center gap-1.5 rounded-md border-0 px-2.5 text-[12px] font-medium transition hover:opacity-90 disabled:opacity-50"
+                className="dash-button inline-flex h-8 items-center gap-1 rounded-md border-0 px-2 text-[11px] font-medium transition hover:opacity-90 disabled:opacity-50"
               >
-                <Trash2 size={14} />
-                {deletingChecked ? "กำลังลบ..." : `ลบ (${checkedCount})`}
+                <Trash2 size={12} />
+                {deletingChecked ? "กำลังลบ..." : `ลบรายการที่เลือก - ${checkedCount}`}
               </button>
             ) : (
               <div
-                className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full px-3"
+                className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-full px-2.5"
                 style={{ background: C.mutedFill }}
               >
                 <Search
-                  size={15}
+                  size={12}
                   className="shrink-0"
                   style={{ color: C.textMuted }}
                 />
@@ -625,7 +663,7 @@ export default function MessagesPage() {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="ค้นหาข้อความ"
-                  className="h-full w-full min-w-0 bg-transparent text-[13px] outline-none"
+                  className="h-full w-full min-w-0 bg-transparent text-[11px] outline-none"
                   style={{ color: C.text }}
                 />
               </div>
@@ -635,11 +673,11 @@ export default function MessagesPage() {
                 type="button"
                 title="รีเฟรช"
                 onClick={loadMessages}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full transition hover:opacity-80"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full transition hover:opacity-80"
                 style={{ color: C.textMuted }}
               >
                 <Loader
-                  size={20}
+                  size={16}
                   strokeWidth={2.5}
                   className={loading ? "animate-spin" : ""}
                 />
@@ -682,7 +720,7 @@ export default function MessagesPage() {
                   >
                     <ThemeCheckbox
                       checked={checked}
-                      ariaLabel={`เลือก ${message.formName}`}
+                      ariaLabel={`เลือก ${message.title}`}
                       onChange={(nextChecked) =>
                         toggleChecked(message.id, nextChecked)
                       }
@@ -774,10 +812,23 @@ export default function MessagesPage() {
                     ←
                   </button>
                   <h2
-                    className="flex min-w-0 items-center gap-2 truncate text-[14px] font-semibold"
+                    className="flex min-w-0 flex-1 items-center gap-2 truncate text-[14px] font-semibold"
                     style={{ color: C.heading }}
                   >
-                    <span className="min-w-0 truncate">{selected.formName}</span>
+                    {selected.primaryTitle ? (
+                      <span className="min-w-0 truncate">
+                        {selected.primaryTitle}
+                      </span>
+                    ) : null}
+                    <span
+                      className="inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-[11px] font-bold leading-none"
+                      style={{
+                        background: C.mutedFill,
+                        color: C.heading,
+                      }}
+                    >
+                      {selected.formName}
+                    </span>
                     {selected.createdAt ? (
                       <span
                         className="shrink-0 text-[12px] font-medium tabular-nums"
@@ -875,8 +926,8 @@ export default function MessagesPage() {
                               :
                             </span>
                             <dd
-                              className="inline font-medium"
-                              style={{ color: C.heading }}
+                              className="inline font-normal"
+                              style={{ color: C.text }}
                             >
                               {value || "—"}
                             </dd>

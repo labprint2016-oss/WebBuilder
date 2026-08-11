@@ -29,6 +29,10 @@ import { isValidFaIconRef } from "../Layouts/Elements/iconElementConfig";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import {
+  DEFAULT_TEL_PLACEHOLDER,
+  formatThaiPhoneDisplay,
+} from "../formPhoneValidation";
+import {
   CALC_KIND_FORMULA,
   findFormulaByFieldId,
   normalizeCalculations,
@@ -154,6 +158,13 @@ const FORM_LAYOUT_COLUMN_OPTIONS = [
   { value: 2, label: "2 คอลัมน์" },
   { value: 3, label: "3 คอลัมน์" },
 ];
+const FORM_SUCCESS_COLOR_MODE_OPTIONS = [
+  { value: "label", label: "สีข้อความ" },
+  { value: "icon", label: "สีไอคอน" },
+  { value: "background", label: "สีพื้นหลัง" },
+];
+const DEFAULT_FORM_SUCCESS_MESSAGE =
+  "ส่งข้อความเรียบร้อยแล้ว ขอบคุณมากค่ะ";
 const FORM_COLOR_MODE_OPTIONS = [
   { value: "label", label: "หัวข้อ" },
   { value: "placeholder", label: "ข้อความตัวอย่าง" },
@@ -401,6 +412,15 @@ const DEFAULT_BY_TYPE = {
     formBorderColor: "#ffffff",
     formBorderColorOpacity: 255,
     labelIcon: { name: null, type: null },
+    formSuccessMessage: DEFAULT_FORM_SUCCESS_MESSAGE,
+    formSuccessIcon: { name: null, type: null },
+    formSuccessPreview: false,
+    formSuccessLabelColor: "#059669",
+    formSuccessLabelColorOpacity: 255,
+    formSuccessIconColor: "#059669",
+    formSuccessIconColorOpacity: 255,
+    formSuccessBackgroundColor: "#ecfdf5",
+    formSuccessBackgroundColorOpacity: 255,
   },
 };
 
@@ -873,6 +893,39 @@ const buildFormElement = (raw) => {
     clampLabelFontSize(defaults.formPlaceholderFontSize, 12)
   );
   merged.labelIcon = normalizeFormLabelIcon(merged.labelIcon);
+  if (type === "frmSubmit") {
+    merged.formSuccessMessage =
+      typeof merged.formSuccessMessage === "string" &&
+      merged.formSuccessMessage.trim()
+        ? merged.formSuccessMessage
+        : DEFAULT_FORM_SUCCESS_MESSAGE;
+    merged.formSuccessIcon = normalizeFormLabelIcon(merged.formSuccessIcon);
+    merged.formSuccessPreview = merged.formSuccessPreview === true;
+    merged.formSuccessLabelColor = normalizeColorRef(
+      merged.formSuccessLabelColor,
+      defaults.formSuccessLabelColor ?? "#059669"
+    );
+    merged.formSuccessLabelColorOpacity = clampOpacity(
+      merged.formSuccessLabelColorOpacity,
+      clampOpacity(defaults.formSuccessLabelColorOpacity, 255)
+    );
+    merged.formSuccessIconColor = normalizeColorRef(
+      merged.formSuccessIconColor,
+      defaults.formSuccessIconColor ?? "#059669"
+    );
+    merged.formSuccessIconColorOpacity = clampOpacity(
+      merged.formSuccessIconColorOpacity,
+      clampOpacity(defaults.formSuccessIconColorOpacity, 255)
+    );
+    merged.formSuccessBackgroundColor = normalizeColorRef(
+      merged.formSuccessBackgroundColor,
+      defaults.formSuccessBackgroundColor ?? "#ecfdf5"
+    );
+    merged.formSuccessBackgroundColorOpacity = clampOpacity(
+      merged.formSuccessBackgroundColorOpacity,
+      clampOpacity(defaults.formSuccessBackgroundColorOpacity, 255)
+    );
+  }
   return merged;
 };
 
@@ -893,7 +946,11 @@ const FormElementOffcanvas = ({
 }) => {
   const [data, setData] = useState(() => buildFormElement(element));
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [successIconPickerOpen, setSuccessIconPickerOpen] = useState(false);
   const [formColorMode, setFormColorMode] = useState(FORM_COLOR_MODE_OPTIONS[0].value);
+  const [formSuccessColorMode, setFormSuccessColorMode] = useState(
+    FORM_SUCCESS_COLOR_MODE_OPTIONS[0].value
+  );
   const [presetName, setPresetName] = useState("");
   const [presetList, setPresetList] = useState(() => readFormInputPresets());
   const [selectedPresetId, setSelectedPresetId] = useState(FORM_INPUT_PRESET_NONE);
@@ -939,9 +996,11 @@ const FormElementOffcanvas = ({
 
   useEffect(() => {
     setIconPickerOpen(false);
+    setSuccessIconPickerOpen(false);
   }, [element?.id]);
   useEffect(() => {
     setFormColorMode(FORM_COLOR_MODE_OPTIONS[0].value);
+    setFormSuccessColorMode(FORM_SUCCESS_COLOR_MODE_OPTIONS[0].value);
   }, [element?.id]);
   useEffect(() => {
     setPresetName("");
@@ -991,6 +1050,10 @@ const FormElementOffcanvas = ({
   const labelIconForModal = useMemo(
     () => normalizeFormLabelIcon(merged.labelIcon),
     [merged.labelIcon]
+  );
+  const successIconForModal = useMemo(
+    () => normalizeFormLabelIcon(merged.formSuccessIcon),
+    [merged.formSuccessIcon]
   );
   const allColors = useMemo(() => {
     if (!theme?.mainColor?.length) return [];
@@ -1053,6 +1116,31 @@ const FormElementOffcanvas = ({
       (base + delta + formColorModeOptions.length) % formColorModeOptions.length;
     setFormColorMode(formColorModeOptions[next].value);
   };
+  const cycleFormSuccessColorMode = (delta) => {
+    const idx = FORM_SUCCESS_COLOR_MODE_OPTIONS.findIndex(
+      (item) => item.value === formSuccessColorMode
+    );
+    const base = idx === -1 ? 0 : idx;
+    const next =
+      (base + delta + FORM_SUCCESS_COLOR_MODE_OPTIONS.length) %
+      FORM_SUCCESS_COLOR_MODE_OPTIONS.length;
+    setFormSuccessColorMode(FORM_SUCCESS_COLOR_MODE_OPTIONS[next].value);
+  };
+  const formSuccessColorModeLabel =
+    FORM_SUCCESS_COLOR_MODE_OPTIONS.find((item) => item.value === formSuccessColorMode)
+      ?.label ?? "สีข้อความ";
+  const currentFormSuccessColorValue =
+    formSuccessColorMode === "icon"
+      ? merged.formSuccessIconColor
+      : formSuccessColorMode === "background"
+        ? merged.formSuccessBackgroundColor
+        : merged.formSuccessLabelColor;
+  const currentFormSuccessColorOpacity =
+    formSuccessColorMode === "icon"
+      ? merged.formSuccessIconColorOpacity
+      : formSuccessColorMode === "background"
+        ? merged.formSuccessBackgroundColorOpacity
+        : merged.formSuccessLabelColorOpacity;
   const currentFormColorValue =
     formColorMode === "placeholder"
       ? merged.formPlaceholderColor
@@ -1522,11 +1610,26 @@ const FormElementOffcanvas = ({
                   <MainLabel label={placeholderFieldLabel} />
                   <input
                     type="text"
+                    inputMode={
+                      merged.type === "frmInput" && merged.formValidationType === "tel"
+                        ? "numeric"
+                        : undefined
+                    }
                     className={`${PANEL_INPUT_CLASS} text-[12px]`}
                     style={PANEL_INPUT_TEXT_STYLE}
                     value={merged.placeholder || ""}
-                    onChange={(event) => patch({ placeholder: event.target.value })}
-                    placeholder={placeholderFieldLabel}
+                    onChange={(event) => {
+                      const nextValue =
+                        merged.type === "frmInput" && merged.formValidationType === "tel"
+                          ? formatThaiPhoneDisplay(event.target.value)
+                          : event.target.value;
+                      patch({ placeholder: nextValue });
+                    }}
+                    placeholder={
+                      merged.type === "frmInput" && merged.formValidationType === "tel"
+                        ? DEFAULT_TEL_PLACEHOLDER
+                        : placeholderFieldLabel
+                    }
                   />
                 </div>
               )}
@@ -1727,7 +1830,15 @@ const FormElementOffcanvas = ({
                 <div className="mt-2">
                   <FormValidationSelectInput
                     value={merged.formValidationType || "none"}
-                    onChange={(nextValue) => patch({ formValidationType: nextValue })}
+                    onChange={(nextValue) => {
+                      const updates = { formValidationType: nextValue };
+                      if (nextValue === "tel") {
+                        updates.placeholder = DEFAULT_TEL_PLACEHOLDER;
+                        updates.formMinLength = 9;
+                        updates.formMaxLength = 10;
+                      }
+                      patch(updates);
+                    }}
                     options={VALIDATION_OPTIONS}
                   />
                 </div>
@@ -2074,6 +2185,126 @@ const FormElementOffcanvas = ({
             </div>
           </li>
 
+          {merged.type === "frmSubmit" && (
+            <>
+              <li>
+                <MainLabel
+                  label="ส่งข้อความสำเร็จ"
+                  color="#333333"
+                  mb="10px"
+                  checked={merged.formSuccessPreview === true}
+                  typography="ตัวอย่าง"
+                  handleSwitch={(event) =>
+                    patch({ formSuccessPreview: event.target.checked })
+                  }
+                />
+                <div className="flex items-stretch gap-2">
+                  <button
+                    type="button"
+                    className="dash-input flex w-[42px] shrink-0 items-center justify-center rounded-lg border text-slate-600 transition hover:opacity-90 dark:text-slate-300"
+                    aria-label="เลือกไอคอนข้อความสำเร็จ"
+                    onClick={() => setSuccessIconPickerOpen(true)}
+                  >
+                    {successIconForModal?.name && successIconForModal?.type ? (
+                      <IconAwsome
+                        iconName={successIconForModal.name}
+                        iconType={successIconForModal.type}
+                        style={{
+                          fontSize: 16,
+                          color: "var(--dash-panel-btn-group-inactive-text, #333333)",
+                        }}
+                      />
+                    ) : (
+                      <Sparkles className="size-4 shrink-0" strokeWidth={2} />
+                    )}
+                  </button>
+                  <input
+                    type="text"
+                    className={`${PANEL_INPUT_CLASS} min-w-0 flex-1 text-[12px]`}
+                    style={PANEL_INPUT_TEXT_STYLE}
+                    value={merged.formSuccessMessage || ""}
+                    onChange={(event) =>
+                      patch({ formSuccessMessage: event.target.value })
+                    }
+                    placeholder={DEFAULT_FORM_SUCCESS_MESSAGE}
+                  />
+                </div>
+              </li>
+              <li>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="shrink-0 dash-panel-label text-[13px] font-bold">
+                    สีข้อความ ไอคอน สีพื้นหลัง
+                  </span>
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                </div>
+                <FormColorSelectLine
+                  prev={() => cycleFormSuccessColorMode(-1)}
+                  next={() => cycleFormSuccessColorMode(1)}
+                  value={formSuccessColorModeLabel}
+                />
+                <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                  <div className="px-[5px] pb-2">
+                    <Range
+                      min={0}
+                      max={255}
+                      step={1}
+                      value={currentFormSuccessColorOpacity}
+                      handleChange={(event) => {
+                        const v = clampOpacity(event.target.value, 255);
+                        if (formSuccessColorMode === "icon") {
+                          patch({ formSuccessIconColorOpacity: v });
+                        } else if (formSuccessColorMode === "background") {
+                          patch({ formSuccessBackgroundColorOpacity: v });
+                        } else {
+                          patch({ formSuccessLabelColorOpacity: v });
+                        }
+                      }}
+                      pos={(currentFormSuccessColorOpacity / 255) * 100}
+                      color={textColor || "#333333"}
+                    />
+                  </div>
+                  <div className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px] px-[5px] pb-0">
+                    {allColors.map((color, i) => {
+                      const bgColor =
+                        typeof color === "string"
+                          ? color
+                          : theme?.[color.type]?.[color.index];
+                      if (bgColor == null) return null;
+                      const selected = chipSelected(currentFormSuccessColorValue, color);
+                      return (
+                        <div key={`form-success-color-${String(bgColor)}-${i}`}>
+                          <button
+                            type="button"
+                            className="flex size-[25px] items-center justify-center rounded-full border border-slate-200 dark:border-white/15"
+                            style={{ backgroundColor: bgColor }}
+                            onClick={() => {
+                              if (formSuccessColorMode === "icon") {
+                                patch({ formSuccessIconColor: color });
+                              } else if (formSuccessColorMode === "background") {
+                                patch({ formSuccessBackgroundColor: color });
+                              } else {
+                                patch({ formSuccessLabelColor: color });
+                              }
+                            }}
+                            aria-label={`เลือกสี ${bgColor}`}
+                          >
+                            {selected ? (
+                              <Check
+                                className={swatchSelectedCheckClassName(bgColor)}
+                                strokeWidth={4}
+                                aria-hidden
+                              />
+                            ) : null}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </li>
+            </>
+          )}
+
           {supportsInputPreset && (
             <li>
               <div className="grid grid-cols-12 gap-4">
@@ -2167,6 +2398,15 @@ const FormElementOffcanvas = ({
         open={iconPickerOpen}
         onClose={() => setIconPickerOpen(false)}
         handleChange={(ic) => patch({ labelIcon: ic })}
+        darkColor={textColor || "#0d9488"}
+        darkMode={darkMode}
+      />
+      <ServiceIcon
+        header="ไอคอนข้อความสำเร็จ"
+        icon={successIconForModal}
+        open={successIconPickerOpen}
+        onClose={() => setSuccessIconPickerOpen(false)}
+        handleChange={(ic) => patch({ formSuccessIcon: ic })}
         darkColor={textColor || "#0d9488"}
         darkMode={darkMode}
       />

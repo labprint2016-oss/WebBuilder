@@ -139,6 +139,8 @@ const Header = ({
   defaultFormPresetId = null,
   isFormsHydrated = true,
   isFormsDirty = false,
+  isHeroDirty = false,
+  isMenuDirty = false,
   onFormStateChange = null,
   submitForms = null,
 }) => {
@@ -437,7 +439,11 @@ const Header = ({
                     }}
                     onClick={() => {
                       setDevice(name);
-                      if (option === "Menu" && ["Tablet", "Mobile"].includes(name)) {
+                      if (
+                        option === "Menu" &&
+                        activeMenuPresetId &&
+                        ["Tablet", "Mobile"].includes(name)
+                      ) {
                         setNavOpen(true);
                       }
                     }}
@@ -1139,9 +1145,9 @@ const Header = ({
       ? formPresets.map((item) => ({ id: item.id, name: item.name }))
       : [{ id: "form-preset-1", name: "Form 1" }]
   );
-  const [activeHeroId, setActiveHeroId] = useState(activeHeroPresetId);
+  const [activeHeroId, setActiveHeroId] = useState(null);
   const [defaultHeroId, setDefaultHeroId] = useState(defaultHeroPresetId);
-  const [activeFormId, setActiveFormId] = useState(activeFormPresetId);
+  const [activeFormId, setActiveFormId] = useState(null);
   const [defaultFormId, setDefaultFormId] = useState(defaultFormPresetId);
   const syncedActiveHeroPresetIdRef = useRef(activeHeroPresetId);
   const syncedDefaultHeroPresetIdRef = useRef(defaultHeroPresetId);
@@ -1149,17 +1155,21 @@ const Header = ({
   const syncedDefaultFormPresetIdRef = useRef(defaultFormPresetId);
   const activeMenuPresetName = useMemo(() => {
     if (!isMenuPresetHydrated) return "กำลังโหลดเมนู...";
+    if (!activeMenuPresetId) return "เลือกเมนู";
     const activePreset = menuPresets.find((preset) => preset.id === activeMenuPresetId);
     return activePreset?.name
       ? `${activePreset.name} - กำลังทำงาน`
       : "เลือกเมนู";
   }, [menuPresets, activeMenuPresetId, isMenuPresetHydrated]);
   const activeHeroName = useMemo(() => {
+    if (!isMenuPresetHydrated) return "กำลังโหลด Hero...";
+    if (!activeHeroId) return "เลือก Hero";
     const activeHero = heroItems.find((hero) => hero.id === activeHeroId);
     return activeHero?.name ? `${activeHero.name} - กำลังทำงาน` : "เลือก Hero";
-  }, [heroItems, activeHeroId]);
+  }, [heroItems, activeHeroId, isMenuPresetHydrated]);
   const activeFormName = useMemo(() => {
     if (!isFormsHydrated) return "กำลังโหลดฟอร์ม...";
+    if (!activeFormId) return "เลือกฟอร์ม";
     const activeForm = formItems.find((form) => form.id === activeFormId);
     return activeForm?.name ? `${activeForm.name} - กำลังทำงาน` : "เลือกฟอร์ม";
   }, [formItems, activeFormId, isFormsHydrated]);
@@ -1204,7 +1214,7 @@ const Header = ({
     }
     const firstHeroId = heroItems[0].id;
     setActiveHeroId((prev) =>
-      prev && heroItems.some((hero) => hero.id === prev) ? prev : firstHeroId
+      prev && heroItems.some((hero) => hero.id === prev) ? prev : null
     );
     setDefaultHeroId((prev) =>
       prev && heroItems.some((hero) => hero.id === prev) ? prev : firstHeroId
@@ -1216,12 +1226,11 @@ const Header = ({
       setDefaultFormId((prev) => (prev == null ? prev : null));
       return;
     }
-    const firstFormId = formItems[0].id;
     setActiveFormId((prev) =>
-      prev && formItems.some((form) => form.id === prev) ? prev : firstFormId
+      prev && formItems.some((form) => form.id === prev) ? prev : null
     );
     setDefaultFormId((prev) =>
-      prev && formItems.some((form) => form.id === prev) ? prev : firstFormId
+      prev && formItems.some((form) => form.id === prev) ? prev : null
     );
   }, [formItems]);
   useEffect(() => {
@@ -1258,6 +1267,10 @@ const Header = ({
   useEffect(() => {
     if (syncedActiveHeroPresetIdRef.current === activeHeroPresetId) return;
     syncedActiveHeroPresetIdRef.current = activeHeroPresetId;
+    if (activeHeroPresetId == null || activeHeroPresetId === "") {
+      setActiveHeroId((prev) => (prev == null ? prev : null));
+      return;
+    }
     const canUseActiveHeroPresetId =
       typeof activeHeroPresetId === "string" &&
       heroItems.some((hero) => hero.id === activeHeroPresetId);
@@ -1276,6 +1289,10 @@ const Header = ({
   useEffect(() => {
     if (syncedActiveFormPresetIdRef.current === activeFormPresetId) return;
     syncedActiveFormPresetIdRef.current = activeFormPresetId;
+    if (activeFormPresetId == null || activeFormPresetId === "") {
+      setActiveFormId((prev) => (prev == null ? prev : null));
+      return;
+    }
     const canUseActiveFormPresetId =
       typeof activeFormPresetId === "string" &&
       formItems.some((form) => form.id === activeFormPresetId);
@@ -1305,7 +1322,7 @@ const Header = ({
     if (typeof onFormStateChange !== "function") return;
     onFormStateChange({
       formPresets: formItems,
-      activeFormPresetId: activeFormId,
+      activeFormPresetId: activeFormId ?? null,
       defaultFormPresetId: defaultFormId,
       formMutationEvent,
     });
@@ -1487,6 +1504,12 @@ const Header = ({
 
   const handleSaveMenuBar = async (saveOptions = {}) => {
     if (isSavingMenuBar) return;
+    if (option === "Menu" && (!activeMenuPresetId || !isMenuPresetHydrated || !isMenuDirty)) {
+      return;
+    }
+    if (option === "Hero" && (!activeHeroPresetId || !isMenuPresetHydrated || !isHeroDirty)) {
+      return;
+    }
     if (typeof submitMenuBar !== "function") return;
     setIsSavingMenuBar(true);
     const saveStartedAt = Date.now();
@@ -1731,11 +1754,42 @@ const Header = ({
           {["Menu", "Hero"].includes(option) && (
             <>
               <button
-                onClick={() => handleSaveMenuBar({ reloadAfterSave: false })}
                 type="button"
-                disabled={isSavingMenuBar}
+                disabled={
+                  isSavingMenuBar ||
+                  (option === "Menu" &&
+                    (!activeMenuPresetId || !isMenuPresetHydrated || !isMenuDirty)) ||
+                  (option === "Hero" &&
+                    (!activeHeroPresetId || !isMenuPresetHydrated || !isHeroDirty))
+                }
+                title={
+                  option === "Menu"
+                    ? !isMenuPresetHydrated
+                      ? "กำลังโหลดเมนู..."
+                      : !activeMenuPresetId
+                        ? "กรุณาเลือกเมนู"
+                        : !isMenuDirty
+                          ? "ไม่มีการเปลี่ยนแปลง"
+                          : "บันทึกข้อมูล"
+                    : option === "Hero"
+                      ? !isMenuPresetHydrated
+                        ? "กำลังโหลด Hero..."
+                        : !activeHeroPresetId
+                          ? "กรุณาเลือก Hero"
+                          : !isHeroDirty
+                            ? "ไม่มีการเปลี่ยนแปลง"
+                            : "บันทึกข้อมูล"
+                      : "บันทึกข้อมูล"
+                }
+                onClick={() => handleSaveMenuBar({ reloadAfterSave: false })}
                 className={`dash-button flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium border border-0 rounded-md focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none ${
-                  isSavingMenuBar ? "cursor-not-allowed opacity-65" : "hover:opacity-90"
+                  isSavingMenuBar ||
+                  (option === "Menu" &&
+                    (!activeMenuPresetId || !isMenuPresetHydrated || !isMenuDirty)) ||
+                  (option === "Hero" &&
+                    (!activeHeroPresetId || !isMenuPresetHydrated || !isHeroDirty))
+                    ? "cursor-not-allowed opacity-65"
+                    : "hover:opacity-90"
                 }`}
               >
                 <span className="material-icons-outlined text-[18px]">public</span>{" "}
@@ -1786,7 +1840,7 @@ const Header = ({
           />
         </div>
       </header>
-      {option === "Menu" && deviceType === "Desktop" && (
+      {option === "Menu" && deviceType === "Desktop" && activeMenuPresetId && (
         <div className="relative z-[120]" style={{cursor:"pointer"}} id="header-bar">
           <TopBar/>
           <MenuBar />

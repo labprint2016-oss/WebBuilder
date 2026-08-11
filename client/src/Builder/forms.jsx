@@ -317,6 +317,15 @@ const buildFormDraftElement = (formType) => {
       formBackgroundColorOpacity: 255,
       formBorderColor: "#ffffff",
       formBorderColorOpacity: 255,
+      formSuccessMessage: "ส่งข้อความเรียบร้อยแล้ว ขอบคุณมากค่ะ",
+      formSuccessIcon: { name: null, type: null },
+      formSuccessPreview: false,
+      formSuccessLabelColor: "#059669",
+      formSuccessLabelColorOpacity: 255,
+      formSuccessIconColor: "#059669",
+      formSuccessIconColorOpacity: 255,
+      formSuccessBackgroundColor: "#ecfdf5",
+      formSuccessBackgroundColorOpacity: 255,
     };
   }
   return null;
@@ -326,6 +335,7 @@ export default function FormsPage({
   theme,
   darkMode = "light",
   textColor,
+  formName = "",
   activeFormPresetId = "",
   rows: rowsProp,
   currentRowId: currentRowIdProp = null,
@@ -518,17 +528,6 @@ export default function FormsPage({
         item.id === chain.id ? { ...item, rules: nextRules } : item
       )
     );
-    if (!enabled && String(fieldValues?.[fieldId] ?? "") === String(option)) {
-      handleDesignFieldChange({
-        fieldId,
-        type: "frmSelect",
-        value: "",
-      });
-      setSelectResetKeys((prev) => ({
-        ...prev,
-        [fieldId]: (prev[fieldId] || 0) + 1,
-      }));
-    }
   };
 
   const previewTheme = useMemo(() => {
@@ -791,7 +790,7 @@ export default function FormsPage({
       className="relative h-full min-h-0 w-full overflow-hidden"
       style={{ background: "var(--dash-bg, #f8fafc)" }}
     >
-      <div className="flex h-full w-full flex-col items-center px-4 py-4">
+      <div className="flex h-full min-h-0 w-full flex-col items-center overflow-y-auto px-4 py-4">
         {rows.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <button
@@ -808,9 +807,24 @@ export default function FormsPage({
             </button>
           </div>
         ) : (
-          <div className="mt-0 flex min-h-0 w-max max-w-full flex-1 items-start gap-0 overflow-hidden pb-4">
+          <div className="mt-0 flex min-h-0 w-max max-w-full flex-1 flex-col items-start gap-0 pb-4">
+            {String(formName || "").trim() ? (
+              <h2
+                className="mb-3 truncate text-[15px] font-semibold tracking-wide"
+                style={{
+                  color: "var(--dash-panel-heading, #0f172a)",
+                  width: `${designAreaWidthPx}px`,
+                  minWidth: `${designAreaWidthPx}px`,
+                  maxWidth: `${designAreaWidthPx}px`,
+                }}
+                title={String(formName).trim()}
+              >
+                {String(formName).trim()}
+              </h2>
+            ) : null}
+            <div className="flex min-h-0 w-full items-start gap-0">
             <div
-              className="min-h-0 flex-1 overflow-y-auto"
+              className="min-h-0 flex-1"
               style={{
                 width: `${designAreaWidthPx}px`,
                 minWidth: `${designAreaWidthPx}px`,
@@ -1027,6 +1041,7 @@ export default function FormsPage({
             >
               <Settings size={15} />
             </button>
+            </div>
           </div>
         )}
       </div>

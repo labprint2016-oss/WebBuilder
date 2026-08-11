@@ -136,8 +136,8 @@ export const getCascadedOptions = (chain, fieldsById, valuesByFieldId, fieldId) 
     allowed = Object.keys(node);
   }
 
-  const baseSet = new Set(base);
-  return allowed.filter((item) => baseSet.has(item));
+  const allowedSet = new Set(allowed);
+  return base.filter((item) => allowedSet.has(item));
 };
 
 /** Unlocked when all parents in the chain have a selected value */

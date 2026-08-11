@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFormResponse, getForms } from "../../../../Functions/forms";
 import {
   findChainByFieldId,
@@ -12,8 +12,13 @@ import {
   normalizeCalculations,
 } from "../../formCalculations";
 import FormElement from "./FormElement";
+import {
+  FORM_SUBMIT_ERROR_GENERIC,
+  FORM_SUBMIT_ERROR_RATE_LIMIT,
+} from "../../formSubmitMessages";
 
 const FORMS_MENU_BAR_ID = "69db17211be82fe7637ea096";
+const FORM_SUCCESS_MESSAGE_DURATION_MS = 2500;
 const ANSWER_FIELD_TYPES = new Set([
   "frmInput",
   "frmNum",
@@ -89,6 +94,25 @@ function collectFields(rows) {
   return fields;
 }
 
+function isRequiredFieldEmpty(field, answersRef, fieldValues, conditionalChains) {
+  if (field?.formRequired !== true) return false;
+  const chain = findChainByFieldId(conditionalChains, field.id);
+  if (chain && !isCascadedFieldUnlocked(chain, fieldValues, field.id)) {
+    return false;
+  }
+  const saved = answersRef.current[field.id];
+  const value = saved?.value;
+  if (Array.isArray(value)) return value.length === 0;
+  return String(value ?? "").trim() === "";
+}
+
+function collectInvalidRequiredFieldIds(fields, answersRef, fieldValues, conditionalChains) {
+  return fields
+    .filter((field) => isRequiredFieldEmpty(field, answersRef, fieldValues, conditionalChains))
+    .map((field) => field.id)
+    .filter(Boolean);
+}
+
 function FormBlock({
   elementData,
   selected,
@@ -120,10 +144,24 @@ function FormBlock({
   const [ready, setReady] = useState(() => Boolean(formsCache));
   const [submitPending, setSubmitPending] = useState(false);
   const [submitMessage, setSubmitMessage] = useState("");
+  const [submitMessageKind, setSubmitMessageKind] = useState("");
   const [formKey, setFormKey] = useState(0);
   const [fieldValues, setFieldValues] = useState({});
+  const [invalidFieldIds, setInvalidFieldIds] = useState(() => new Set());
   const [selectResetKeys, setSelectResetKeys] = useState({});
   const answersRef = useRef({});
+  const formLoadedAtRef = useRef(null);
+  const submitMessageTimerRef = useRef(null);
+  const [honeypot, setHoneypot] = useState("");
+
+  const clearSubmitMessageTimer = useCallback(() => {
+    if (submitMessageTimerRef.current != null) {
+      clearTimeout(submitMessageTimerRef.current);
+      submitMessageTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearSubmitMessageTimer(), [clearSubmitMessageTimer]);
 
   useEffect(() => {
     if (lite) return undefined;
@@ -177,12 +215,27 @@ function FormBlock({
   const useLayoutSelectionFrame = builderMode === "Layout Mode" && selected;
 
   useEffect(() => {
+    clearSubmitMessageTimer();
     answersRef.current = {};
     setFieldValues({});
+    setInvalidFieldIds(new Set());
     setSelectResetKeys({});
     setSubmitMessage("");
+    setSubmitMessageKind("");
     setSubmitPending(false);
-  }, [selectedPresetId, preset?.id]);
+    setHoneypot("");
+    formLoadedAtRef.current = null;
+  }, [selectedPresetId, preset?.id, clearSubmitMessageTimer]);
+
+  useEffect(() => {
+    if (!isInteractive || !preset || rows.length === 0) {
+      formLoadedAtRef.current = null;
+      return;
+    }
+    if (formLoadedAtRef.current == null) {
+      formLoadedAtRef.current = Date.now();
+    }
+  }, [isInteractive, preset?.id, rows.length]);
 
   const conditionalChains = useMemo(
     () => normalizeConditionalChains(preset?.conditionalChains),
@@ -222,6 +275,12 @@ function FormBlock({
   const handleFieldChange = (entry) => {
     if (!entry?.fieldId) return;
     answersRef.current[entry.fieldId] = entry;
+    setInvalidFieldIds((prev) => {
+      if (!prev.has(entry.fieldId)) return prev;
+      const next = new Set(prev);
+      next.delete(entry.fieldId);
+      return next;
+    });
     const nextValue =
       entry.type === "frmCheckbox"
         ? entry.value
@@ -272,46 +331,64 @@ function FormBlock({
       };
     });
 
-    const missingRequired = fields.find((field) => {
-      if (field?.formRequired !== true) return false;
-      // Select ในโซ่ที่ยังเลือกชั้นบนกไม่ได้ — ยังไม่บังคับ
-      const chain = findChainByFieldId(conditionalChains, field.id);
-      if (
-        chain &&
-        !isCascadedFieldUnlocked(chain, fieldValues, field.id)
-      ) {
-        return false;
-      }
-      const saved = answersRef.current[field.id];
-      const value = saved?.value;
-      if (Array.isArray(value)) return value.length === 0;
-      return String(value ?? "").trim() === "";
-    });
-    if (missingRequired) {
-      setSubmitMessage(
-        missingRequired.formRequiredMessage || "กรุณากรอกข้อมูลให้ครบ"
-      );
+    const invalidIds = collectInvalidRequiredFieldIds(
+      fields,
+      answersRef,
+      fieldValues,
+      conditionalChains
+    );
+    if (invalidIds.length > 0) {
+      setInvalidFieldIds(new Set(invalidIds));
       return;
     }
+    setInvalidFieldIds(new Set());
 
     setSubmitPending(true);
+    clearSubmitMessageTimer();
     setSubmitMessage("");
+    setSubmitMessageKind("");
+    const submitField = allFields.find(
+      (field) => String(field?.type || "") === "frmSubmit"
+    );
+    const successText =
+      typeof submitField?.formSuccessMessage === "string" &&
+      submitField.formSuccessMessage.trim()
+        ? submitField.formSuccessMessage.trim()
+        : "ส่งข้อความเรียบร้อยแล้ว ขอบคุณมากค่ะ";
     try {
       await createFormResponse({
         menuBarId: FORMS_MENU_BAR_ID,
         formPresetId: String(preset.id),
         formName: String(preset.name || "Form"),
         answers,
+        _hp: honeypot,
         meta: {
           href: typeof window !== "undefined" ? window.location.href : "",
           submittedAt: new Date().toISOString(),
+          _formLoadedAt: formLoadedAtRef.current,
         },
       });
       answersRef.current = {};
+      setInvalidFieldIds(new Set());
       setFormKey((key) => key + 1);
-      setSubmitMessage("ส่งแล้ว — ข้อความเข้า Inbox แล้ว");
-    } catch {
-      setSubmitMessage("ส่งไม่สำเร็จ กรุณาลองอีกครั้ง");
+      setSubmitMessage(successText);
+      setSubmitMessageKind("success");
+      submitMessageTimerRef.current = setTimeout(() => {
+        setSubmitMessage("");
+        setSubmitMessageKind("");
+        submitMessageTimerRef.current = null;
+      }, FORM_SUCCESS_MESSAGE_DURATION_MS);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("wb:messages-changed"));
+      }
+    } catch (error) {
+      const status = error?.response?.status;
+      if (status === 429) {
+        setSubmitMessage(FORM_SUBMIT_ERROR_RATE_LIMIT);
+      } else {
+        setSubmitMessage(FORM_SUBMIT_ERROR_GENERIC);
+      }
+      setSubmitMessageKind("error");
     } finally {
       setSubmitPending(false);
     }
@@ -355,7 +432,19 @@ function FormBlock({
             ฟอร์ม “{preset.name || "Form"}” ยังไม่มีองค์ประกอบ
           </div>
         ) : (
-          <div key={formKey} className="flex w-full flex-col gap-3">
+          <div key={formKey} className="relative flex w-full flex-col gap-3">
+            {isInteractive ? (
+              <input
+                type="text"
+                name="_hp_confirm"
+                value={honeypot}
+                onChange={(event) => setHoneypot(event.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                className="pointer-events-none absolute left-[-9999px] top-auto h-px w-px overflow-hidden opacity-0"
+              />
+            ) : null}
             {rows.map((row, rowIndex) => {
               const rowGrid = Number.isFinite(Number(row?.grid))
                 ? Math.max(1, Math.round(Number(row.grid)))
@@ -422,6 +511,7 @@ function FormBlock({
                               }
                               submitPending={isSubmit ? submitPending : false}
                               submitMessage={isSubmit ? submitMessage : ""}
+                              submitMessageKind={isSubmit ? submitMessageKind : ""}
                               selectDisabled={
                                 isInteractive && Boolean(chain) && !unlocked
                               }
@@ -439,6 +529,9 @@ function FormBlock({
                                 fieldType === "frmSum"
                                   ? sumDisplayByFieldId[field?.id] ?? ""
                                   : undefined
+                              }
+                              fieldInvalid={
+                                isInteractive && invalidFieldIds.has(field?.id)
                               }
                             />
                           );
