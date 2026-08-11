@@ -25,6 +25,8 @@ import {
   ChevronRight,
   Menu,
   LogOut,
+  PanelLeftOpen,
+  PanelLeftClose,
   Plus,
   Download,
   SlidersHorizontal,
@@ -91,11 +93,13 @@ const Header = ({
   toggleDarkMode,
   isDark,
   pageName,
+  hasSelectedBuilderPage = false,
+  activePageId = "",
+  defaultPageId = "",
   option,
   setNavOpen,
-  isAddPost,
-  submitPost,
-  updatePost,
+  railExpanded = false,
+  toggleRailExpanded = null,
   textColor,
   deviceType,
   setDevice,
@@ -110,9 +114,15 @@ const Header = ({
   submitMenuBar,
   topBarData,
   onOpenPreview = null,
+  onOpenPageSettings = null,
+  onPublishBuilder = null,
+  onSelectPage = null,
+  onPageCreated = null,
+  onPagesChanged = null,
   menuPresets = [],
   activeMenuPresetId = null,
   defaultMenuPresetId = null,
+  isMenuPresetHydrated = true,
   onCreateMenuPreset = null,
   onSelectMenuPreset = null,
   onSetDefaultMenuPreset = null,
@@ -124,6 +134,13 @@ const Header = ({
   activeHeroPresetId = null,
   defaultHeroPresetId = null,
   onHeroStateChange = null,
+  formPresets = [],
+  activeFormPresetId = null,
+  defaultFormPresetId = null,
+  isFormsHydrated = true,
+  isFormsDirty = false,
+  onFormStateChange = null,
+  submitForms = null,
 }) => {
   const hasVisibleMenuIcon = (icon) =>
     Boolean(icon?.name && icon?.type && icon.name !== "fa0");
@@ -325,28 +342,26 @@ const Header = ({
   ];
 
   function ChangeBuilderModeButton() {
+    const disableModeToggle = !hasSelectedBuilderPage;
     const modes = [
       { label: "โหมดออกแบบ", value: "Layout Mode", id: 0 },
       { label: "โหมดแก้ไข", value: "Editor Mode", id: 1 },
     ];
 
     return (
-      <div className="inline-flex" role="group">
-        {modes.map(({ value, label, id }) => (
+      <div className="dash-header-btn-group" role="group">
+        {modes.map(({ value, label }) => (
           <button
             key={value}
             type="button"
-            className={`px-4 py-1 text-[13px] font-medium ${
-              value === builderMode
-                ? "text-white bg-gray-700 dark:bg-teal-300/80"
-                : "text-gray-500 dark:text-white/40 bg-gray-200 dark:bg-white/20"
-            } border border-0 rounded-${id === 0 ? "l" : "r"}-md `}
+            disabled={disableModeToggle}
+            className={`dash-header-btn-group-btn ${
+              value === builderMode ? "is-active" : ""
+            }`}
             onClick={() => {
+              if (disableModeToggle) return;
               setBuilderMode(value);
             }}
-           style={{
-            backgroundColor:value === builderMode?textColor:isDark === "dark"?"#3d434e":"#e6e7eb"
-           }}
           >
             {label}
           </button>
@@ -355,48 +370,40 @@ const Header = ({
     );
   }
 
-  const submit = {
-    editPost: (e) => {
-      updatePost(e);
-      navigate("/posts");
-    },
-    AddPost: (e) => {
-      submitPost(e);
-      navigate("/posts");
-    },
-  };
-
   const [done,setDone] = useState(false)
+  const [saveFailed, setSaveFailed] = useState({ open: false, message: "" });
+  const [isSavingMenuBar, setIsSavingMenuBar] = useState(false);
+  const [isPublishingBuilder, setIsPublishingBuilder] = useState(false);
+  const MIN_SAVE_FEEDBACK_MS = 700;
 
   function Breadcrumbs() {
-    const fields = ["Posts", "Category"];
-    if (!fields.includes(option) && option !== "Builder") return;
-    let textLabel;
-    if (fields.includes(option) && !isAddPost) {
-      const kinds = { Posts: "โพสต์", Category: "หมวดหมู่" };
-      textLabel = kinds[option] + "ทั้งหมด";
-    } else if (isAddPost) {
-      textLabel = "โพสต์ใหม่";
-    } else if (option === "Builder") {
-      textLabel = "เลือกหน้า";
-    }
+    if (option !== "Builder") return;
+    const textLabel = pageName ? pageName : "เลือกหน้า";
 
     return (
-      <div
-      className={`flex min-w-0 max-w-full items-center text-[13px] ${
-        option === "Builder" ? "cursor-pointer" : "cursor-default"
-      }`}
-      onClick={() => {
-        if (option !== "Builder") return;
-        setOpenSelectPageModal(true)
-      }}
-    >
-      <span className="material-icons-outlined shrink-0 px-2 text-[24px]">
-        article
-      </span>
-    
-      <span className="truncate text-gray-700/80 dark:text-white/60">{textLabel}</span>
-    </div>
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          className="dash-header-select inline-flex min-w-0 max-w-full items-center gap-2 rounded-md border px-3 py-1.5 text-[12px] font-medium transition-opacity hover:opacity-90"
+          onClick={() => {
+            if (option !== "Builder") return;
+            setOpenSelectPageModal(true);
+          }}
+        >
+          <span className="material-icons-outlined shrink-0 text-[18px]">article</span>
+          <span className="truncate">{textLabel}</span>
+        </button>
+        <button
+          type="button"
+          className="dash-button inline-flex items-center gap-2 rounded-md border border-0 px-3 py-1.5 text-[12px] font-medium focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none hover:opacity-90"
+          onClick={() => {
+            setOpenPageModal(true);
+          }}
+        >
+          <FileText size={16} />
+          สร้างหน้าใหม่
+        </button>
+      </div>
     );
   }
 
@@ -417,20 +424,20 @@ const Header = ({
               >
                 <div className={`h-[35px]`}>
                   <Button
+                    className={
+                      deviceType === name
+                        ? "dash-header-device-active"
+                        : "dash-header-device-idle"
+                    }
                     sx={{
                       backgroundColor: "transparent",
-                      color:
-                        deviceType === name
-                          ? textColor
-                          : isDark
-                          ? "#808080"
-                          : "#80808024",
                       minWidth: 5,
                       marginBottom: 20,
+                      color: "inherit",
                     }}
                     onClick={() => {
                       setDevice(name);
-                      if (["Menu", "Hero"].includes(option) && ["Tablet", "Mobile"].includes(name)) {
+                      if (option === "Menu" && ["Tablet", "Mobile"].includes(name)) {
                         setNavOpen(true);
                       }
                     }}
@@ -469,7 +476,7 @@ const Header = ({
     const isFluidLayoutEnabled = toBoolean(fluidLayoutValue);
     const menuInnerBaseClass = isFluidLayoutEnabled
       ? "relative z-10 h-full w-full min-w-0 max-w-none"
-      : "relative z-10 mx-auto h-full w-full min-w-0 max-w-[1536px]";
+      : "relative z-10 mx-auto h-full w-full min-w-0 max-w-[1280px]";
     const length = menus.length;
     let spiltMenu;
     if (dp_D === "center") {
@@ -927,7 +934,7 @@ const Header = ({
     const isTopBarFluidLayout = toBoolean(topBarFluidLayout);
     const topBarInnerBaseClass = isTopBarFluidLayout
       ? "relative z-10 h-full w-full min-w-0 max-w-none"
-      : "relative z-10 mx-auto h-full w-full min-w-0 max-w-[1536px]";
+      : "relative z-10 mx-auto h-full w-full min-w-0 max-w-[1280px]";
 
     const bg = setColor(
       isGradient?bgColorGradient:bgColor,
@@ -1064,12 +1071,13 @@ const Header = ({
 
 
   const NavBtn = ()=>{
+    if (option === "Message") return null;
     return (
       <button
       className="hidden sm:inline-flex p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/80"
       onClick={() => {
         if (
-          ["Posts", "Cetegory", "Menu", "Hero"].includes(
+          ["Cetegory", "Menu", "Hero", "Forms"].includes(
             option
           )
         )
@@ -1090,40 +1098,73 @@ const Header = ({
   const [openSelectMenuModal, setOpenSelectMenuModal] = useState(false);
   const [openCreateHeroModal, setOpenCreateHeroModal] = useState(false);
   const [openSelectHeroModal, setOpenSelectHeroModal] = useState(false);
+  const [openCreateFormModal, setOpenCreateFormModal] = useState(false);
+  const [openSelectFormModal, setOpenSelectFormModal] = useState(false);
   const DUPLICATE_MENU_NAME_MESSAGE = "ชื่อเมนูนี้มีอยู่แล้ว ..... กรุณาใช้ชื่ออื่น";
   const DUPLICATE_HERO_NAME_MESSAGE = "ชื่อ Hero นี้มีอยู่แล้ว ..... กรุณาใช้ชื่ออื่น";
+  const DUPLICATE_FORM_NAME_MESSAGE = "ชื่อฟอร์มนี้มีอยู่แล้ว ..... กรุณาใช้ชื่ออื่น";
   const DEFAULT_MENU_SET_MESSAGE = "ตั้งค่าเมนูเริ่มต้นเรียบร้อยแล้ว";
   const DEFAULT_HERO_SET_MESSAGE = "ตั้งค่า Hero เริ่มต้นเรียบร้อยแล้ว";
+  const DEFAULT_FORM_SET_MESSAGE = "ตั้งค่าฟอร์มเริ่มต้นเรียบร้อยแล้ว";
   const [newMenuName, setNewMenuName] = useState("");
   const [newMenuNameError, setNewMenuNameError] = useState("");
   const [newHeroName, setNewHeroName] = useState("");
   const [newHeroNameError, setNewHeroNameError] = useState("");
+  const [newFormName, setNewFormName] = useState("");
+  const [newFormNameError, setNewFormNameError] = useState("");
   const [editingMenuPresetId, setEditingMenuPresetId] = useState(null);
   const [editingMenuPresetName, setEditingMenuPresetName] = useState("");
   const [editingHeroId, setEditingHeroId] = useState(null);
   const [editingHeroName, setEditingHeroName] = useState("");
+  const [editingFormId, setEditingFormId] = useState(null);
+  const [editingFormName, setEditingFormName] = useState("");
   const [menuPresetFooterMessage, setMenuPresetFooterMessage] = useState("");
   const [heroFooterMessage, setHeroFooterMessage] = useState("");
+  const [formFooterMessage, setFormFooterMessage] = useState("");
   const [menuPresetToast, setMenuPresetToast] = useState({ open: false, message: "" });
   const [pendingDeleteMenuPreset, setPendingDeleteMenuPreset] = useState(null);
   const [pendingDeleteHero, setPendingDeleteHero] = useState(null);
+  const [pendingDeleteForm, setPendingDeleteForm] = useState(null);
+  const [heroCreateResetToken, setHeroCreateResetToken] = useState(0);
+  const [heroMutationEvent, setHeroMutationEvent] = useState(null);
+  const [formMutationEvent, setFormMutationEvent] = useState(null);
+  const [isSavingForms, setIsSavingForms] = useState(false);
   const [heroItems, setHeroItems] = useState(() =>
     Array.isArray(heroPresets) && heroPresets.length > 0
       ? heroPresets
       : [{ id: "hero-preset-1", name: "Hero 1" }]
   );
+  const [formItems, setFormItems] = useState(() =>
+    Array.isArray(formPresets) && formPresets.length > 0
+      ? formPresets.map((item) => ({ id: item.id, name: item.name }))
+      : [{ id: "form-preset-1", name: "Form 1" }]
+  );
   const [activeHeroId, setActiveHeroId] = useState(activeHeroPresetId);
   const [defaultHeroId, setDefaultHeroId] = useState(defaultHeroPresetId);
+  const [activeFormId, setActiveFormId] = useState(activeFormPresetId);
+  const [defaultFormId, setDefaultFormId] = useState(defaultFormPresetId);
+  const syncedActiveHeroPresetIdRef = useRef(activeHeroPresetId);
+  const syncedDefaultHeroPresetIdRef = useRef(defaultHeroPresetId);
+  const syncedActiveFormPresetIdRef = useRef(activeFormPresetId);
+  const syncedDefaultFormPresetIdRef = useRef(defaultFormPresetId);
   const activeMenuPresetName = useMemo(() => {
+    if (!isMenuPresetHydrated) return "กำลังโหลดเมนู...";
     const activePreset = menuPresets.find((preset) => preset.id === activeMenuPresetId);
     return activePreset?.name
       ? `${activePreset.name} - กำลังทำงาน`
       : "เลือกเมนู";
-  }, [menuPresets, activeMenuPresetId]);
+  }, [menuPresets, activeMenuPresetId, isMenuPresetHydrated]);
   const activeHeroName = useMemo(() => {
     const activeHero = heroItems.find((hero) => hero.id === activeHeroId);
     return activeHero?.name ? `${activeHero.name} - กำลังทำงาน` : "เลือก Hero";
   }, [heroItems, activeHeroId]);
+  const activeFormName = useMemo(() => {
+    if (!isFormsHydrated) return "กำลังโหลดฟอร์ม...";
+    const activeForm = formItems.find((form) => form.id === activeFormId);
+    return activeForm?.name ? `${activeForm.name} - กำลังทำงาน` : "เลือกฟอร์ม";
+  }, [formItems, activeFormId, isFormsHydrated]);
+  const isDuplicateFormMessage = formFooterMessage === DUPLICATE_FORM_NAME_MESSAGE;
+  const isDefaultFormSuccessMessage = formFooterMessage === DEFAULT_FORM_SET_MESSAGE;
   const showMenuPresetToast = (message) => {
     setMenuPresetToast({ open: true, message });
   };
@@ -1147,20 +1188,42 @@ const Header = ({
     }, 3000);
     return () => clearTimeout(timer);
   }, [isDefaultHeroSuccessMessage]);
+  useEffect(() => {
+    if (!isDefaultFormSuccessMessage) return;
+    const timer = setTimeout(() => {
+      setFormFooterMessage("");
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [isDefaultFormSuccessMessage]);
 
   useEffect(() => {
     if (heroItems.length === 0) {
-      setActiveHeroId(null);
-      setDefaultHeroId(null);
+      setActiveHeroId((prev) => (prev == null ? prev : null));
+      setDefaultHeroId((prev) => (prev == null ? prev : null));
       return;
     }
-    if (!activeHeroId || !heroItems.some((hero) => hero.id === activeHeroId)) {
-      setActiveHeroId(heroItems[0].id);
+    const firstHeroId = heroItems[0].id;
+    setActiveHeroId((prev) =>
+      prev && heroItems.some((hero) => hero.id === prev) ? prev : firstHeroId
+    );
+    setDefaultHeroId((prev) =>
+      prev && heroItems.some((hero) => hero.id === prev) ? prev : firstHeroId
+    );
+  }, [heroItems]);
+  useEffect(() => {
+    if (formItems.length === 0) {
+      setActiveFormId((prev) => (prev == null ? prev : null));
+      setDefaultFormId((prev) => (prev == null ? prev : null));
+      return;
     }
-    if (!defaultHeroId || !heroItems.some((hero) => hero.id === defaultHeroId)) {
-      setDefaultHeroId(heroItems[0].id);
-    }
-  }, [heroItems, activeHeroId, defaultHeroId]);
+    const firstFormId = formItems[0].id;
+    setActiveFormId((prev) =>
+      prev && formItems.some((form) => form.id === prev) ? prev : firstFormId
+    );
+    setDefaultFormId((prev) =>
+      prev && formItems.some((form) => form.id === prev) ? prev : firstFormId
+    );
+  }, [formItems]);
   useEffect(() => {
     if (!Array.isArray(heroPresets) || heroPresets.length === 0) return;
     setHeroItems((prev) => {
@@ -1177,23 +1240,76 @@ const Header = ({
     });
   }, [heroPresets]);
   useEffect(() => {
-    if (typeof activeHeroPresetId === "string" && activeHeroPresetId !== activeHeroId) {
-      setActiveHeroId(activeHeroPresetId);
-    }
-  }, [activeHeroPresetId, activeHeroId]);
+    if (!Array.isArray(formPresets) || formPresets.length === 0) return;
+    const nextItems = formPresets.map((item) => ({ id: item.id, name: item.name }));
+    setFormItems((prev) => {
+      if (
+        prev.length === nextItems.length &&
+        prev.every(
+          (item, idx) =>
+            item?.id === nextItems[idx]?.id && item?.name === nextItems[idx]?.name
+        )
+      ) {
+        return prev;
+      }
+      return nextItems;
+    });
+  }, [formPresets]);
   useEffect(() => {
-    if (typeof defaultHeroPresetId === "string" && defaultHeroPresetId !== defaultHeroId) {
-      setDefaultHeroId(defaultHeroPresetId);
-    }
-  }, [defaultHeroPresetId, defaultHeroId]);
+    if (syncedActiveHeroPresetIdRef.current === activeHeroPresetId) return;
+    syncedActiveHeroPresetIdRef.current = activeHeroPresetId;
+    const canUseActiveHeroPresetId =
+      typeof activeHeroPresetId === "string" &&
+      heroItems.some((hero) => hero.id === activeHeroPresetId);
+    if (!canUseActiveHeroPresetId) return;
+    setActiveHeroId((prev) => (prev === activeHeroPresetId ? prev : activeHeroPresetId));
+  }, [activeHeroPresetId, heroItems]);
+  useEffect(() => {
+    if (syncedDefaultHeroPresetIdRef.current === defaultHeroPresetId) return;
+    syncedDefaultHeroPresetIdRef.current = defaultHeroPresetId;
+    const canUseDefaultHeroPresetId =
+      typeof defaultHeroPresetId === "string" &&
+      heroItems.some((hero) => hero.id === defaultHeroPresetId);
+    if (!canUseDefaultHeroPresetId) return;
+    setDefaultHeroId((prev) => (prev === defaultHeroPresetId ? prev : defaultHeroPresetId));
+  }, [defaultHeroPresetId, heroItems]);
+  useEffect(() => {
+    if (syncedActiveFormPresetIdRef.current === activeFormPresetId) return;
+    syncedActiveFormPresetIdRef.current = activeFormPresetId;
+    const canUseActiveFormPresetId =
+      typeof activeFormPresetId === "string" &&
+      formItems.some((form) => form.id === activeFormPresetId);
+    if (!canUseActiveFormPresetId) return;
+    setActiveFormId((prev) => (prev === activeFormPresetId ? prev : activeFormPresetId));
+  }, [activeFormPresetId, formItems]);
+  useEffect(() => {
+    if (syncedDefaultFormPresetIdRef.current === defaultFormPresetId) return;
+    syncedDefaultFormPresetIdRef.current = defaultFormPresetId;
+    const canUseDefaultFormPresetId =
+      typeof defaultFormPresetId === "string" &&
+      formItems.some((form) => form.id === defaultFormPresetId);
+    if (!canUseDefaultFormPresetId) return;
+    setDefaultFormId((prev) => (prev === defaultFormPresetId ? prev : defaultFormPresetId));
+  }, [defaultFormPresetId, formItems]);
   useEffect(() => {
     if (typeof onHeroStateChange !== "function") return;
     onHeroStateChange({
       heroPresets: heroItems,
       activeHeroPresetId: activeHeroId,
       defaultHeroPresetId: defaultHeroId,
+      resetHeroSectionToken: heroCreateResetToken,
+      heroMutationEvent,
     });
-  }, [heroItems, activeHeroId, defaultHeroId, onHeroStateChange]);
+  }, [heroItems, activeHeroId, defaultHeroId, heroCreateResetToken, heroMutationEvent, onHeroStateChange]);
+  useEffect(() => {
+    if (typeof onFormStateChange !== "function") return;
+    onFormStateChange({
+      formPresets: formItems,
+      activeFormPresetId: activeFormId,
+      defaultFormPresetId: defaultFormId,
+      formMutationEvent,
+    });
+  }, [formItems, activeFormId, defaultFormId, formMutationEvent, onFormStateChange]);
 
   const closeCreateMenuModal = () => {
     setOpenCreateMenuModal(false);
@@ -1204,6 +1320,11 @@ const Header = ({
     setOpenCreateHeroModal(false);
     setNewHeroName("");
     setNewHeroNameError("");
+  };
+  const closeCreateFormModal = () => {
+    setOpenCreateFormModal(false);
+    setNewFormName("");
+    setNewFormNameError("");
   };
 
   const closeSelectMenuModal = () => {
@@ -1220,15 +1341,35 @@ const Header = ({
     setPendingDeleteHero(null);
     setHeroFooterMessage("");
   };
+  const closeSelectFormModal = () => {
+    setOpenSelectFormModal(false);
+    setEditingFormId(null);
+    setEditingFormName("");
+    setPendingDeleteForm(null);
+    setFormFooterMessage("");
+  };
 
   const buildHeroId = () => `hero-preset-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+  const buildFormId = () => `form-preset-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
   const normalizeHeroName = (value) => String(value || "").trim().toLowerCase();
+  const normalizeFormName = (value) => String(value || "").trim().toLowerCase();
   const createUniqueHeroName = (baseName) => {
     const cleanBase = String(baseName || "").trim() || "Hero";
     let candidate = `${cleanBase} คัดลอก`;
     let counter = 2;
     const existing = new Set(heroItems.map((hero) => normalizeHeroName(hero.name)));
     while (existing.has(normalizeHeroName(candidate))) {
+      candidate = `${cleanBase} คัดลอก ${counter}`;
+      counter += 1;
+    }
+    return candidate;
+  };
+  const createUniqueFormName = (baseName) => {
+    const cleanBase = String(baseName || "").trim() || "Form";
+    let candidate = `${cleanBase} คัดลอก`;
+    let counter = 2;
+    const existing = new Set(formItems.map((form) => normalizeFormName(form.name)));
+    while (existing.has(normalizeFormName(candidate))) {
       candidate = `${cleanBase} คัดลอก ${counter}`;
       counter += 1;
     }
@@ -1253,6 +1394,28 @@ const Header = ({
     setHeroFooterMessage("");
     return { ok: true };
   };
+  const commitRenameForm = async (formId, nextName) => {
+    const trimmed = String(nextName || "").trim();
+    if (trimmed.length < 3) {
+      setFormFooterMessage("ชื่อฟอร์มต้องอย่างน้อย 3 ตัวอักษร");
+      return { ok: false, reason: "too_short" };
+    }
+    const duplicate = formItems.some(
+      (form) => form.id !== formId && normalizeFormName(form.name) === normalizeFormName(trimmed)
+    );
+    if (duplicate) {
+      setFormFooterMessage(DUPLICATE_FORM_NAME_MESSAGE);
+      return { ok: false, reason: "duplicate_name" };
+    }
+    setFormItems((prev) =>
+      prev.map((form) => (form.id === formId ? { ...form, name: trimmed } : form))
+    );
+    setFormFooterMessage("");
+    await handleSaveForms({
+      renameFormPreset: { id: formId, name: trimmed },
+    });
+    return { ok: true };
+  };
 
   const commitRenameMenuPreset = (presetId, name) => {
     if (typeof onRenameMenuPreset !== "function") return { ok: false, reason: "unavailable" };
@@ -1271,16 +1434,148 @@ const Header = ({
     return result;
   };
 
-  const handleSaveMenuBar = () => {
-    if (typeof submitMenuBar === "function") {
-      submitMenuBar();
-      setDone(true);
+  const handleSaveForms = async (saveOptions = {}) => {
+    if (isSavingForms) return;
+    if (typeof submitForms !== "function") return;
+    // บังคับบันทึกได้เมื่อมี overrides (สร้าง/คัดลอก/ลบ/ตั้งชื่อ) แม้ยังไม่ dirty
+    const forceSave =
+      saveOptions &&
+      typeof saveOptions === "object" &&
+      Object.keys(saveOptions).length > 0;
+    if (!forceSave && !isFormsDirty) return;
+    setIsSavingForms(true);
+    const saveStartedAt = Date.now();
+    const ensureMinimumSavingIndicator = async () => {
+      const elapsedMs = Date.now() - saveStartedAt;
+      const remainingMs = MIN_SAVE_FEEDBACK_MS - elapsedMs;
+      if (remainingMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingMs));
+      }
+    };
+    try {
+      const result = await submitForms(saveOptions);
+      await ensureMinimumSavingIndicator();
+      if (result?.ok) {
+        setSaveFailed({ open: false, message: "" });
+        setDone(true);
+        return;
+      }
+      if (result?.details != null) {
+        console.error("Save forms failed:", result.details);
+      }
+      setSaveFailed({
+        open: true,
+        message:
+          typeof result?.message === "string" && result.message.trim()
+            ? result.message
+            : "ไม่สำเร็จ.....กรุณาตรวจสอบอีกครั้ง",
+      });
+    } catch (error) {
+      await ensureMinimumSavingIndicator();
+      console.error("Save forms failed:", error);
+      setSaveFailed({
+        open: true,
+        message:
+          typeof error?.message === "string" && error.message.trim()
+            ? error.message.trim()
+            : "ไม่สำเร็จ.....กรุณาตรวจสอบอีกครั้ง",
+      });
+    } finally {
+      setIsSavingForms(false);
+    }
+  };
+
+  const handleSaveMenuBar = async (saveOptions = {}) => {
+    if (isSavingMenuBar) return;
+    if (typeof submitMenuBar !== "function") return;
+    setIsSavingMenuBar(true);
+    const saveStartedAt = Date.now();
+    const ensureMinimumSavingIndicator = async () => {
+      const elapsedMs = Date.now() - saveStartedAt;
+      const remainingMs = MIN_SAVE_FEEDBACK_MS - elapsedMs;
+      if (remainingMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingMs));
+      }
+    };
+    try {
+      const result = await submitMenuBar(saveOptions);
+      await ensureMinimumSavingIndicator();
+      if (result?.ok) {
+        setSaveFailed({ open: false, message: "" });
+        setDone(true);
+        return;
+      }
+      if (result?.details != null) {
+        console.error("Save menu bar failed:", result.details);
+      }
+      setSaveFailed({
+        open: true,
+        message:
+          typeof result?.message === "string" && result.message.trim()
+            ? result.message
+            : "ไม่สำเร็จ.....กรุณาตรวจสอบอีกครั้ง",
+      });
+    } catch (error) {
+      await ensureMinimumSavingIndicator();
+      console.error("Save menu bar failed:", error);
+      setSaveFailed({
+        open: true,
+        message:
+          typeof error?.message === "string" && error.message.trim()
+            ? error.message
+            : "ไม่สำเร็จ.....กรุณาตรวจสอบอีกครั้ง",
+      });
+    } finally {
+      setIsSavingMenuBar(false);
+    }
+  };
+
+  const handlePublishBuilder = async () => {
+    if (isPublishingBuilder) return;
+    if (typeof onPublishBuilder !== "function") return;
+
+    setIsPublishingBuilder(true);
+    const saveStartedAt = Date.now();
+    const ensureMinimumSavingIndicator = async () => {
+      const elapsedMs = Date.now() - saveStartedAt;
+      const remainingMs = MIN_SAVE_FEEDBACK_MS - elapsedMs;
+      if (remainingMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingMs));
+      }
+    };
+
+    try {
+      const result = await onPublishBuilder();
+      await ensureMinimumSavingIndicator();
+      if (result?.ok) {
+        setSaveFailed({ open: false, message: "" });
+        setDone(true);
+        return;
+      }
+      setSaveFailed({
+        open: true,
+        message:
+          typeof result?.message === "string" && result.message.trim()
+            ? result.message.trim()
+            : "ไม่สำเร็จ.....กรุณาตรวจสอบอีกครั้ง",
+      });
+    } catch (error) {
+      await ensureMinimumSavingIndicator();
+      setSaveFailed({
+        open: true,
+        message:
+          typeof error?.message === "string" && error.message.trim()
+            ? error.message.trim()
+            : "ไม่สำเร็จ.....กรุณาตรวจสอบอีกครั้ง",
+      });
+    } finally {
+      setIsPublishingBuilder(false);
     }
   };
 
   return (
     <>
-      <header className="flex h-16 w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden border-b border-slate-200 bg-white/80 px-3 backdrop-blur dark:border-white/10 dark:bg-gray-900/70 sm:px-6 " style={{color:textColor}}>
+      <header className="dash-header flex h-16 w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden border-b px-3 backdrop-blur sm:px-6 ">
         <button
           className="sm:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/80"
           //   onClick={() => setMobileOpen((s) => !s)}
@@ -1290,80 +1585,138 @@ const Header = ({
         </button>
 
 
-        {(!["Menu", "Hero"].includes(option) ||  deviceType === "Desktop") && (
-          <NavBtn/>
-        ) }
-        {["Menu", "Hero"].includes(option) && (
-          <button
-            type="button"
-            className="hidden sm:inline-flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-gray-700 dark:bg-teal-300/80 border border-0 rounded-md hover:bg-gray-700/60 dark:hover:bg-teal-200/100 hover:text-white dark:hover:text-teal-500 focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none"
-            onClick={() => {
-              if (option === "Hero") {
-                setOpenSelectHeroModal(true);
-                return;
-              }
-              setOpenSelectMenuModal(true);
-            }}
-          >
-            {option === "Hero" ? activeHeroName : activeMenuPresetName}
-          </button>
-        )}
-        
-
-        {option === "Builder" && <ChangeBuilderModeButton />}
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-0">
+            <button
+              type="button"
+              className="inline-flex shrink-0 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/80"
+              onClick={() => toggleRailExpanded?.()}
+              aria-label={railExpanded ? "ย่อเมนูซ้าย" : "ขยายเมนูซ้าย"}
+              title={railExpanded ? "ย่อ" : "ขยาย"}
+            >
+              {railExpanded ? (
+                <PanelLeftClose className="h-5 w-5" />
+              ) : (
+                <PanelLeftOpen className="h-5 w-5" />
+              )}
+            </button>
+            {(!["Menu", "Hero"].includes(option) || deviceType === "Desktop") && (
+              <NavBtn />
+            )}
+          </div>
+          {option === "Message" && (
+            <span className="dash-heading text-[14px] font-bold tracking-[0.2em]">
+              MESSAGES
+            </span>
+          )}
+          {["Menu", "Hero"].includes(option) && (
+            <>
+              <button
+                type="button"
+                className="dash-header-select hidden sm:inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-[12px] font-medium hover:opacity-90 focus:z-10 focus:ring-0 focus:outline-none"
+                onClick={() => {
+                  if (option === "Hero") {
+                    setOpenSelectHeroModal(true);
+                    return;
+                  }
+                  setOpenSelectMenuModal(true);
+                }}
+              >
+                {option === "Hero" ? activeHeroName : activeMenuPresetName}
+              </button>
+              {option === "Menu" && (
+                <button
+                  type="button"
+                  onClick={() => setOpenCreateMenuModal(true)}
+                  className="dash-button hidden sm:inline-flex items-center gap-2 rounded-md border border-0 px-3 py-1.5 text-[12px] font-medium hover:opacity-90 focus:z-10 focus:ring-0 focus:outline-none"
+                >
+                  <Plus size={16} />
+                  สร้างเมนู
+                </button>
+              )}
+              {option === "Hero" && (
+                <button
+                  type="button"
+                  onClick={() => setOpenCreateHeroModal(true)}
+                  className="dash-button hidden sm:inline-flex items-center gap-2 rounded-md border border-0 px-3 py-1.5 text-[12px] font-medium hover:opacity-90 focus:z-10 focus:ring-0 focus:outline-none"
+                >
+                  <Plus size={16} />
+                  สร้าง Hero
+                </button>
+              )}
+            </>
+          )}
+          {option === "Forms" && (
+            <>
+              <button
+                type="button"
+                className="dash-header-select hidden sm:inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-[12px] font-medium hover:opacity-90 focus:z-10 focus:ring-0 focus:outline-none"
+                onClick={() => setOpenSelectFormModal(true)}
+              >
+                {activeFormName}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpenCreateFormModal(true)}
+                className="dash-button hidden sm:inline-flex items-center gap-2 rounded-md border border-0 px-3 py-1.5 text-[12px] font-medium hover:opacity-90 focus:z-10 focus:ring-0 focus:outline-none"
+              >
+                <Plus size={16} />
+                สร้างฟอร์ม
+              </button>
+            </>
+          )}
+          {option === "Builder" && <ChangeBuilderModeButton />}
+        </div>
 
         <div className="min-w-0 flex-1 overflow-hidden">
           <Breadcrumbs />
         </div>
-        {[
-          "AddPost",
-          "editPost",
-        ].includes(option) && (
-          <button
-            type="button"
-            className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-gray-700 dark:bg-teal-300/80 border border-0 rounded-md hover:bg-gray-700/60 dark:hover:bg-teal-200/100 hover:text-white dark:hover:text-teal-500 focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none"
-            onClick={(e) => {
-              submit[option](e);
-            }}
-          >
-            <span className="material-icons-outlined text-[18px]">public</span>{" "}
-            บันทึกข้อมูล
-          </button>
-        )}
-
         {["Builder", "Menu", "Hero"].includes(option) && <DeviceSelector />}
 
         <div className="ml-auto shrink-0" />
 
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex min-w-[220px] shrink-0 items-center justify-end gap-3">
           {option === "Builder" && (
             <>
-               <button
+            <button
               type="button"
-              style={{backgroundColor:textColor}}
-              className="flex items-center gap-2 px-4 py-1 text-[13px] font-medium text-white bg-gray-700 dark:bg-teal-300/80 border border-0 rounded-md hover:bg-gray-700/60 dark:hover:bg-teal-200/100 hover:text-white dark:hover:text-teal-500 focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none"
-              onClick={()=>{
-                setOpenPageModal(true)
+              disabled={!hasSelectedBuilderPage}
+              className={`dash-button flex items-center gap-2 px-4 py-1.5 text-[12px] font-medium border border-0 rounded-md focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none ${
+                hasSelectedBuilderPage ? "hover:opacity-90" : "cursor-not-allowed opacity-55"
+              }`}
+              onClick={() => {
+                if (!hasSelectedBuilderPage) return;
+                onOpenPageSettings?.();
               }}
             >
-              <FileText size={18}/>
-             สร้างหน้าใหม่
+              <Settings size={16} />
+              ตั้งค่า
             </button>
             <button
-             style={{backgroundColor:textColor}}
               type="button"
-              className="flex items-center gap-2 px-4 py-1 text-[13px] font-medium text-white bg-gray-700 dark:bg-teal-300/80 border border-0 rounded-md hover:bg-gray-700/60 dark:hover:bg-teal-200/100 hover:text-white dark:hover:text-teal-500 focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none"
+              disabled={!hasSelectedBuilderPage || isPublishingBuilder}
+              onClick={handlePublishBuilder}
+              className={`dash-button flex items-center gap-2 px-4 py-1.5 text-[12px] font-medium border border-0 rounded-md focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none ${
+                !hasSelectedBuilderPage || isPublishingBuilder
+                  ? "cursor-not-allowed opacity-55"
+                  : "hover:opacity-90"
+              }`}
             >
               <span className="material-icons-outlined text-[18px]">
                 public
               </span>{" "}
-              เผยแพร่
+              {isPublishingBuilder ? "กำลังบันทึก..." : "เผยแพร่"}
             </button>
             <button
-              style={{ backgroundColor: textColor }}
               type="button"
-              className="flex items-center gap-2 px-4 py-1 text-[13px] font-medium text-white bg-gray-700 dark:bg-teal-300/80 border border-0 rounded-md hover:bg-gray-700/60 dark:hover:bg-teal-200/100 hover:text-white dark:hover:text-teal-500 focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none"
-              onClick={() => onOpenPreview?.()}
+              disabled={!hasSelectedBuilderPage}
+              className={`dash-button flex items-center gap-2 px-4 py-1.5 text-[12px] font-medium border border-0 rounded-md focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none ${
+                hasSelectedBuilderPage ? "hover:opacity-90" : "cursor-not-allowed opacity-55"
+              }`}
+              onClick={() => {
+                if (!hasSelectedBuilderPage) return;
+                onOpenPreview?.();
+              }}
             >
               <span className="material-icons-outlined text-[18px]">
                 visibility
@@ -1378,35 +1731,47 @@ const Header = ({
           {["Menu", "Hero"].includes(option) && (
             <>
               <button
+                onClick={() => handleSaveMenuBar({ reloadAfterSave: false })}
                 type="button"
-                onClick={() => {
-                  if (option === "Hero") {
-                    setOpenCreateHeroModal(true);
-                    return;
-                  }
-                  setOpenCreateMenuModal(true);
-                }}
-                className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-gray-700 dark:bg-teal-300/80 border border-0 rounded-md hover:bg-gray-700/60 dark:hover:bg-teal-200/100 hover:text-white dark:hover:text-teal-500 focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none"
-              >
-                <Plus size={16} />
-                {option === "Hero" ? "สร้าง Hero" : "สร้างเมนู"}
-              </button>
-              <button
-                onClick={handleSaveMenuBar}
-                type="button"
-                className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-gray-700 dark:bg-teal-300/80 border border-0 rounded-md hover:bg-gray-700/60 dark:hover:bg-teal-200/100 hover:text-white dark:hover:text-teal-500 focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none"
+                disabled={isSavingMenuBar}
+                className={`dash-button flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium border border-0 rounded-md focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none ${
+                  isSavingMenuBar ? "cursor-not-allowed opacity-65" : "hover:opacity-90"
+                }`}
               >
                 <span className="material-icons-outlined text-[18px]">public</span>{" "}
-                บันทึกข้อมูล
+                {isSavingMenuBar ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
               </button>
             </>
           )}
 
+          {option === "Forms" && (
+            <button
+              type="button"
+              onClick={handleSaveForms}
+              disabled={isSavingForms || !isFormsHydrated || !isFormsDirty}
+              title={
+                !isFormsHydrated
+                  ? "กำลังโหลดฟอร์ม..."
+                  : !isFormsDirty
+                    ? "ไม่มีการเปลี่ยนแปลง"
+                    : "บันทึกข้อมูล"
+              }
+              className={`dash-button flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium border border-0 rounded-md focus:z-10 focus:ring-0 focus:ring-blue-400 focus:outline-none ${
+                isSavingForms || !isFormsHydrated || !isFormsDirty
+                  ? "cursor-not-allowed opacity-65"
+                  : "hover:opacity-90"
+              }`}
+            >
+              <span className="material-icons-outlined text-[18px]">public</span>{" "}
+              {isSavingForms ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
+            </button>
+          )}
+
           <button
             onClick={toggleDarkMode}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5"
+            className="rounded-lg p-2 hover:opacity-80"
             aria-label="Toggle theme"
-            
+            style={{ color: "var(--dash-header-button, #374151)" }}
           >
             {isDark === "dark" ? (
               <Sun className="h-5 w-5" />
@@ -1472,7 +1837,7 @@ const Header = ({
               <button
                 type="button"
                 className="rounded-md bg-[#454b57] px-3 py-1 text-[13px] text-white hover:bg-[#3b414b]"
-                onClick={() => {
+                onClick={async () => {
                   if (typeof onCreateMenuPreset !== "function") return;
                   const result = onCreateMenuPreset(newMenuName);
                   if (!result?.ok) {
@@ -1485,6 +1850,10 @@ const Header = ({
                   }
                   showMenuPresetToast(`สร้างเมนู ${result.name} แล้ว`);
                   closeCreateMenuModal();
+                  // Wait for preset state to commit before persisting to backend.
+                  await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+                  await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+                  await handleSaveMenuBar({ reloadAfterSave: false });
                 }}
               >
                 สร้างเมนู
@@ -1557,12 +1926,397 @@ const Header = ({
                   };
                   setHeroItems((prev) => [...prev, newHero]);
                   setActiveHeroId(newHero.id);
+                  setHeroCreateResetToken((prev) => prev + 1);
+                  setHeroMutationEvent({
+                    id: Date.now() + Math.random(),
+                    type: "create",
+                    newHeroId: newHero.id,
+                  });
                   closeCreateHeroModal();
                 }}
               >
                 สร้าง Hero
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {openCreateFormModal && (
+        <div
+          className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/35 px-4"
+          onClick={closeCreateFormModal}
+        >
+          <div
+            className="w-full max-w-[550px] rounded-[12px] bg-white dark:bg-zinc-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10">
+              <span className="text-[15px] font-semibold text-slate-700 dark:text-white/90">
+                สร้างฟอร์มใหม่
+              </span>
+              <button
+                type="button"
+                className="text-[13px] text-slate-500 hover:text-slate-700 dark:text-white/60 dark:hover:text-white/90"
+                onClick={closeCreateFormModal}
+              >
+                ปิด
+              </button>
+            </div>
+            <div className="px-4 py-4">
+              <div className="mb-2 text-[12px] text-slate-500 dark:text-white/60">ชื่อฟอร์ม</div>
+              <input
+                value={newFormName}
+                onChange={(e) => {
+                  setNewFormName(e.target.value);
+                  if (newFormNameError) setNewFormNameError("");
+                }}
+                placeholder="เช่น Form 2"
+                className="h-[38px] w-full rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-800 outline-none focus:border-slate-400 dark:border-white/10 dark:bg-zinc-800 dark:text-white/90"
+              />
+              {newFormNameError && (
+                <div className="mt-2 text-[12px] text-red-500">{newFormNameError}</div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3 dark:border-white/10">
+              <button
+                type="button"
+                className="rounded-md border border-slate-200 px-3 py-1 text-[13px] text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-white/80 dark:hover:bg-zinc-800"
+                onClick={closeCreateFormModal}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-[#454b57] px-3 py-1 text-[13px] text-white hover:bg-[#3b414b]"
+                onClick={() => {
+                  const trimmedName = String(newFormName || "").trim();
+                  if (trimmedName.length < 3) {
+                    setNewFormNameError("กรุณาตั้งชื่อฟอร์มอย่างน้อย 3 ตัวอักษร");
+                    return;
+                  }
+                  const isDuplicate = formItems.some(
+                    (form) => normalizeFormName(form.name) === normalizeFormName(trimmedName)
+                  );
+                  if (isDuplicate) {
+                    setNewFormNameError("ชื่อฟอร์มนี้มีอยู่แล้ว");
+                    return;
+                  }
+                  const newForm = {
+                    id: buildFormId(),
+                    name: trimmedName,
+                  };
+                  setFormItems((prev) => [...prev, newForm]);
+                  setActiveFormId(newForm.id);
+                  setFormMutationEvent({
+                    id: Date.now() + Math.random(),
+                    type: "create",
+                    newFormId: newForm.id,
+                  });
+                  closeCreateFormModal();
+                }}
+              >
+                สร้างฟอร์ม
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {openSelectFormModal && (
+        <div
+          className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/35 px-4"
+          onClick={closeSelectFormModal}
+        >
+          <div
+            className="w-full max-w-[550px] rounded-[12px] bg-white dark:bg-zinc-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 pt-4 pb-2">
+              <div className="flex items-center gap-[20px]">
+                <span className="text-[15px] font-extrabold" style={{ color: "#333333" }}>
+                  เลือกฟอร์ม
+                </span>
+                {isDuplicateFormMessage && (
+                  <span className="text-left text-[13px]" style={{ color: "#b91c1b" }}>
+                    {formFooterMessage}
+                  </span>
+                )}
+                {isDefaultFormSuccessMessage && (
+                  <span className="text-left text-[13px]" style={{ color: "#6b7280" }}>
+                    {formFooterMessage}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="text-[13px]"
+                style={{ color: isDark === "dark" ? "#ffffff" : "#202020" }}
+                onClick={closeSelectFormModal}
+              >
+                X
+              </button>
+            </div>
+            <div className="mt-1 border-b-[5px] border-solid border-[#e5e7eb]" />
+            <div className="max-h-[360px] overflow-y-auto px-3 py-3">
+              {formItems.length === 0 ? (
+                <div className="rounded-md bg-[#f7f8fa] px-3 py-2 text-[13px] text-slate-500 dark:bg-zinc-800 dark:text-white/60">
+                  ยังไม่มีรายการฟอร์ม
+                </div>
+              ) : (
+                <div className="w-full rounded-md px-[10px] pt-[4px] pb-[4px]">
+                  {formItems.map((form) => {
+                    const selected = form.id === activeFormId;
+                    const isDefaultForm = form.id === defaultFormId;
+                    const isEditingForm = editingFormId === form.id;
+                    const isPendingDeleteForm = pendingDeleteForm?.id === form.id;
+                    return (
+                      <div
+                        key={form.id}
+                        className={`border-b last:border-0 flex justify-between py-2 ${
+                          isDark === "dark" ? "border-b-[#a9a8a81c]" : "border-b-slate-200"
+                        }`}
+                        style={{ color: isDark === "dark" ? "#ffffff" : "#202020" }}
+                      >
+                        <div
+                          className={`flex min-w-0 items-center gap-[10px] text-left ${
+                            isEditingForm ? "cursor-default" : "cursor-pointer"
+                          }`}
+                          onClick={() => {
+                            if (isPendingDeleteForm) return;
+                            if (isEditingForm) return;
+                            setActiveFormId(form.id);
+                            closeSelectFormModal();
+                          }}
+                        >
+                          <Menu size={14} strokeWidth={2.5} style={{ opacity: 0.45, color: "#9ca3af", flexShrink: 0 }} />
+                          {isEditingForm ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                value={editingFormName}
+                                onChange={(e) => {
+                                  setEditingFormName(e.target.value);
+                                  if (formFooterMessage) setFormFooterMessage("");
+                                }}
+                                className="h-[30px] min-w-[180px] rounded-md border border-[#e7e7e7] bg-transparent px-2 text-[13.5px] outline-none dark:border-[#494d54]"
+                                autoFocus
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onKeyDown={async (e) => {
+                                  if (e.key === "Enter") {
+                                    const result = await commitRenameForm(
+                                      form.id,
+                                      editingFormName
+                                    );
+                                    if (result.ok) {
+                                      setEditingFormId(null);
+                                      setEditingFormName("");
+                                    }
+                                  }
+                                  if (e.key === "Escape") {
+                                    setEditingFormId(null);
+                                    setEditingFormName("");
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="h-[30px] rounded-md bg-[#333333] px-3 text-[12px] text-white"
+                                onClick={async (e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  const result = await commitRenameForm(
+                                    form.id,
+                                    editingFormName
+                                  );
+                                  if (result.ok) {
+                                    setEditingFormId(null);
+                                    setEditingFormName("");
+                                  }
+                                }}
+                              >
+                                บันทึก
+                              </button>
+                            </div>
+                          ) : (
+                            <span className={`truncate text-[13.5px] ${selected ? "font-semibold" : ""}`}>
+                              {form.name}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 cursor-pointer ${
+                              isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"
+                            }`}
+                            onClick={async (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteForm) return;
+                              setDefaultFormId(form.id);
+                              setFormFooterMessage(DEFAULT_FORM_SET_MESSAGE);
+                              await handleSaveForms({
+                                defaultFormPresetId: form.id,
+                              });
+                            }}
+                          >
+                            <span
+                              className="mx-2 inline-flex h-4 w-4 items-center justify-center rounded-full"
+                              style={{
+                                backgroundColor: "#333333",
+                                opacity: isDefaultForm ? 1 : 0.35,
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Check size={10} strokeWidth={3} color="#ffffff" />
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 cursor-pointer ${
+                              isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"
+                            }`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteForm) return;
+                              setEditingFormId(form.id);
+                              setEditingFormName(form.name);
+                              setFormFooterMessage("");
+                              setPendingDeleteForm(null);
+                            }}
+                          >
+                            <FilePenLine size={14} style={{ opacity: 0.6 }} className="mx-2" />
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 cursor-pointer ${
+                              isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"
+                            }`}
+                            onClick={async (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteForm) return;
+                              const duplicateName = createUniqueFormName(form.name);
+                              const duplicatedForm = { id: buildFormId(), name: duplicateName };
+                              setFormItems((prev) => {
+                                const idx = prev.findIndex((item) => item.id === form.id);
+                                if (idx < 0) return [...prev, duplicatedForm];
+                                const next = [...prev];
+                                next.splice(idx + 1, 0, duplicatedForm);
+                                return next;
+                              });
+                              setFormMutationEvent({
+                                id: Date.now() + Math.random(),
+                                type: "duplicate",
+                                sourceFormId: form.id,
+                                newFormId: duplicatedForm.id,
+                              });
+                              await handleSaveForms({
+                                duplicateFormPreset: {
+                                  sourceFormId: form.id,
+                                  newFormId: duplicatedForm.id,
+                                  name: duplicateName,
+                                },
+                              });
+                            }}
+                          >
+                            <Copy size={14} style={{ opacity: 0.6 }} className="mx-2" />
+                          </button>
+                          <button
+                            type="button"
+                            className={`flex items-center justify-center pr-2 border-r last:border-0 ${
+                              formItems.length <= 1 ? "cursor-not-allowed opacity-40" : "cursor-pointer"
+                            } ${isDark === "dark" ? "border-r-[#a9a8a852]" : "border-r-slate-200"}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (pendingDeleteForm) return;
+                              if (formItems.length <= 1) return;
+                              setFormFooterMessage("");
+                              setPendingDeleteForm(form);
+                            }}
+                          >
+                            <Trash2 size={14} style={{ opacity: 0.6 }} className="mx-2" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {pendingDeleteForm && (
+              <div className="flex min-h-[56px] items-center justify-between gap-2 border-t border-[#e5e7eb] px-4 py-4 dark:border-white/10">
+                <div
+                  className="ml-[5px] text-left text-[13px] font-normal"
+                  style={{ color: "#333333" }}
+                >
+                  คุณต้องการลบ{" "}
+                  <span style={{ color: "#B91C1C", fontWeight: "normal" }}>
+                    {pendingDeleteForm.name}
+                  </span>{" "}
+                  ใช่หรือไม่ ?
+                </div>
+                <div className="ml-auto mr-[5px] flex items-center gap-2">
+                  <Button
+                    sx={{
+                      backgroundColor: "#B91C1C",
+                      color: "white",
+                      fontSize: 12,
+                      fontWeight: "normal",
+                      height: 28,
+                      minWidth: "auto",
+                      padding: "10px 10px",
+                    }}
+                    onClick={async () => {
+                      const deletingFormId = pendingDeleteForm.id;
+                      const remaining = formItems.filter(
+                        (form) => form.id !== deletingFormId
+                      );
+                      const fallbackId = remaining[0]?.id || null;
+                      setFormItems(remaining);
+                      if (activeFormId === deletingFormId) {
+                        setActiveFormId(fallbackId);
+                      }
+                      if (defaultFormId === deletingFormId) {
+                        setDefaultFormId(fallbackId);
+                      }
+                      setFormFooterMessage("");
+                      setPendingDeleteForm(null);
+                      await handleSaveForms({
+                        deleteFormPresetId: deletingFormId,
+                        activeFormPresetId:
+                          activeFormId === deletingFormId
+                            ? fallbackId
+                            : activeFormId,
+                        defaultFormPresetId:
+                          defaultFormId === deletingFormId
+                            ? fallbackId
+                            : defaultFormId,
+                      });
+                    }}
+                  >
+                    ใช่...ฉันต้องการลบ
+                  </Button>
+                  <Button
+                    sx={{
+                      backgroundColor: "#333",
+                      color: "white",
+                      fontSize: 12,
+                      fontWeight: "normal",
+                      height: 28,
+                      minWidth: "auto",
+                      padding: "10px 10px",
+                    }}
+                    onClick={() => setPendingDeleteForm(null)}
+                  >
+                    ยกเลิก
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1744,6 +2498,12 @@ const Header = ({
                                 const next = [...prev];
                                 next.splice(idx + 1, 0, duplicatedHero);
                                 return next;
+                              });
+                              setHeroMutationEvent({
+                                id: Date.now() + Math.random(),
+                                type: "duplicate",
+                                sourceHeroId: hero.id,
+                                newHeroId: duplicatedHero.id,
                               });
                             }}
                           >
@@ -2103,8 +2863,24 @@ const Header = ({
           </div>
         </div>
       )}
-      <ServicePage darkMode={isDark} open={openPageModal} onClose={()=>setOpenPageModal(false)} complete={()=>setDone(true)}/>
-      <ServiceSelectPage darkMode={isDark} open={openSelectPageModal} onClose={()=>setOpenSelectPageModal(false)}/>
+      <ServicePage
+        darkMode={isDark}
+        open={openPageModal}
+        onClose={() => setOpenPageModal(false)}
+        complete={() => setDone(true)}
+        onCreated={(createdPage) => {
+          onPageCreated?.(createdPage);
+        }}
+      />
+      <ServiceSelectPage
+        darkMode={isDark}
+        open={openSelectPageModal}
+        onClose={() => setOpenSelectPageModal(false)}
+        activePageId={activePageId}
+        defaultPageId={defaultPageId}
+        onSelectPage={onSelectPage}
+        onPagesChanged={onPagesChanged}
+      />
 <Snackbar
   anchorOrigin={{ vertical:"bottom", horizontal:"right" }}
   open={done}
@@ -2132,6 +2908,49 @@ const Header = ({
   sx={{
     "& .MuiSnackbarContent-root": {
       backgroundColor: "#05966B",
+      color: "#fff",
+      fontSize: 13,
+      justifyContent: "center",
+      alignItems: "center",
+      py: 0.75,
+      boxShadow: "none",
+    },
+    "& .MuiSnackbarContent-message": {
+      display: "flex",
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 0,
+      py: 0.25,
+    },
+  }}
+/>
+<Snackbar
+  anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+  open={saveFailed.open}
+  onClose={() => setSaveFailed((prev) => ({ ...prev, open: false }))}
+  ContentProps={{ elevation: 0 }}
+  message={
+    <div
+      style={{
+        display: "flex",
+        width: "100%",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        paddingTop: 6,
+        paddingBottom: 6,
+      }}
+    >
+      <AlertCircle size={20} strokeWidth={2.25} aria-hidden />
+      <span>{saveFailed.message || "ไม่สำเร็จ.....กรุณาตรวจสอบอีกครั้ง"}</span>
+    </div>
+  }
+  key={2}
+  autoHideDuration={2400}
+  sx={{
+    "& .MuiSnackbarContent-root": {
+      backgroundColor: "#B91C1C",
       color: "#fff",
       fontSize: 13,
       justifyContent: "center",

@@ -6,6 +6,10 @@ import lodash from "lodash";
 import Range from "../HTML/Range";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
+import { panelGroupButtonSx, panelGroupRootBorderSx } from "../panelControlSx";
+
+/** Slider fill ตาม Settings → Panel → สี Slider Active */
+const DASH_SLIDER_ACCENT = "var(--dash-panel-accent, #333333)";
 import {
   BETWEEN_ELEMENT_DEFAULTS,
   mergeBetweenElement,
@@ -33,10 +37,10 @@ const MainLabel = ({ label, value, valueText, mb = 0.5 }) => (
       flex: 1,
       fontSize: 13,
       fontWeight: 600,
-      color: "rgb(51 65 85)",
+      color: "var(--dash-panel-heading, #0f172a)",
       mb,
       fontVariantNumeric: "tabular-nums",
-      ".dark &": { color: "rgba(255,255,255,0.78)" },
+      ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
     }}
   >
     {label}
@@ -45,7 +49,7 @@ const MainLabel = ({ label, value, valueText, mb = 0.5 }) => (
         {valueText ?? Math.round(value)}
       </span>
     ) : null}
-    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
   </Typography>
 );
 
@@ -74,42 +78,10 @@ const dividerGroupRootSx = {
     borderTopRightRadius: "0.375rem !important",
     borderBottomRightRadius: "0.375rem !important",
   },
-  "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "#e2e8f0 !important",
-  },
-  ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "rgba(255,255,255,0.1) !important",
-  },
+  ...panelGroupRootBorderSx,
 };
 
-const dividerBtnSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.15,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    color: selected ? "#ffffff" : "#334155",
-    borderColor: selected ? `${a} !important` : undefined,
-    backgroundColor: selected ? a : "#ffffff",
-    "&:hover": {
-      backgroundColor: selected ? a : "#f8fafc",
-      borderColor: selected ? `${a} !important` : undefined,
-    },
-    ".dark &": {
-      color: selected ? "#ffffff" : "rgba(255,255,255,0.88)",
-      backgroundColor: selected ? a : "rgba(15,23,42,0.6)",
-      "&:hover": {
-        backgroundColor: selected ? a : "rgba(255,255,255,0.08)",
-      },
-    },
-  };
-};
+const dividerBtnSx = panelGroupButtonSx;
 
 const BetweenPanelSwitch = styled(Switch, {
   shouldForwardProp: (prop) => prop !== "accentColor",
@@ -213,18 +185,29 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
   const insetY = Math.min(16, Math.max(0, Number(merged.betweenInsetY) ?? 0));
 
   return (
-    <aside className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10">
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-slate-800/60">
+    <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             Between
           </span>
-          <span
-            className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums"
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
             title={String(merged?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(merged?.id ?? "")}`}
+            onClick={() => {
+              const id = String(merged?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
           >
-            <span className="truncate">{merged?.id ?? "-"}</span>
-          </span>
+            {(() => {
+              const id = String(merged?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id || "-";
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -253,7 +236,13 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
             <Box sx={{ width: "100%", px: 0.25, pt: 0.5 }}>
               <MainLabel label="รูปแบบ" mb={1.25} />
               <div className="mt-2">
-                <ButtonGroup variant="outlined" fullWidth sx={dividerGroupRootSx}>
+                <ButtonGroup
+                  variant="outlined"
+                  fullWidth
+                  disableElevation
+                  color="inherit"
+                  sx={dividerGroupRootSx}
+                >
                   {TEXT_MODE_OPTIONS.map((opt) => {
                     const selected = merged.betweenTextMode === opt.value;
                     return (
@@ -261,7 +250,7 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                         key={opt.value}
                         color="inherit"
                         onClick={() => patch({ betweenTextMode: opt.value })}
-                        sx={dividerBtnSx(selected, textColor)}
+                        sx={dividerBtnSx(selected)}
                       >
                         {opt.label}
                       </Button>
@@ -303,8 +292,7 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                     value={lineGap}
                     handleChange={(e) => patch({ betweenLineGap: Number(e.target.value) })}
                     pos={(lineGap / 40) * 100}
-                    color={textColor || "#0d9488"}
-                    className={THEME_RANGE_INPUT_CLASS}
+                    color={DASH_SLIDER_ACCENT}
                   />
                 </div>
               </Box>
@@ -313,9 +301,15 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
 
           <li>
             <Box sx={{ width: "100%", px: 0.25, pt: 0 }}>
-              <MainLabel label="เส้นคั่น" mb={0.5} />
+              <MainLabel label="เส้นคั่น" mb="9px" />
               <div className="mt-1">
-                <ButtonGroup variant="outlined" fullWidth sx={dividerGroupRootSx}>
+                <ButtonGroup
+                  variant="outlined"
+                  fullWidth
+                  disableElevation
+                  color="inherit"
+                  sx={dividerGroupRootSx}
+                >
                   {LINE_STYLE_OPTIONS.map((opt) => {
                     const selected = merged.betweenLineStyle === opt.value;
                     return (
@@ -323,7 +317,7 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                         key={opt.value}
                         color="inherit"
                         onClick={() => patch({ betweenLineStyle: opt.value })}
-                        sx={dividerBtnSx(selected, textColor)}
+                        sx={dividerBtnSx(selected)}
                       >
                         {opt.label}
                       </Button>
@@ -332,8 +326,8 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                 </ButtonGroup>
               </div>
 
-              <div className="mt-1">
-                <div className="mt-0.5 w-full px-[2px] pt-[2px] pb-[2px]">
+              <div className="mt-2 dash-card rounded-md bg-white px-1 pb-1.5 pt-1 dark:bg-zinc-800">
+                <div className="w-full px-[2px] pb-[2px] pt-[2px]">
                   <Range
                     min={0}
                     max={255}
@@ -345,11 +339,10 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                     pos={(
                       Math.min(255, Math.max(0, Number(merged.betweenLineOpacity) ?? 255)) / 255
                     ) * 100}
-                    color={textColor || "#0d9488"}
-                    className={THEME_RANGE_INPUT_CLASS}
+                    color={DASH_SLIDER_ACCENT}
                   />
                 </div>
-                <div className="mt-2 grid grid-cols-10 place-items-center gap-y-[6px]">
+                <div className="mt-1 grid grid-cols-10 place-items-center gap-y-[6px]">
                   {allColors.map((color, i) => {
                     const bgColor = typeof color === "string" ? color : theme?.[color.type]?.[color.index];
                     if (!bgColor) return null;
@@ -369,20 +362,19 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                     );
                   })}
                 </div>
-                <div className="mt-3">
-                  <MainLabel label="ความหนา" value={lineWidth} valueText={lineWidthText} mb={0.3} />
-                  <div className="w-full px-[2px] pt-[2px] pb-[2px]">
-                    <Range
-                      min={1}
-                      max={12}
-                      step={0.1}
-                      value={lineWidth}
-                      handleChange={(e) => patch({ betweenLineWidth: Number(e.target.value) })}
-                      pos={((lineWidth - 1) / 11) * 100}
-                      color={textColor || "#0d9488"}
-                      className={THEME_RANGE_INPUT_CLASS}
-                    />
-                  </div>
+              </div>
+              <div className="mt-3">
+                <MainLabel label="ความหนา" value={lineWidth} valueText={lineWidthText} mb={0.3} />
+                <div className="w-full px-[2px] pt-[2px] pb-[2px]">
+                  <Range
+                    min={1}
+                    max={12}
+                    step={0.1}
+                    value={lineWidth}
+                    handleChange={(e) => patch({ betweenLineWidth: Number(e.target.value) })}
+                    pos={((lineWidth - 1) / 11) * 100}
+                    color={DASH_SLIDER_ACCENT}
+                  />
                 </div>
               </div>
             </Box>
@@ -397,13 +389,13 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                     flexShrink: 0,
                     fontSize: 13,
                     fontWeight: 600,
-                    color: "rgb(51 65 85)",
-                    ".dark &": { color: "rgba(255,255,255,0.78)" },
+                    color: "var(--dash-panel-heading, #0f172a)",
+                    ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                   }}
                 >
                   สีกรอบ
                 </Typography>
-                <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 <BetweenPanelSwitch
                   className="shrink-0"
                   accentColor={textColor || "#0d9488"}

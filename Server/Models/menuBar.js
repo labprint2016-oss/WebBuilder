@@ -102,6 +102,17 @@ const menuBarDesktop = new Schema({
     },dividerWeight:{
         type:Number,
         default:1,
+    },isOverlay:{
+        type:Boolean,
+        default:false,
+    },floatingMenuBgColor:{
+        type:Schema.Types.Mixed,
+        default:"#ffffff",
+    },floatingMenuBgOpacity:{
+        type:Number,
+        min:0,
+        max:255,
+        default:95,
     }, subMenuFontSize:{
         type:Number,
         default:12,
@@ -387,6 +398,10 @@ const menuPreset = new Schema({
     topBar:{
         type:Schema.Types.Mixed,
         default:{}
+    },
+    footerBar:{
+        type:Schema.Types.Mixed,
+        default:{}
     }
 },{_id:false})
 
@@ -537,8 +552,8 @@ const iconTopBar = new Schema({
         max:255,
     },iconSize:{
         type:Number,
-        default:18,
-        min:18,
+        default:12,
+        min:12,
         max:30,
     }
 
@@ -569,8 +584,8 @@ const textTopBar = new Schema({
         max:255,
     },iconSize:{
         type:Number,
-        default:18,
-        min:18,
+        default:12,
+        min:12,
         max:30,
     },textColor:{
         type:Schema.Types.Mixed,
@@ -670,6 +685,102 @@ const topBar = new Schema({
 
 },{_id:false})
 
+const footerBar = new Schema({
+    footerHeight:{
+        type:Number,
+        default:46,
+        min:36,
+        max:120,
+    },
+    isGradient:{
+        type:Boolean,
+        default:false,
+    },
+    bgColor:{
+        type:Schema.Types.Mixed,
+        default:"#111827"
+    },
+    bgOpacity:{
+        type:Number,
+        default:255,
+        min:0,
+        max:255,
+    },
+    bgColorGradient:{
+        type:[Schema.Types.Mixed],
+        default: () => Array.from({ length: 2 }, (_, i) => ({ type: "mainColor", index: i })),
+        set:(arr)=>{
+            const src = Array.isArray(arr) ? arr : []
+            return Array.from({ length: 2 }, (_, i) => src[i] ?? { type: "mainColor", index: i })
+        },
+    },
+    bgOpacityGradient:{
+        type:[Number],
+        default:Array.from({length:2},()=>255),
+        set:(arr)=>{
+            const src = Array.isArray(arr) ? arr : []
+            return Array.from({length:2},(_,i)=>src[i]??255)
+        },
+    },
+    bgDegree:{
+        type:Number,
+        default:0,
+        min:0,
+        max:360,
+    },
+    logo:{
+        type:String,
+        default:"",
+    },
+    logoHeight:{
+        type:Number,
+        default:35,
+        min:10,
+        max:120,
+    },
+    logoPosition:{
+        type:String,
+        enum:["hidden","left","center","right"],
+        default:"center",
+    },
+    textColor:{
+        type:Schema.Types.Mixed,
+        default:"#ffffff",
+    },
+    textOpacity:{
+        type:Number,
+        default:255,
+        min:0,
+        max:255,
+    },
+    textSize:{
+        type:Number,
+        default:13,
+        min:10,
+        max:40,
+    },
+    leftText:{
+        type:String,
+        default:"© 2026 Domain.com",
+    },
+    leftIcon:{
+        type:Schema.Types.Mixed,
+        default:() => ({ name:null, type:null }),
+    },
+    rightText:{
+        type:String,
+        default:"All rights reserved.",
+    },
+    rightIcon:{
+        type:Schema.Types.Mixed,
+        default:() => ({ name:null, type:null }),
+    },
+    isFluidLayout:{
+        type:Boolean,
+        default:false,
+    }
+},{_id:false})
+
 const menuBarSchema = new Schema({
 
     menuBarDesktop:{
@@ -690,6 +801,9 @@ const menuBarSchema = new Schema({
     },topBar:{
         type:topBar,
         default: () => ({})
+    },footerBar:{
+        type:footerBar,
+        default: () => ({})
     },menuPresets:{
         type:[menuPreset],
         default:[]
@@ -709,6 +823,9 @@ const menuBarSchema = new Schema({
         type:String,
         default:"hero-preset-1"
     },heroSection:{
+        type:Schema.Types.Mixed,
+        default:{}
+    },heroSections:{
         type:Schema.Types.Mixed,
         default:{}
     }

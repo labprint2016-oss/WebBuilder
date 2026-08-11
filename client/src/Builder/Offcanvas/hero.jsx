@@ -1,21 +1,33 @@
-import { useEffect, useMemo, useState } from "react";
-import { Box, Button, ButtonGroup, Stack, Tab, Typography } from "@mui/material";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { panelGroupButtonSx } from "../panelControlSx";
+import {
+  Box,
+  Button,
+  ButtonGroup,
+  FormControl,
+  ListItemText,
+  MenuItem,
+  OutlinedInput,
+  Select,
+  Stack,
+  Typography,
+} from "@mui/material";
 import { styled } from "@mui/material/styles";
 import Switch from "@mui/material/Switch";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import {
   ArrowDown,
   ArrowUp,
-  ArrowUpDown,
   Check,
   Copy,
   Hand,
   Menu,
+  Pause,
+  Play,
   Sparkles,
   Trash2,
 } from "lucide-react";
 import lodash from "lodash";
-import { TabContext, TabList } from "@mui/lab";
 import ImageModal from "../imageModal";
 import Range from "../HTML/Range";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
@@ -55,9 +67,9 @@ const AntSwitch = styled(Switch)(({ theme }) => ({
 }));
 
 const HERO_PANEL_TABS = [
-  { id: "slideshow", label: "SlideShow" },
+  { id: "slideshow", label: "สไลด์โชว์" },
   { id: "settings", label: "ตั้งค่า" },
-  { id: "layer", label: "Layer" },
+  { id: "layer", label: "เลย์เยอร์" },
 ];
 const SLIDE_DISPLAY_OPTIONS = [
   { value: "fade", label: "ค่อยๆจาง" },
@@ -75,17 +87,12 @@ const HERO_LAYER_LIBRARY_ITEMS = [
 ];
 const HERO_LAYER_ANIMATION_TYPES = [
   { value: "fade-in", label: "ค่อยๆ แสดง" },
+  { value: "slide-in-down", label: "เลื่อนจากบน" },
   { value: "slide-in-left", label: "เลื่อนจากซ้าย" },
   { value: "slide-in-right", label: "เลื่อนจากขวา" },
   { value: "slide-in-up", label: "เลื่อนจากล่าง" },
   { value: "zoom-in", label: "ซูมเข้า" },
   { value: "zoom-out", label: "ซูมออก" },
-];
-const HERO_LAYER_ANIMATION_EASINGS = [
-  { value: "ease", label: "Ease" },
-  { value: "ease-out", label: "Ease Out" },
-  { value: "ease-in-out", label: "Ease InOut" },
-  { value: "linear", label: "Linear" },
 ];
 const HERO_LAYER_ANIMATION_DEFAULTS = {
   animationEnabled: false,
@@ -95,6 +102,7 @@ const HERO_LAYER_ANIMATION_DEFAULTS = {
   animationEasing: "ease-out",
   animationOnce: true,
 };
+const HERO_LAYER_ANIMATION_PREVIEW_EVENT = "builder:hero-layer-animation-preview";
 const normalizeLayerItemsWithZIndex = (layerItems) => {
   if (!Array.isArray(layerItems) || layerItems.length === 0) return [];
   return layerItems
@@ -112,10 +120,8 @@ const normalizeLayerItemsWithZIndex = (layerItems) => {
       animationDelayMs: Number.isFinite(Number(item?.animationDelayMs))
         ? Math.max(0, Math.min(3000, Number(item.animationDelayMs)))
         : HERO_LAYER_ANIMATION_DEFAULTS.animationDelayMs,
-      animationEasing: HERO_LAYER_ANIMATION_EASINGS.some((entry) => entry.value === item?.animationEasing)
-        ? item.animationEasing
-        : HERO_LAYER_ANIMATION_DEFAULTS.animationEasing,
-      animationOnce: item?.animationOnce !== false,
+      animationEasing: HERO_LAYER_ANIMATION_DEFAULTS.animationEasing,
+      animationOnce: true,
     }))
     .sort((a, b) => Number(a.zIndex) - Number(b.zIndex))
     .map((item, index) => ({
@@ -140,6 +146,29 @@ const BULLET_SHAPE_OPTIONS = [
   { value: "square", label: "สี่เหลี่ยม" },
   { value: "rounded", label: "มุมมน" },
 ];
+const HERO_SVG_DIVIDER_TYPE_OPTIONS = [
+  { value: "wave", label: "Wave" },
+  { value: "curve", label: "Curve" },
+  { value: "cloud", label: "Freeform" },
+  { value: "cloudSoft", label: "Cloud" },
+  { value: "triangle", label: "Triangle" },
+  { value: "arrowSplit", label: "Arrow Split" },
+  { value: "zigzag", label: "Zigzag" },
+];
+const HERO_SVG_DIVIDER_HEIGHT_MIN = 24;
+const HERO_SVG_DIVIDER_HEIGHT_MAX = 180;
+const HERO_SVG_DIVIDER_DENSITY_MIN = 0.5;
+const HERO_SVG_DIVIDER_DENSITY_MAX = 10;
+const HERO_SVG_DIVIDER_SIZE_MIN = 0.5;
+const HERO_SVG_DIVIDER_SIZE_MAX = 2.5;
+const SLIDE_DURATION_MS_MIN = 1000;
+const SLIDE_DURATION_MS_MAX = 20000;
+const SLIDE_DURATION_MS_STEP = 100;
+const HERO_BG_FOCUS_MIN = 0;
+const HERO_BG_FOCUS_MAX = 100;
+const HERO_BG_ZOOM_MIN = 80;
+const HERO_BG_ZOOM_MAX = 100;
+const HERO_BACKGROUND_CONTROL_DEVICE_SET = new Set(["Tablet", "Mobile"]);
 
 const OPTION_CHIP_RADIUS = "0.375rem";
 const CHIP_BORDER = "#e2e8f0";
@@ -149,64 +178,23 @@ const CHIP_BG_HOVER = "#f8fafc";
 const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
 const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 
-const sectionLikeGroupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0.75,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.25,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": {
-            backgroundColor: a,
-            borderColor: "transparent",
-          },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": {
-            borderColor: `${CHIP_BORDER} !important`,
-            backgroundColor: CHIP_BG_HOVER,
-          },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": {
-              borderColor: `${CHIP_BORDER_DARK} !important`,
-              backgroundColor: CHIP_BG_DARK_HOVER,
-            },
-          },
-        }),
-    "&.Mui-focusVisible": {
-      outline: `2px solid ${a}`,
-      outlineOffset: 1,
-      boxShadow: "none",
-    },
-    "& .MuiTouchRipple-child": {
-      backgroundColor: a,
-    },
-  };
-};
+const sectionLikeGroupButtonSx = panelGroupButtonSx;
 
 const sectionLikeGroupRootSx = {
   width: "100%",
+  alignItems: "stretch",
   boxShadow: "none",
   "& .MuiButton-root": {
     boxShadow: "none",
   },
   "& .MuiButtonGroup-grouped": {
     borderRadius: "0 !important",
+    flex: "1 1 0",
+    minWidth: 0,
+    height: 34,
+    minHeight: 34,
+    maxHeight: 34,
+    boxSizing: "border-box",
   },
   "& .MuiButtonGroup-grouped:first-of-type": {
     borderTopLeftRadius: `${OPTION_CHIP_RADIUS} !important`,
@@ -217,17 +205,115 @@ const sectionLikeGroupRootSx = {
     borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER_DARK} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
+};
+const AnimationSelectInput = ({ value, onChange, options }) => {
+  const OPTION_HEIGHT = 35;
+  const selectStyle = {
+    "& .MuiTypography-root": { fontSize: 13, color: "#050505" },
+    "& .MuiSvgIcon-root": { color: "#050505" },
+    "& .MuiOutlinedInput-root": {
+      height: OPTION_HEIGHT,
+      bgcolor: "var(--dash-panel-btn-group-inactive, #ffffff)",
+    },
+    "& .MuiSelect-select": {
+      height: `${OPTION_HEIGHT}px !important`,
+      minHeight: `${OPTION_HEIGHT}px !important`,
+      display: "flex",
+      alignItems: "center",
+      py: 0,
+      boxSizing: "border-box",
+      pl: "10px",
+      pr: "32px",
+    },
+    "& .MuiOutlinedInput-notchedOutline, \
+     & .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline, \
+     & .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline, \
+     & .MuiOutlinedInput-root.Mui-error .MuiOutlinedInput-notchedOutline": {
+      borderWidth: 1,
+      borderColor: CHIP_BORDER,
+    },
+    ".dark & .MuiTypography-root": { color: "#ffffff" },
+    ".dark & .MuiSvgIcon-root": { color: "#ffffff" },
+    ".dark & .MuiOutlinedInput-root": { bgcolor: "var(--dash-panel-btn-group-inactive, #27272a)" },
+    ".dark & .MuiOutlinedInput-notchedOutline, \
+     .dark & .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline, \
+     .dark & .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline, \
+     .dark & .MuiOutlinedInput-root.Mui-error .MuiOutlinedInput-notchedOutline": {
+      borderColor: CHIP_BORDER_DARK,
+    },
+  };
+  return (
+    <FormControl fullWidth sx={selectStyle}>
+      <Select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        input={<OutlinedInput notched={false} />}
+        aria-label="เลือกรูปแบบแอนิเมชั่น"
+        MenuProps={{
+          PaperProps: {
+            elevation: 0,
+            sx: {
+              boxShadow: "none",
+              borderRadius: 1,
+              border: 1,
+              borderColor: CHIP_BORDER,
+              "& .MuiList-root": { py: 0, bgcolor: "var(--dash-panel-btn-group-inactive, #ffffff)" },
+              "& .MuiMenuItem-root": {
+                height: OPTION_HEIGHT,
+                minHeight: OPTION_HEIGHT,
+                py: 0.25,
+                px: 1,
+                fontSize: 13,
+                gap: 0.5,
+                borderBottom: 1,
+                borderBottomColor: CHIP_BORDER,
+                ":last-child": { borderBottom: 0 },
+              },
+              ".dark &": {
+                borderColor: CHIP_BORDER_DARK,
+                "& .MuiList-root": { bgcolor: "var(--dash-panel-btn-group-inactive, #27272a)" },
+                "& .MuiMenuItem-root": {
+                  borderBottomColor: CHIP_BORDER_DARK,
+                },
+              },
+            },
+          },
+          MenuListProps: { dense: true },
+        }}
+      >
+        {options.map((option) => (
+          <MenuItem
+            key={option.value}
+            value={option.value}
+            sx={{
+              "& .MuiTypography-root": { fontSize: 13, color: "#050505" },
+              "&.Mui-selected": {
+                backgroundColor: "#374151",
+                "& .MuiTypography-root": { color: "#ffffff" },
+              },
+              "&.Mui-selected:hover": {
+                backgroundColor: "#374151",
+              },
+              ".dark & .MuiTypography-root": { color: "#ffffff" },
+            }}
+          >
+            <ListItemText primary={option.label} />
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+  );
 };
 
 const buildDefaultHeroSection = () => ({
@@ -253,21 +339,41 @@ const buildDefaultHeroSection = () => ({
   opacityColorGradient: [255, 255],
   degrees: 90,
   backgroundImage: "",
+  backgroundVideo: "",
+  backgroundPositionX: 50,
+  backgroundPositionY: 50,
+  backgroundZoom: 100,
+  backgroundFrameOnly: false,
+  imageBrightness: 100,
   opacityImage: 1,
   blur: 0,
   parallaxEnabled: false,
+  svgDividerEnabled: false,
+  svgDividerType: "wave",
+  svgDividerHeight: 64,
+  svgDividerDensity: 1,
+  svgDividerSize: 1,
+  svgDividerColor: "#ffffff",
 });
 const createDefaultSlides = () => [
   { id: "hero-slide-1", name: "Slide 1", displayMode: "fade", durationSec: 5, layerItems: [] },
 ];
 
-function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
+function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device = "Desktop" }) {
   const [activeTab, setActiveTab] = useState("settings");
   const [data, setData] = useState(() => ({ ...buildDefaultHeroSection(), ...(element || {}) }));
   const [updated, setUpdated] = useState(false);
   const [backgroundPickerOpen, setBackgroundPickerOpen] = useState(false);
   const [gradientStop, setGradientStop] = useState("start");
   const [theme, setTheme] = useState(null);
+  const [layerAnimationPreviewMap, setLayerAnimationPreviewMap] = useState({});
+  const layerAnimationPreviewTimersRef = useRef({});
+  const layerListItemRefsRef = useRef(new Map());
+  const layerListPrevPositionsRef = useRef({});
+  const layerListAnimationReadyRef = useRef(false);
+  const slideListItemRefsRef = useRef(new Map());
+  const slideListPrevPositionsRef = useRef({});
+  const slideListAnimationReadyRef = useRef(false);
   const themeColors = useMemo(() => {
     const main = Array.isArray(theme?.mainColor)
       ? theme.mainColor.map((_, index) => ({ type: "mainColor", index }))
@@ -292,8 +398,9 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
   useEffect(() => {
     if (!element) return;
     const merged = { ...buildDefaultHeroSection(), ...element };
+    setUpdated(false);
     setData((prev) => (lodash.isEqual(prev, merged) ? prev : merged));
-  }, [element]);
+  }, [element, device]);
 
   useEffect(() => {
     getTheme("68d37327bedb0efab7dacafb")
@@ -343,13 +450,49 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
   const gradientDegree = Math.max(0, Math.min(360, Number(activeSlide?.degrees ?? data.degrees ?? 90)));
   const heroHeight = Math.max(400, Math.min(800, Number(data.heroHeight ?? 400)));
   const activeBackgroundImage = activeSlide?.backgroundImage ?? data.backgroundImage ?? "";
-  const activeOpacityImage = Number(activeSlide?.opacityImage ?? data.opacityImage ?? 1);
-  const opacityPercent = Math.max(
-    0,
-    Math.min(100, Math.round((activeOpacityImage || 0) * 100))
+  const activeBackgroundVideo = activeSlide?.backgroundVideo ?? data.backgroundVideo ?? "";
+  const hasActiveBackgroundMedia = Boolean(activeBackgroundImage || activeBackgroundVideo);
+  const activeBackgroundPositionX = Math.max(
+    HERO_BG_FOCUS_MIN,
+    Math.min(
+      HERO_BG_FOCUS_MAX,
+      (() => {
+        const parsed = Number(activeSlide?.backgroundPositionX ?? data.backgroundPositionX ?? 50);
+        return Number.isFinite(parsed) ? parsed : 50;
+      })()
+    )
   );
+  const activeBackgroundPositionY = Math.max(
+    HERO_BG_FOCUS_MIN,
+    Math.min(
+      HERO_BG_FOCUS_MAX,
+      (() => {
+        const parsed = Number(activeSlide?.backgroundPositionY ?? data.backgroundPositionY ?? 50);
+        return Number.isFinite(parsed) ? parsed : 50;
+      })()
+    )
+  );
+  const activeBackgroundZoom = Math.max(
+    HERO_BG_ZOOM_MIN,
+    Math.min(
+      HERO_BG_ZOOM_MAX,
+      (() => {
+        const parsed = Number(activeSlide?.backgroundZoom ?? data.backgroundZoom ?? 100);
+        return Number.isFinite(parsed) ? parsed : 100;
+      })()
+    )
+  );
+  const activeBackgroundFrameOnly =
+    (activeSlide?.backgroundFrameOnly ?? data.backgroundFrameOnly ?? false) === true;
+  const showBackgroundPositionControls = HERO_BACKGROUND_CONTROL_DEVICE_SET.has(device);
+  const parsedImageBrightness = Number(activeSlide?.imageBrightness ?? data.imageBrightness);
+  const activeImageBrightness = Number.isFinite(parsedImageBrightness)
+    ? Math.max(0, Math.min(200, Math.round(parsedImageBrightness)))
+    : Math.max(
+        0,
+        Math.min(200, Math.round(Number(activeSlide?.opacityImage ?? data.opacityImage ?? 1) * 100))
+      );
   const blurAmount = Math.max(0, Math.min(100, Number(activeSlide?.blur ?? data.blur ?? 0)));
-  const activeParallaxEnabled = Boolean(activeSlide?.parallaxEnabled ?? data.parallaxEnabled);
   const normalizedSlideDisplayMode =
     data.slideDisplayMode === "none" ? "slide-right" : data.slideDisplayMode;
   const slideDisplayMode = SLIDE_DISPLAY_OPTIONS.some((item) => item.value === normalizedSlideDisplayMode)
@@ -357,17 +500,56 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
     : "fade";
   const isAutoPlay = data.isAutoPlay === true;
   const slideDurationSec = Math.max(1, Math.min(20, Number(data.slideDurationSec ?? 5) || 5));
+  const slideDurationMs = Math.round(slideDurationSec * 1000);
   const bulletShape = BULLET_SHAPE_OPTIONS.some((item) => item.value === data.bulletShape)
     ? data.bulletShape
     : "circle";
   const bulletSize = Math.max(6, Math.min(24, Number(data.bulletSize ?? 10)));
   const bulletBottomOffset = Math.max(0, Math.min(80, Number(data.bulletBottomOffset ?? 12)));
   const bulletColor = data.bulletColor ?? "#454b57";
+  const svgDividerEnabled = data.svgDividerEnabled === true;
+  const normalizedSvgDividerType =
+    data.svgDividerType === "tilt"
+      ? "cloud"
+      : data.svgDividerType === "triangleCurve"
+        ? "arrowSplit"
+        : data.svgDividerType;
+  const svgDividerType = HERO_SVG_DIVIDER_TYPE_OPTIONS.some(
+    (item) => item.value === normalizedSvgDividerType
+  )
+    ? normalizedSvgDividerType
+    : "wave";
+  const svgDividerHeight = Math.max(
+    HERO_SVG_DIVIDER_HEIGHT_MIN,
+    Math.min(HERO_SVG_DIVIDER_HEIGHT_MAX, Number(data.svgDividerHeight ?? 64))
+  );
+  const parsedSvgDividerDensity = Number(data.svgDividerDensity);
+  const svgDividerDensity = Number.isFinite(parsedSvgDividerDensity)
+    ? Math.max(
+        HERO_SVG_DIVIDER_DENSITY_MIN,
+        Math.min(HERO_SVG_DIVIDER_DENSITY_MAX, parsedSvgDividerDensity)
+      )
+    : 1;
+  const parsedSvgDividerSize = Number(data.svgDividerSize);
+  const svgDividerSize = Number.isFinite(parsedSvgDividerSize)
+    ? Math.max(
+        HERO_SVG_DIVIDER_SIZE_MIN,
+        Math.min(HERO_SVG_DIVIDER_SIZE_MAX, parsedSvgDividerSize)
+      )
+    : 1;
+  const svgDividerColor = data.svgDividerColor ?? "#ffffff";
 
   const updateActiveSlideVisual = (field, value) => {
     if (!activeSlideId) return;
     const nextSlides = slides.map((slide) =>
       slide.id === activeSlideId ? { ...slide, [field]: value } : slide
+    );
+    setSlidesState(nextSlides, activeSlideId);
+  };
+  const updateActiveSlideVisuals = (patch) => {
+    if (!activeSlideId || !patch || typeof patch !== "object") return;
+    const nextSlides = slides.map((slide) =>
+      slide.id === activeSlideId ? { ...slide, ...patch } : slide
     );
     setSlidesState(nextSlides, activeSlideId);
   };
@@ -434,6 +616,18 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
     setUpdated(true);
     setData((prev) => ({ ...prev, [field]: value }));
   };
+  const updateSectionSetting = (field, value) => {
+    setUpdated(true);
+    setData((prev) => ({ ...prev, [field]: value }));
+  };
+  const moveSlideAtIndex = (fromIndex, direction) => {
+    const targetIndex = fromIndex + direction;
+    if (targetIndex < 0 || targetIndex >= slides.length) return;
+    const nextSlides = [...slides];
+    const [moved] = nextSlides.splice(fromIndex, 1);
+    nextSlides.splice(targetIndex, 0, moved);
+    setSlidesState(nextSlides, activeSlideId || moved?.id);
+  };
   const activeLayerItems = useMemo(
     () => normalizeLayerItemsWithZIndex(activeSlide?.layerItems),
     [activeSlide?.layerItems]
@@ -442,12 +636,139 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
     () => [...activeLayerItems].sort((a, b) => Number(b.zIndex) - Number(a.zIndex)),
     [activeLayerItems]
   );
+  useLayoutEffect(() => {
+    const nextPositions = {};
+    layerListItemRefsRef.current.forEach((node, layerId) => {
+      if (!node || !node.isConnected) return;
+      nextPositions[layerId] = node.getBoundingClientRect().top;
+    });
+    if (!layerListAnimationReadyRef.current) {
+      layerListPrevPositionsRef.current = nextPositions;
+      layerListAnimationReadyRef.current = true;
+      return;
+    }
+    Object.entries(nextPositions).forEach(([layerId, nextTop]) => {
+      const prevTop = layerListPrevPositionsRef.current[layerId];
+      if (!Number.isFinite(prevTop)) return;
+      const deltaY = prevTop - nextTop;
+      if (Math.abs(deltaY) < 0.5) return;
+      const node = layerListItemRefsRef.current.get(layerId);
+      if (!node) return;
+      node.style.transition = "none";
+      node.style.transform = `translateY(${deltaY}px)`;
+      node.style.willChange = "transform";
+      window.requestAnimationFrame(() => {
+        node.style.transition = "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)";
+        node.style.transform = "translateY(0)";
+        const cleanup = () => {
+          node.style.transition = "";
+          node.style.willChange = "";
+          node.removeEventListener("transitionend", cleanup);
+        };
+        node.addEventListener("transitionend", cleanup);
+      });
+    });
+    layerListPrevPositionsRef.current = nextPositions;
+  }, [activeLayerItemsForPanel]);
+  useLayoutEffect(() => {
+    const nextPositions = {};
+    slideListItemRefsRef.current.forEach((node, slideId) => {
+      if (!node || !node.isConnected) return;
+      nextPositions[slideId] = node.getBoundingClientRect().top;
+    });
+    if (!slideListAnimationReadyRef.current) {
+      slideListPrevPositionsRef.current = nextPositions;
+      slideListAnimationReadyRef.current = true;
+      return;
+    }
+    Object.entries(nextPositions).forEach(([slideId, nextTop]) => {
+      const prevTop = slideListPrevPositionsRef.current[slideId];
+      if (!Number.isFinite(prevTop)) return;
+      const deltaY = prevTop - nextTop;
+      if (Math.abs(deltaY) < 0.5) return;
+      const node = slideListItemRefsRef.current.get(slideId);
+      if (!node) return;
+      node.style.transition = "none";
+      node.style.transform = `translateY(${deltaY}px)`;
+      node.style.willChange = "transform";
+      window.requestAnimationFrame(() => {
+        node.style.transition = "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)";
+        node.style.transform = "translateY(0)";
+        const cleanup = () => {
+          node.style.transition = "";
+          node.style.willChange = "";
+          node.removeEventListener("transitionend", cleanup);
+        };
+        node.addEventListener("transitionend", cleanup);
+      });
+    });
+    slideListPrevPositionsRef.current = nextPositions;
+  }, [slides]);
   const activeLayerItemId =
     typeof data?.activeLayerItemId === "string" ? data.activeLayerItemId : null;
   const activeSelectedLayerItem = useMemo(() => {
     if (!activeLayerItemId) return null;
     return activeLayerItems.find((item) => item?.id === activeLayerItemId) || null;
   }, [activeLayerItemId, activeLayerItems]);
+  const isActiveLayerPreviewPlaying =
+    Boolean(activeLayerItemId) && layerAnimationPreviewMap[activeLayerItemId] === true;
+  const emitLayerAnimationPreview = (layerId, playing) => {
+    const safeLayerId = typeof layerId === "string" ? layerId.trim() : "";
+    if (!safeLayerId || typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent(HERO_LAYER_ANIMATION_PREVIEW_EVENT, {
+        detail: {
+          sectionId: String(data?.id || ""),
+          layerId: safeLayerId,
+          playing: playing === true,
+        },
+      })
+    );
+  };
+  const clearLayerAnimationPreviewTimer = (layerId) => {
+    const safeLayerId = typeof layerId === "string" ? layerId.trim() : "";
+    if (!safeLayerId) return;
+    const timer = layerAnimationPreviewTimersRef.current[safeLayerId];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete layerAnimationPreviewTimersRef.current[safeLayerId];
+    }
+  };
+  const stopLayerAnimationPreview = (layerId) => {
+    const safeLayerId = typeof layerId === "string" ? layerId.trim() : "";
+    if (!safeLayerId) return;
+    clearLayerAnimationPreviewTimer(safeLayerId);
+    setLayerAnimationPreviewMap((prev) => ({ ...prev, [safeLayerId]: false }));
+    emitLayerAnimationPreview(safeLayerId, false);
+  };
+  const getLayerAnimationPreviewRuntimeMs = (layerItem) => {
+    const safeDuration = Number.isFinite(Number(layerItem?.animationDurationMs))
+      ? Math.max(100, Math.min(5000, Number(layerItem.animationDurationMs)))
+      : HERO_LAYER_ANIMATION_DEFAULTS.animationDurationMs;
+    const safeDelay = Number.isFinite(Number(layerItem?.animationDelayMs))
+      ? Math.max(0, Math.min(3000, Number(layerItem.animationDelayMs)))
+      : HERO_LAYER_ANIMATION_DEFAULTS.animationDelayMs;
+    return safeDuration + safeDelay + 120;
+  };
+  const startLayerAnimationPreview = (layerItem) => {
+    const safeLayerId = typeof layerItem?.id === "string" ? layerItem.id.trim() : "";
+    if (!safeLayerId) return;
+    clearLayerAnimationPreviewTimer(safeLayerId);
+    setLayerAnimationPreviewMap((prev) => ({ ...prev, [safeLayerId]: true }));
+    emitLayerAnimationPreview(safeLayerId, true);
+    layerAnimationPreviewTimersRef.current[safeLayerId] = window.setTimeout(() => {
+      stopLayerAnimationPreview(safeLayerId);
+    }, getLayerAnimationPreviewRuntimeMs(layerItem));
+  };
+  useEffect(() => {
+    return () => {
+      const timers = layerAnimationPreviewTimersRef.current;
+      Object.keys(timers).forEach((layerId) => {
+        window.clearTimeout(timers[layerId]);
+      });
+      layerAnimationPreviewTimersRef.current = {};
+    };
+  }, []);
   const setActiveLayerSelection = (layerId) => {
     const nextLayerId = typeof layerId === "string" && layerId.trim() ? layerId : null;
     if ((data?.activeLayerItemId || null) === nextLayerId) return;
@@ -522,73 +843,69 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
     }, 0);
   };
   return (
-    <aside className="sm:block overflow-hidden border-r border-slate-200 dark:border-white/10 w-[400px] bg-white dark:bg-gray-900/80">
-      <TabContext value={activeTab}>
-      <div className="px-6 mt-5 flex items-center justify-between">
+    <aside className="dash-panel sm:block h-full min-h-0 overflow-hidden border-r border-slate-200 dark:border-white/10 w-[400px] flex flex-col">
+      <div className="flex h-full min-h-0 flex-col">
+      <div className="dash-panel-header shrink-0 flex items-center justify-between border-b border-slate-200 bg-gray-100 px-6 pt-3 pb-2 dark:border-white/10 dark:bg-slate-800/70">
         <div className="font-semibold tracking-wide">
-          ตั้งค่า <span className="text-gray-400">Hero</span>
+          ตั้งค่า Hero
         </div>
+        <button
+          type="button"
+          className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
+          onClick={() => close?.(null, null, null)}
+          aria-label="ปิดแผงตั้งค่า Hero"
+          title="ปิดแผงตั้งค่า Hero"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="h-4 w-4"
+          >
+            <path
+              fillRule="evenodd"
+              d="M15.78 4.22a.75.75 0 010 1.06L10.06 11l5.72 5.72a.75.75 0 11-1.06 1.06l-6.25-6.25a.75.75 0 010-1.06l6.25-6.25a.75.75 0 011.06 0z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </button>
       </div>
-      <div className="w-full mt-[12px]">
-        <TabList
-          variant="fullWidth"
-          onChange={(e, newValue) => {
-            setActiveTab(newValue);
-          }}
-          sx={{
-            px: "20px",
-            "& .MuiTabs-flexContainer": {
-              width: "100%",
-            },
-          }}
-          TabIndicatorProps={{
-            sx: {
-              backgroundColor: "#676767",
-              height: 3,
-              borderRadius: 999,
-            },
-          }}
+      <div className="w-full mt-[12px] shrink-0 px-5">
+        <ButtonGroup
+          fullWidth
+          variant="outlined"
+          disableElevation
+          color="inherit"
+          aria-label="สลับแถบตั้งค่า Hero"
+          sx={sectionLikeGroupRootSx}
         >
           {HERO_PANEL_TABS.map((tab) => (
-            <Tab
+            <Button
               key={tab.id}
-              label={tab.label}
-              value={tab.id}
-              sx={{
-                flex: 1,
-                minWidth: 0,
-                maxWidth: "none",
-                textTransform: "none",
-                fontSize: 13,
-                height: 52,
-                backgroundColor: activeTab === tab.id ? "#454b57" : "#b5b5b6",
-                borderRightWidth: 1,
-                borderRightStyle: "solid",
-                borderRightColor: "rgba(0,0,0,0.15)",
-                "&:last-of-type": { borderRightWidth: 0 },
-                color: "#454b57",
-                fontWeight: 500,
-                "&.Mui-selected": {
-                  color: "white",
-                  fontWeight: 600,
-                },
-              }}
-            />
+              color="inherit"
+              onClick={() => setActiveTab(tab.id)}
+              sx={sectionLikeGroupButtonSx(
+                activeTab === tab.id,
+                textColor || "#000000"
+              )}
+            >
+              {tab.label}
+            </Button>
           ))}
-        </TabList>
+        </ButtonGroup>
       </div>
 
       {activeTab === "slideshow" && (
-        <div className="px-5 py-4 text-[13px]">
-          <div className="mb-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 pb-10 text-[13px]">
+          <div className="mb-2">
             <div className="mb-2 flex items-center gap-2">
-              <span className="text-[13px] font-bold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label text-[13px] font-bold">
                 ความสูง
               </span>
               <span className="text-slate-400 dark:text-slate-400 text-[13px] tabular-nums">
                 {Math.round(heroHeight)}
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <div className="px-[5px] pb-2">
               <Range
@@ -618,6 +935,13 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                   className={`flex items-center justify-between px-3 py-[10.5px] ${
                     index !== slides.length - 1 ? "border-b border-slate-200 dark:border-white/10" : ""
                   }`}
+                  ref={(node) => {
+                    if (node) {
+                      slideListItemRefsRef.current.set(slide.id, node);
+                    } else {
+                      slideListItemRefsRef.current.delete(slide.id);
+                    }
+                  }}
                 >
                   <button
                     type="button"
@@ -666,19 +990,23 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                     </button>
                     <button
                       type="button"
-                      className="flex items-center justify-center px-3"
-                      onClick={() => {
-                        if (slides.length <= 1) return;
-                        const swapWith = index === slides.length - 1 ? 0 : index + 1;
-                        const nextSlides = [...slides];
-                        const temp = nextSlides[index];
-                        nextSlides[index] = nextSlides[swapWith];
-                        nextSlides[swapWith] = temp;
-                        setSlidesState(nextSlides, slide.id);
-                      }}
-                      title="สลับตำแหน่ง"
+                      className="flex h-[26px] w-[26px] items-center justify-center rounded border border-slate-200 text-slate-600 disabled:cursor-not-allowed disabled:opacity-35 dark:border-white/15 dark:text-white/70"
+                      onClick={() => moveSlideAtIndex(index, -1)}
+                      disabled={index === 0}
+                      title="เลื่อนขึ้น"
+                      aria-label="เลื่อน Slide ขึ้น"
                     >
-                      <ArrowUpDown size={14} style={{ opacity: 0.6 }} />
+                      <ArrowUp size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="flex h-[26px] w-[26px] items-center justify-center rounded border border-slate-200 text-slate-600 disabled:cursor-not-allowed disabled:opacity-35 dark:border-white/15 dark:text-white/70"
+                      onClick={() => moveSlideAtIndex(index, 1)}
+                      disabled={index === slides.length - 1}
+                      title="เลื่อนลง"
+                      aria-label="เลื่อน Slide ลง"
+                    >
+                      <ArrowDown size={13} />
                     </button>
                   </div>
                 </div>
@@ -734,10 +1062,10 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
           <div className="mt-5">
             <div className="mb-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="text-[13px] font-bold text-slate-700 dark:text-white/80">
+                <span className="dash-panel-label text-[13px] font-bold">
                   การแสดงผล
                 </span>
-                <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <div className="dash-heading-rule min-w-0 flex-1 border-b" />
               </div>
               <ButtonGroup
                 fullWidth
@@ -774,38 +1102,46 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                 เวลาแสดงผล
               </span>
               <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
-                {Math.round(slideDurationSec)} วิ
+                {slideDurationMs} ms
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <div className="mt-[8px]">
               <Range
-                min={1}
-                max={20}
-                step={1}
-                value={slideDurationSec}
+                min={SLIDE_DURATION_MS_MIN}
+                max={SLIDE_DURATION_MS_MAX}
+                step={SLIDE_DURATION_MS_STEP}
+                value={slideDurationMs}
                 handleChange={(e) => {
-                  const nextDuration = Math.max(1, Math.min(20, Number(e.target.value) || 5));
+                  const nextDurationMs = Math.max(
+                    SLIDE_DURATION_MS_MIN,
+                    Math.min(SLIDE_DURATION_MS_MAX, Number(e.target.value) || SLIDE_DURATION_MS_MAX)
+                  );
+                  const nextDurationSec = nextDurationMs / 1000;
                   setUpdated(true);
                   setData((prev) => ({
                     ...prev,
-                    slideDurationSec: nextDuration,
+                    slideDurationSec: nextDurationSec,
                     slides: (Array.isArray(prev.slides) ? prev.slides : []).map((slide) => ({
                       ...slide,
-                      durationSec: nextDuration,
+                      durationSec: nextDurationSec,
                     })),
                   }));
                 }}
-                pos={((slideDurationSec - 1) / (20 - 1)) * 100}
+                pos={
+                  ((slideDurationMs - SLIDE_DURATION_MS_MIN) /
+                    (SLIDE_DURATION_MS_MAX - SLIDE_DURATION_MS_MIN)) *
+                  100
+                }
                 color={textColor || "#333333"}
               />
             </div>
 
-            <div className="mb-2 mt-5 flex items-center gap-2">
-              <span className="text-[13px] font-bold text-slate-700 dark:text-white/80">
+            <div className="mb-[13px] mt-5 flex items-center gap-2">
+              <span className="dash-panel-label text-[13px] font-bold">
                 ตั้งค่า Bullet
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
 
             <div className="mb-3">
@@ -861,7 +1197,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                   <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
                     {Math.round(bulletSize)}
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <div className="mt-[8px]">
                   <Range
@@ -883,7 +1219,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                   <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
                     {Math.round(bulletBottomOffset)}
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <div className="mt-[8px]">
                   <Range
@@ -905,18 +1241,20 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
       )}
 
       {activeTab === "settings" && (
-        <nav className="px-5 pb-6 overflow-y-auto h-[calc(100%-64px)]">
+        <nav className="flex-1 min-h-0 px-5 pb-10 overflow-y-auto">
           <div className="mt-4 mb-2 flex items-center gap-2">
-            <span className="text-[13px] font-bold text-slate-700 dark:text-white/80">
-              สีพื้นหลังแบบสีพื้น
+            <span className="dash-panel-label text-[13px] font-bold">
+              สีพื้นหลัง
             </span>
-            <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+            <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
               <AntSwitch
                 checked={activeIsGradient}
                 onChange={() => updateActiveSlideVisual("isGradient", !activeIsGradient)}
               />
-              <Typography sx={{ fontSize: 13 }}>สีไล่โทน</Typography>
+              <span className="text-[13px] text-slate-400 dark:text-slate-400">
+                สีไล่โทน
+              </span>
             </Stack>
           </div>
 
@@ -1022,17 +1360,17 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                     flex: 1,
                     fontSize: 13,
                     fontWeight: 600,
-                    color: "rgb(51 65 85)",
+                    color: "var(--dash-panel-heading, #0f172a)",
                     mb: 0.35,
                     fontVariantNumeric: "tabular-nums",
-                    ".dark &": { color: "rgba(255,255,255,0.78)" },
+                    ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                   }}
                 >
                   องศาไล่โทน{" "}
                   <span className="text-slate-400 dark:text-slate-400">
                     {Math.round(gradientDegree)}
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </Typography>
                 <div className="w-full pt-0 pb-[2px] px-[2px]">
                   <Range
@@ -1055,11 +1393,11 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
             </>
           )}
 
-          <div className="mt-6 mb-2 flex items-center gap-2">
-            <span className="text-[13px] font-bold text-slate-700 dark:text-white/80">
+          <div className="mt-[17px] mb-[13px] flex items-center gap-2">
+            <span className="dash-panel-label text-[13px] font-bold">
               ภาพพื้นหลัง
             </span>
-            <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+            <div className="dash-heading-rule min-w-0 flex-1 border-b" />
           </div>
 
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: "100%" }}>
@@ -1077,7 +1415,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                 height: 28,
               }}
             >
-              คลังรูปภาพ
+              รูปภาพ - วีดีโอ
             </Button>
             <Button
               variant="contained"
@@ -1091,57 +1429,75 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                 height: 28,
               }}
               onClick={() => {
-                updateActiveSlideVisual("backgroundImage", "");
+                updateActiveSlideVisuals({
+                  backgroundImage: "",
+                  backgroundVideo: "",
+                });
               }}
-              disabled={!activeBackgroundImage}
+              disabled={!hasActiveBackgroundMedia}
             >
               ลบ
             </Button>
           </Box>
 
-          {activeBackgroundImage ? (
+          {hasActiveBackgroundMedia ? (
             <>
-              <img
-                src={activeBackgroundImage}
-                className="mt-3 block h-[200px] w-full rounded-md object-cover"
-              />
+              {activeBackgroundVideo ? (
+                <video
+                  src={activeBackgroundVideo}
+                  className="mt-3 block h-[200px] w-full rounded-md object-cover"
+                  muted
+                  playsInline
+                  preload="auto"
+                  onLoadedData={(event) => {
+                    const videoElement = event.currentTarget;
+                    videoElement.currentTime = 0.01;
+                    videoElement.pause();
+                  }}
+                />
+              ) : (
+                <img
+                  src={activeBackgroundImage}
+                  className="mt-3 block h-[200px] w-full rounded-md object-cover"
+                />
+              )}
 
               <div className="mt-4 grid grid-cols-2 gap-4">
                 <div className="col-span-1">
                   <div className="mb-1 flex items-center gap-1">
-                    <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
-                      โปร่งแสง
+                    <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
+                      ความสว่างรูปภาพ
                     </span>
                     <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
-                      {opacityPercent}
+                      {activeImageBrightness}
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <Range
                     min={0}
-                    max={100}
+                    max={200}
                     step={1}
-                    value={opacityPercent}
+                    value={activeImageBrightness}
                     handleChange={(e) => {
                       const next = Number(e.target.value);
                       updateActiveSlideVisual(
-                        "opacityImage",
-                        Math.min(1, Math.max(0, (Number.isFinite(next) ? next : 100) / 100))
+                        "imageBrightness",
+                        Math.min(200, Math.max(0, Number.isFinite(next) ? next : 100))
                       );
                     }}
-                    pos={opacityPercent}
+                    pos={(activeImageBrightness / 200) * 100}
                     color={textColor || "#333333"}
                   />
                 </div>
                 <div className="col-span-1">
                   <div className="mb-1 flex items-center gap-1">
-                    <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                    <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                       เบลอภาพ
                     </span>
                     <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
                       {Math.round(blurAmount)}
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <Range
                     min={0}
@@ -1160,21 +1516,113 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                   />
                 </div>
               </div>
-
-              <div className="mt-5 mb-2 flex items-center gap-2">
-                <span className="text-[13px] font-bold text-slate-700 dark:text-white/80">
-                  เพิ่มมิติพื้นหลัง
-                </span>
-                <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
-                <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                  <AntSwitch
-                    checked={activeParallaxEnabled}
-                    onChange={() => {
-                      updateActiveSlideVisual("parallaxEnabled", !activeParallaxEnabled);
+              {showBackgroundPositionControls ? (
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <div className="col-span-1">
+                    <div className="mb-1 flex items-center gap-1">
+                      <span className="shrink-0 text-[12px] font-semibold text-slate-600 dark:text-white/70">
+                        ตำแหน่ง X
+                      </span>
+                      <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
+                        {Math.round(activeBackgroundPositionX)}%
+                      </span>
+                      <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                    </div>
+                    <Range
+                      min={HERO_BG_FOCUS_MIN}
+                      max={HERO_BG_FOCUS_MAX}
+                      step={1}
+                      value={activeBackgroundPositionX}
+                      handleChange={(e) => {
+                        const next = Number(e.target.value);
+                        updateActiveSlideVisual(
+                          "backgroundPositionX",
+                          Math.max(
+                            HERO_BG_FOCUS_MIN,
+                            Math.min(HERO_BG_FOCUS_MAX, Number.isFinite(next) ? next : 0)
+                          )
+                        );
+                      }}
+                      pos={activeBackgroundPositionX}
+                      color={textColor || "#333333"}
+                    />
+                  </div>
+                  <div className="col-span-1">
+                    <div className="mb-1 flex items-center gap-1">
+                      <span className="shrink-0 text-[12px] font-semibold text-slate-600 dark:text-white/70">
+                        ตำแหน่ง Y
+                      </span>
+                      <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
+                        {Math.round(activeBackgroundPositionY)}%
+                      </span>
+                      <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                    </div>
+                    <Range
+                      min={HERO_BG_FOCUS_MIN}
+                      max={HERO_BG_FOCUS_MAX}
+                      step={1}
+                      value={activeBackgroundPositionY}
+                      handleChange={(e) => {
+                        const next = Number(e.target.value);
+                        updateActiveSlideVisual(
+                          "backgroundPositionY",
+                          Math.max(
+                            HERO_BG_FOCUS_MIN,
+                            Math.min(HERO_BG_FOCUS_MAX, Number.isFinite(next) ? next : 0)
+                          )
+                        );
+                      }}
+                      pos={activeBackgroundPositionY}
+                      color={textColor || "#333333"}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              {showBackgroundPositionControls ? (
+                <div className="mt-4">
+                  <div className="mb-1 flex items-center gap-1">
+                    <span className="shrink-0 text-[12px] font-semibold text-slate-600 dark:text-white/70">
+                      ซูมพื้นหลัง
+                    </span>
+                    <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
+                      {Math.round(activeBackgroundZoom)}%
+                    </span>
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                    <span className="text-[11px] font-semibold text-slate-500 dark:text-white/60">
+                      เฉพาะส่วน
+                    </span>
+                    <AntSwitch
+                      checked={activeBackgroundFrameOnly}
+                      onChange={() => {
+                        updateActiveSlideVisual("backgroundFrameOnly", !activeBackgroundFrameOnly);
+                      }}
+                    />
+                  </div>
+                  <Range
+                    min={HERO_BG_ZOOM_MIN}
+                    max={HERO_BG_ZOOM_MAX}
+                    step={1}
+                    value={activeBackgroundZoom}
+                    handleChange={(e) => {
+                      const next = Number(e.target.value);
+                      updateActiveSlideVisual(
+                        "backgroundZoom",
+                        Math.max(
+                          HERO_BG_ZOOM_MIN,
+                          Math.min(HERO_BG_ZOOM_MAX, Number.isFinite(next) ? next : 100)
+                        )
+                      );
                     }}
+                    pos={
+                      ((activeBackgroundZoom - HERO_BG_ZOOM_MIN) /
+                        (HERO_BG_ZOOM_MAX - HERO_BG_ZOOM_MIN)) *
+                      100
+                    }
+                    color={textColor || "#333333"}
                   />
-                </Stack>
-              </div>
+                </div>
+              ) : null}
+
             </>
           ) : (
             <button
@@ -1183,15 +1631,178 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
               onClick={() => setBackgroundPickerOpen(true)}
             >
               <span className="text-[13px] font-medium text-gray-500 dark:text-gray-400">
-                ไม่มีรูปภาพ
+                ไม่มีรูปภาพ/วิดีโอ
               </span>
             </button>
           )}
+
+          <div className="mt-6 mb-2 flex items-center gap-2">
+            <span className="dash-panel-label text-[13px] font-bold">
+              เพิ่มเติม (Divider SVG)
+            </span>
+            <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+              <AntSwitch
+                checked={svgDividerEnabled}
+                onChange={() => {
+                  setUpdated(true);
+                  setData((prev) => ({
+                    ...prev,
+                    svgDividerEnabled: !(prev?.svgDividerEnabled === true),
+                  }));
+                }}
+              />
+            </Stack>
+          </div>
+          {svgDividerEnabled ? (
+            <div className="space-y-4">
+              <div className="mt-4">
+                <AnimationSelectInput
+                  value={svgDividerType}
+                  onChange={(nextValue) => updateSectionSetting("svgDividerType", nextValue)}
+                  options={HERO_SVG_DIVIDER_TYPE_OPTIONS}
+                />
+              </div>
+              {svgDividerType !== "triangle" && svgDividerType !== "arrowSplit" ? (
+                <div className="grid grid-cols-2 gap-x-2">
+                  <div className="col-span-1">
+                    <div className="mb-1 flex items-center gap-1">
+                      <span className="shrink-0 dash-panel-label text-[13px] font-bold">
+                        ความสูง
+                      </span>
+                      <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
+                        {Math.round(svgDividerHeight)}
+                      </span>
+                      <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                    </div>
+                    <Range
+                      min={HERO_SVG_DIVIDER_HEIGHT_MIN}
+                      max={HERO_SVG_DIVIDER_HEIGHT_MAX}
+                      step={1}
+                      value={svgDividerHeight}
+                      handleChange={(event) =>
+                        updateSectionSetting("svgDividerHeight", Number(event.target.value))
+                      }
+                      pos={
+                        ((svgDividerHeight - HERO_SVG_DIVIDER_HEIGHT_MIN) /
+                          (HERO_SVG_DIVIDER_HEIGHT_MAX - HERO_SVG_DIVIDER_HEIGHT_MIN)) *
+                        100
+                      }
+                      color={textColor || "#333333"}
+                    />
+                  </div>
+                  <div className="col-span-1">
+                    <div className="mb-1 flex items-center gap-1">
+                      <span className="shrink-0 dash-panel-label text-[13px] font-bold">
+                        ความถี่
+                      </span>
+                      <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
+                        {svgDividerDensity.toFixed(1)}
+                      </span>
+                      <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                    </div>
+                    <Range
+                      min={HERO_SVG_DIVIDER_DENSITY_MIN}
+                      max={HERO_SVG_DIVIDER_DENSITY_MAX}
+                      step={0.1}
+                      value={svgDividerDensity}
+                      handleChange={(event) =>
+                        updateSectionSetting("svgDividerDensity", Number(event.target.value))
+                      }
+                      pos={
+                        ((svgDividerDensity - HERO_SVG_DIVIDER_DENSITY_MIN) /
+                          (HERO_SVG_DIVIDER_DENSITY_MAX - HERO_SVG_DIVIDER_DENSITY_MIN)) *
+                        100
+                      }
+                      color={textColor || "#333333"}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <div className="mb-1 flex items-center gap-1">
+                      <span className="shrink-0 dash-panel-label text-[13px] font-bold">
+                        ความสูง
+                      </span>
+                      <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
+                        {Math.round(svgDividerHeight)}
+                      </span>
+                      <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                    </div>
+                    <Range
+                      min={HERO_SVG_DIVIDER_HEIGHT_MIN}
+                      max={HERO_SVG_DIVIDER_HEIGHT_MAX}
+                      step={1}
+                      value={svgDividerHeight}
+                      handleChange={(event) =>
+                        updateSectionSetting("svgDividerHeight", Number(event.target.value))
+                      }
+                      pos={
+                        ((svgDividerHeight - HERO_SVG_DIVIDER_HEIGHT_MIN) /
+                          (HERO_SVG_DIVIDER_HEIGHT_MAX - HERO_SVG_DIVIDER_HEIGHT_MIN)) *
+                        100
+                      }
+                      color={textColor || "#333333"}
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center gap-1">
+                      <span className="shrink-0 text-[12px] font-semibold text-slate-600 dark:text-white/70">
+                        ขนาด
+                      </span>
+                      <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
+                        {svgDividerSize.toFixed(1)}
+                      </span>
+                      <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                    </div>
+                    <Range
+                      min={HERO_SVG_DIVIDER_SIZE_MIN}
+                      max={HERO_SVG_DIVIDER_SIZE_MAX}
+                      step={0.1}
+                      value={svgDividerSize}
+                      handleChange={(event) =>
+                        updateSectionSetting("svgDividerSize", Number(event.target.value))
+                      }
+                      pos={
+                        ((svgDividerSize - HERO_SVG_DIVIDER_SIZE_MIN) /
+                          (HERO_SVG_DIVIDER_SIZE_MAX - HERO_SVG_DIVIDER_SIZE_MIN)) *
+                        100
+                      }
+                      color={textColor || "#333333"}
+                    />
+                  </div>
+                </>
+              )}
+              <div>
+                <div className="grid grid-cols-10 place-items-center gap-y-[6px] px-[5px]">
+                  {allColors.map((color, i) => {
+                    const bgColor = resolveColor(color);
+                    if (bgColor == null) return null;
+                    const selected = lodash.isEqual(svgDividerColor, color);
+                    return (
+                      <button
+                        key={`divider-color-${String(color)}-${i}`}
+                        type="button"
+                        className="flex size-[25px] items-center justify-center rounded-full border border-slate-200 dark:border-white/15"
+                        style={{ backgroundColor: bgColor }}
+                        onClick={() => updateSectionSetting("svgDividerColor", color)}
+                      >
+                        {selected ? (
+                          <Check className={swatchSelectedCheckClassName(bgColor)} strokeWidth={4} />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </nav>
       )}
 
       {activeTab === "layer" && (
-        <div className="px-5 py-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-6 pb-10">
           <div className="mb-4 flex items-center gap-3">
             <span className="text-[15px] font-semibold text-slate-700 dark:text-white/85">
               Elements พื้นฐาน
@@ -1219,16 +1830,19 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                   }}
                   className="group flex min-h-[68px] flex-col items-center justify-center rounded-xl bg-slate-100/80 px-2 py-1.5 transition-colors hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10"
                 >
-                  <div className="mb-0.5 flex h-9 w-9 items-center justify-center text-slate-700 dark:text-white/80">
+                  <div
+                    className="mb-0.5 flex h-9 w-9 items-center justify-center"
+                    style={{ color: "var(--dash-panel-heading, #0f172a)" }}
+                  >
                     {item.iconType === "material" ? (
                       <span
                         className="material-symbols-outlined text-[28px] leading-none"
-                        style={{ color: "#333333" }}
+                        style={{ color: "inherit" }}
                       >
                         {String(item.icon || "")}
                       </span>
                     ) : (
-                      <ItemIcon className="h-6 w-6" />
+                      <ItemIcon className="h-6 w-6" style={{ color: "inherit" }} />
                     )}
                   </div>
                   <span className="text-[11px] font-medium text-slate-700 dark:text-white/85">
@@ -1238,14 +1852,14 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
               );
             })}
           </div>
-          <div className="mt-5 mb-2 flex items-center gap-2">
-            <span className="text-[13px] font-semibold text-slate-700 dark:text-white/80">
-              Layer Items
+          <div className="mt-5 mb-4 flex items-center gap-2">
+            <span className="dash-panel-label text-[13px] font-semibold">
+              รายการทั้งหมด{" "}
+              <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-400">
+                {activeLayerItemsForPanel.length}
+              </span>
             </span>
-            <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
-            <span className="text-[11px] text-slate-400 dark:text-white/50">
-              {activeLayerItemsForPanel.length}
-            </span>
+            <div className="dash-heading-rule min-w-0 flex-1 border-b" />
           </div>
           <div className="space-y-2">
             {activeLayerItemsForPanel.length === 0 ? (
@@ -1260,7 +1874,16 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                 return (
                   <div
                     key={layer?.id || `layer-item-${index}`}
-                    className={`flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-2 dark:border-white/10 dark:bg-white/5 ${
+                    ref={(node) => {
+                      const layerId = typeof layer?.id === "string" ? layer.id : "";
+                      if (!layerId) return;
+                      if (node) {
+                        layerListItemRefsRef.current.set(layerId, node);
+                      } else {
+                        layerListItemRefsRef.current.delete(layerId);
+                      }
+                    }}
+                    className={`flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-2 py-2 dark:border-white/10 ${
                       isActiveLayer ? "ring-1 ring-slate-300 dark:ring-white/20" : ""
                     }`}
                     onClick={() => setActiveLayerSelection(layer?.id)}
@@ -1284,23 +1907,33 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
+                        let nextAnimationEnabled = false;
                         updateActiveSlideLayerItems((currentLayerItems) =>
                           currentLayerItems.map((layerItem) =>
                             layerItem?.id === layer?.id
-                              ? { ...layerItem, animationEnabled: layerItem?.animationEnabled !== true }
+                              ? (() => {
+                                  nextAnimationEnabled = layerItem?.animationEnabled !== true;
+                                  return {
+                                    ...layerItem,
+                                    animationEnabled: nextAnimationEnabled,
+                                  };
+                                })()
                               : layerItem
                           )
                         );
+                        if (nextAnimationEnabled === false) {
+                          stopLayerAnimationPreview(layer?.id);
+                        }
                       }}
                       className={`inline-flex h-[26px] min-w-[48px] items-center justify-center rounded border px-2 text-[10px] font-semibold ${
                         layer?.animationEnabled === true
                           ? "border-emerald-500 bg-emerald-600 text-white"
                           : "border-slate-200 bg-white text-slate-600 dark:border-white/15 dark:bg-white/5 dark:text-white/70"
                       }`}
-                      aria-label="เปิดปิด Animation ของ Layer"
-                      title="เปิดปิด Animation ของ Layer"
+                      aria-label="เปิดปิดแอนิเมชั่นของ Layer"
+                      title="เปิดปิดแอนิเมชั่นของ Layer"
                     >
-                      Anim
+                      แอนิเมชั่น
                     </button>
                     <button
                       type="button"
@@ -1322,208 +1955,210 @@ function HeroOffcanvas({ element, updateHero: onUpdate, textColor }) {
                     >
                       <ArrowDown className="h-3.5 w-3.5" />
                     </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const deletingLayerId =
+                          typeof layer?.id === "string" && layer.id.trim() ? layer.id : null;
+                        if (!deletingLayerId) return;
+                        updateActiveSlideLayerItems((currentLayerItems) =>
+                          currentLayerItems.filter((layerItem) => layerItem?.id !== deletingLayerId)
+                        );
+                        if (activeLayerItemId === deletingLayerId) {
+                          setActiveLayerSelection(null);
+                        }
+                        stopLayerAnimationPreview(deletingLayerId);
+                      }}
+                      className="inline-flex h-[26px] w-[26px] items-center justify-center rounded border border-slate-200 text-slate-600 dark:border-white/15 dark:text-white/70"
+                      aria-label="Delete layer"
+                      title="ลบ Layer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 );
               })
             )}
           </div>
-          <div className="mt-5">
-            <div className="mb-2 flex items-center gap-2">
-              <span className="text-[13px] font-semibold text-slate-700 dark:text-white/80">
-                Animation
-              </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
-            </div>
-            {!activeSelectedLayerItem ? (
-              <div className="rounded-md border border-dashed border-slate-200 px-3 py-2 text-[12px] text-slate-400 dark:border-white/10 dark:text-white/50">
-                เลือก Layer เพื่อปรับ Animation
+          {activeSelectedLayerItem?.animationEnabled === true ? (
+            <div className="mt-5">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="dash-panel-label text-[13px] font-semibold">
+                  แอนิเมชั่น
+                </span>
+                <div className="dash-heading-rule min-w-0 flex-1 border-b" />
               </div>
-            ) : (
-              <div className="space-y-3 rounded-md border border-slate-200 bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[12px] font-medium text-slate-700 dark:text-white/80">
-                    เปิดใช้งาน
-                  </span>
-                  <AntSwitch
-                    checked={activeSelectedLayerItem?.animationEnabled === true}
-                    onChange={(event) =>
-                      updateActiveLayerAnimation({
-                        animationEnabled: event.target.checked,
-                      })
-                    }
-                    inputProps={{
-                      "aria-label": "เปิดปิด Animation ของ Layer ที่เลือก",
-                      title: "เปิดปิด Animation ของ Layer ที่เลือก",
+              <div className="space-y-3 py-1">
+                <div className="flex items-stretch gap-2">
+                  <div className="min-w-0 flex-1">
+                    <AnimationSelectInput
+                      value={
+                        activeSelectedLayerItem?.animationType ||
+                        HERO_LAYER_ANIMATION_DEFAULTS.animationType
+                      }
+                      onChange={(nextValue) =>
+                        updateActiveLayerAnimation({ animationType: nextValue })
+                      }
+                      options={HERO_LAYER_ANIMATION_TYPES}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="contained"
+                    onClick={() => {
+                      if (isActiveLayerPreviewPlaying) {
+                        stopLayerAnimationPreview(activeSelectedLayerItem?.id);
+                        return;
+                      }
+                      startLayerAnimationPreview(activeSelectedLayerItem);
                     }}
-                  />
+                    sx={{
+                      minWidth: 35,
+                      width: 35,
+                      height: 35,
+                      px: 0,
+                      borderRadius: "6px",
+                      textTransform: "none",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      boxShadow: "none",
+                      border: "1px solid var(--dash-panel-btn-group-active, #333333)",
+                      color: "var(--dash-panel-btn-group-active-text, #ffffff)",
+                      backgroundColor: "var(--dash-panel-btn-group-active, #333333)",
+                      "&:hover": {
+                        backgroundColor: "var(--dash-panel-btn-group-active, #333333)",
+                        boxShadow: "none",
+                      },
+                    }}
+                    aria-label={isActiveLayerPreviewPlaying ? "หยุดพรีวิวแอนิเมชัน" : "เล่นพรีวิวแอนิเมชัน"}
+                    title={isActiveLayerPreviewPlaying ? "หยุดพรีวิวแอนิเมชัน" : "เล่นพรีวิวแอนิเมชัน"}
+                  >
+                    {isActiveLayerPreviewPlaying ? (
+                      <Pause className="h-3.5 w-3.5" strokeWidth={2.6} />
+                    ) : (
+                      <Play className="h-3.5 w-3.5" strokeWidth={2.6} />
+                    )}
+                  </Button>
                 </div>
-                {activeSelectedLayerItem?.animationEnabled === true ? (
-                  <>
-                    <div>
-                      <div className="mb-1 text-[12px] font-medium text-slate-700 dark:text-white/80">
-                        รูปแบบ
-                      </div>
-                      <select
-                        className="h-[32px] w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700 outline-none dark:border-white/15 dark:bg-slate-900/70 dark:text-white/80"
-                        value={activeSelectedLayerItem?.animationType || HERO_LAYER_ANIMATION_DEFAULTS.animationType}
-                        onChange={(event) =>
-                          updateActiveLayerAnimation({ animationType: event.target.value })
-                        }
-                        aria-label="เลือกรูปแบบ Animation"
-                      >
-                        {HERO_LAYER_ANIMATION_TYPES.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
 
-                    <div>
-                      <div className="mb-1 flex items-center gap-1">
-                        <span className="text-[12px] font-medium text-slate-700 dark:text-white/80">
-                          ระยะเวลา
-                        </span>
-                        <span className="text-[12px] tabular-nums text-slate-400">
-                          {Math.round(
-                            Number(
-                              activeSelectedLayerItem?.animationDurationMs ??
-                                HERO_LAYER_ANIMATION_DEFAULTS.animationDurationMs
-                            )
-                          )}{" "}
-                          ms
-                        </span>
-                        <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
-                      </div>
-                      <Range
-                        min={100}
-                        max={5000}
-                        step={100}
-                        value={Number(
+                <div>
+                  <div className="mb-1 flex items-center gap-1">
+                    <span className="text-[12px] font-medium text-slate-700 dark:text-white/80">
+                      ระยะเวลา
+                    </span>
+                    <span className="text-[12px] tabular-nums text-slate-400">
+                      {Math.round(
+                        Number(
                           activeSelectedLayerItem?.animationDurationMs ??
                             HERO_LAYER_ANIMATION_DEFAULTS.animationDurationMs
-                        )}
-                        handleChange={(event) =>
-                          updateActiveLayerAnimation({
-                            animationDurationMs: Math.max(
-                              100,
-                              Math.min(5000, Number(event.target.value) || 100)
-                            ),
-                          })
-                        }
-                        pos={
-                          ((Number(
-                            activeSelectedLayerItem?.animationDurationMs ??
-                              HERO_LAYER_ANIMATION_DEFAULTS.animationDurationMs
-                          ) -
-                            100) /
-                            (5000 - 100)) *
-                          100
-                        }
-                        color={textColor || "#333333"}
-                      />
-                    </div>
+                        )
+                      )}{" "}
+                      ms
+                    </span>
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                  </div>
+                  <Range
+                    min={100}
+                    max={5000}
+                    step={100}
+                    value={Number(
+                      activeSelectedLayerItem?.animationDurationMs ??
+                        HERO_LAYER_ANIMATION_DEFAULTS.animationDurationMs
+                    )}
+                    handleChange={(event) =>
+                      updateActiveLayerAnimation({
+                        animationDurationMs: Math.max(
+                          100,
+                          Math.min(5000, Number(event.target.value) || 100)
+                        ),
+                      })
+                    }
+                    pos={
+                      ((Number(
+                        activeSelectedLayerItem?.animationDurationMs ??
+                          HERO_LAYER_ANIMATION_DEFAULTS.animationDurationMs
+                      ) -
+                        100) /
+                        (5000 - 100)) *
+                      100
+                    }
+                    color={textColor || "#333333"}
+                  />
+                </div>
 
-                    <div>
-                      <div className="mb-1 flex items-center gap-1">
-                        <span className="text-[12px] font-medium text-slate-700 dark:text-white/80">
-                          หน่วงเวลา
-                        </span>
-                        <span className="text-[12px] tabular-nums text-slate-400">
-                          {Math.round(
-                            Number(
-                              activeSelectedLayerItem?.animationDelayMs ??
-                                HERO_LAYER_ANIMATION_DEFAULTS.animationDelayMs
-                            )
-                          )}{" "}
-                          ms
-                        </span>
-                        <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
-                      </div>
-                      <Range
-                        min={0}
-                        max={3000}
-                        step={100}
-                        value={Number(
+                <div>
+                  <div className="mb-1 flex items-center gap-1">
+                    <span className="text-[12px] font-medium text-slate-700 dark:text-white/80">
+                      หน่วงเวลา
+                    </span>
+                    <span className="text-[12px] tabular-nums text-slate-400">
+                      {Math.round(
+                        Number(
                           activeSelectedLayerItem?.animationDelayMs ??
                             HERO_LAYER_ANIMATION_DEFAULTS.animationDelayMs
-                        )}
-                        handleChange={(event) =>
-                          updateActiveLayerAnimation({
-                            animationDelayMs: Math.max(
-                              0,
-                              Math.min(3000, Number(event.target.value) || 0)
-                            ),
-                          })
-                        }
-                        pos={
-                          (Number(
-                            activeSelectedLayerItem?.animationDelayMs ??
-                              HERO_LAYER_ANIMATION_DEFAULTS.animationDelayMs
-                          ) /
-                            3000) *
-                          100
-                        }
-                        color={textColor || "#333333"}
-                      />
-                    </div>
-
-                    <div>
-                      <div className="mb-1 text-[12px] font-medium text-slate-700 dark:text-white/80">
-                        Easing
-                      </div>
-                      <select
-                        className="h-[32px] w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700 outline-none dark:border-white/15 dark:bg-slate-900/70 dark:text-white/80"
-                        value={
-                          activeSelectedLayerItem?.animationEasing ||
-                          HERO_LAYER_ANIMATION_DEFAULTS.animationEasing
-                        }
-                        onChange={(event) =>
-                          updateActiveLayerAnimation({ animationEasing: event.target.value })
-                        }
-                        aria-label="เลือก easing ของ Animation"
-                      >
-                        {HERO_LAYER_ANIMATION_EASINGS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12px] font-medium text-slate-700 dark:text-white/80">
-                        เล่นครั้งเดียว
-                      </span>
-                      <AntSwitch
-                        checked={activeSelectedLayerItem?.animationOnce !== false}
-                        onChange={(event) =>
-                          updateActiveLayerAnimation({
-                            animationOnce: event.target.checked,
-                          })
-                        }
-                        inputProps={{
-                          "aria-label": "Animation เล่นครั้งเดียว",
-                          title: "Animation เล่นครั้งเดียว",
-                        }}
-                      />
-                    </div>
-                  </>
-                ) : null}
+                        )
+                      )}{" "}
+                      ms
+                    </span>
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                  </div>
+                  <Range
+                    min={0}
+                    max={3000}
+                    step={100}
+                    value={Number(
+                      activeSelectedLayerItem?.animationDelayMs ??
+                        HERO_LAYER_ANIMATION_DEFAULTS.animationDelayMs
+                    )}
+                    handleChange={(event) =>
+                      updateActiveLayerAnimation({
+                        animationDelayMs: Math.max(
+                          0,
+                          Math.min(3000, Number(event.target.value) || 0)
+                        ),
+                      })
+                    }
+                    pos={
+                      (Number(
+                        activeSelectedLayerItem?.animationDelayMs ??
+                          HERO_LAYER_ANIMATION_DEFAULTS.animationDelayMs
+                      ) /
+                        3000) *
+                      100
+                    }
+                    color={textColor || "#333333"}
+                  />
+                </div>
               </div>
-            )}
-          </div>
+            </div>
+          ) : null}
         </div>
       )}
+      </div>
 
       <ImageModal
         openModal={backgroundPickerOpen}
         setOpenModal={setBackgroundPickerOpen}
-        handleChange={(url) => {
-          updateActiveSlideVisual("backgroundImage", url);
+        allowVideo
+        handleChange={(payload) => {
+          if (payload && typeof payload === "object") {
+            const selectedType = payload.mediaType === "video" ? "video" : "image";
+            const selectedUrl = payload.url || "";
+            updateActiveSlideVisuals({
+              backgroundImage: selectedType === "image" ? selectedUrl : "",
+              backgroundVideo: selectedType === "video" ? selectedUrl : "",
+            });
+            return;
+          }
+          const selectedUrl = typeof payload === "string" ? payload : "";
+          updateActiveSlideVisuals({
+            backgroundImage: selectedUrl,
+            backgroundVideo: "",
+          });
         }}
       />
-      </TabContext>
     </aside>
   );
 }

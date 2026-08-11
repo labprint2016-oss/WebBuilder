@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, ButtonGroup, Typography } from "@mui/material";
-import { AlignCenter, AlignLeft, AlignRight, Check, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Check, Sparkles } from "lucide-react";
 import lodash from "lodash";
 import ServiceIcon from "../ServiceIcon";
 import IconAwsome from "../IconAwsome";
@@ -21,6 +21,8 @@ import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckCla
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import MainLabel from "../HTML/MainLabel";
 import Range from "../HTML/Range";
+import SelectLine from "../HTML/SelectLine";
+import { panelGroupButtonSx } from "../panelControlSx";
 
 const LINK_TARGET_OPTIONS = [
   { value: "_self", label: "ลิงค์หน้าเดิม" },
@@ -78,62 +80,8 @@ const ICON_COLOR_MODES_ALL = [
 ];
 
 const OPTION_CHIP_RADIUS = "0.375rem";
-const CHIP_BORDER = "#e2e8f0";
-const CHIP_BORDER_DARK = "rgba(255, 255, 255, 0.1)";
-const CHIP_BG = "#ffffff";
-const CHIP_BG_HOVER = "#f8fafc";
-const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
-const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 
-const groupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0.75,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.25,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": {
-            backgroundColor: a,
-            borderColor: "transparent",
-          },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": {
-            borderColor: `${CHIP_BORDER} !important`,
-            backgroundColor: CHIP_BG_HOVER,
-          },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": {
-              borderColor: `${CHIP_BORDER_DARK} !important`,
-              backgroundColor: CHIP_BG_DARK_HOVER,
-            },
-          },
-        }),
-    "&.Mui-focusVisible": {
-      outline: `2px solid ${a}`,
-      outlineOffset: 1,
-      boxShadow: "none",
-    },
-    "& .MuiTouchRipple-child": {
-      backgroundColor: a,
-    },
-  };
-};
+const groupButtonSx = panelGroupButtonSx;
 
 const groupRootSx = {
   width: "100%",
@@ -153,16 +101,16 @@ const groupRootSx = {
     borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER_DARK} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
@@ -510,19 +458,30 @@ const IconElementOffcanvas = ({
   return (
     <aside
       className={`
-     flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10 `}
+     dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10 `}
     >
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-gray-900/50">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-gray-900/50">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             {panelTitle}
           </span>
-          <span
-            className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
             title={String(data?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(data?.id ?? "")}`}
+            onClick={() => {
+              const id = String(data?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
           >
-            <span className="truncate">{data?.id}</span>
-          </span>
+            {(() => {
+              const id = String(data?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -547,15 +506,15 @@ const IconElementOffcanvas = ({
         <ul className="mt-4 pl-1 space-y-5">
           <li>
             <div className="mb-3 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 ไอคอน Font Awesome
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
-            <div className="flex w-full overflow-hidden rounded-md border border-slate-200 bg-white transition focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200 dark:border-white/10 dark:bg-slate-900/80 dark:focus-within:border-white/20 dark:focus-within:ring-white/10">
+            <div className="flex dash-input h-10 w-full overflow-hidden rounded-md border border-slate-200 bg-white dark:border-white/10 dark:bg-[#27272a]">
               <button
                 type="button"
-                className="flex shrink-0 items-center justify-center border-r border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800/95"
+                className="flex shrink-0 items-center justify-center border-r border-slate-200 bg-transparent px-3 py-2.5 text-slate-600 transition hover:opacity-80 dark:border-white/10 dark:text-slate-300"
                 aria-label="เลือกไอคอน"
                 onClick={() => {
                   const ae = document.activeElement;
@@ -567,16 +526,29 @@ const IconElementOffcanvas = ({
                   <IconAwsome
                     iconName={fa.name}
                     iconType={fa.type}
-                    style={{ fontSize: 22, color: "#333333" }}
+                    style={{
+                      fontSize: 22,
+                      color: "var(--dash-panel-btn-group-inactive-text, #1e293b)",
+                    }}
                   />
                 ) : (
-                  <span className="inline-flex text-[#333333]">
+                  <span
+                    className="inline-flex"
+                    style={{
+                      color: "var(--dash-panel-btn-group-inactive-text, #1e293b)",
+                    }}
+                  >
                     <Sparkles className="size-5 shrink-0" strokeWidth={2} />
                   </span>
                 )}
               </button>
               <div className="flex min-w-0 flex-1 flex-col justify-center px-2.5 py-1">
-                <Typography variant="caption" color="text.secondary">
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "var(--dash-panel-btn-group-inactive-text, #64748b)",
+                  }}
+                >
                   {fa?.name && fa?.type
                     ? `${fa.type} · ${fa.name}`
                     : "ยังไม่ได้เลือก — แตะซ้ายเพื่อเลือก"}
@@ -589,10 +561,10 @@ const IconElementOffcanvas = ({
           <li>
             {isBetweenIconEdit ? (
               <div className="mb-3 flex items-center gap-2">
-                <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                   พื้นหลังไอคอน
                 </span>
-                <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <div className="dash-heading-rule min-w-0 flex-1 border-b" />
               </div>
             ) : (
               <MainLabel
@@ -725,15 +697,15 @@ const IconElementOffcanvas = ({
               <div className="grid grid-cols-2 gap-3">
                 <div className="min-w-0">
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                    <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                       ความกว้าง
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     <span className="shrink-0 text-xs text-slate-500 dark:text-white/50 tabular-nums">
                       {merged.containerSize}
                     </span>
                   </div>
-                  <div className="w-full rounded-md bg-white px-[0px] pb-[0px] pt-[2px] dark:bg-zinc-800">
+                  <div className="w-full dash-card rounded-md bg-white px-[0px] pb-[0px] pt-[2px] dark:bg-zinc-800">
                     <div className="px-[0px] pb-0">
                       <input
                         type="range"
@@ -759,15 +731,15 @@ const IconElementOffcanvas = ({
                 </div>
                 <div className="min-w-0">
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                    <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                       ขนาดไอคอน
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     <span className="shrink-0 text-xs text-slate-500 dark:text-white/50 tabular-nums">
                       {merged.iconSize}
                     </span>
                   </div>
-                  <div className="w-full rounded-md bg-white px-[0px] pb-[0px] pt-[0px] dark:bg-zinc-800">
+                  <div className="w-full dash-card rounded-md bg-white px-[0px] pb-[0px] pt-[0px] dark:bg-zinc-800">
                     <div className="px-[0px] pb-0">
                       <input
                         type="range"
@@ -792,15 +764,15 @@ const IconElementOffcanvas = ({
             ) : (
               <>
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ขนาดไอคอน
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   <span className="text-xs text-slate-500 dark:text-white/50">
                     {merged.iconSize}
                   </span>
                 </div>
-                <div className="w-full rounded-md bg-white px-[0px] pb-[0px] pt-[0px] dark:bg-zinc-800">
+                <div className="w-full dash-card rounded-md bg-white px-[0px] pb-[0px] pt-[0px] dark:bg-zinc-800">
                   <div className="px-[0px] pb-0">
                     <input
                       type="range"
@@ -858,10 +830,10 @@ const IconElementOffcanvas = ({
             {data?.iconRowDividerEnabled === true && (
               <div className="mt-3">
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     รูปแบบเส้นคั่น
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <ButtonGroup
                   fullWidth
@@ -896,10 +868,10 @@ const IconElementOffcanvas = ({
             shape === "rounded" && (
             <li className="mt-2">
               <div className="mb-2 flex items-center gap-2">
-                <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                   มุมมน
                 </span>
-                <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 <span className="shrink-0 text-xs text-slate-500 dark:text-white/50 tabular-nums">
                   {merged.iconCornerRadius}
                 </span>
@@ -925,7 +897,7 @@ const IconElementOffcanvas = ({
 
           <li>
             <div className="mb-2 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 {!borderEnabled && !allowFillModeWithoutBorder
                   ? "สีไอคอน"
                   : isListItemIcon
@@ -938,58 +910,24 @@ const IconElementOffcanvas = ({
                     ? "สีพื้นหลัง - สีไอคอน - สีกรอบ - สีเส้นคั่น"
                     : "สีพื้นหลัง - สีไอคอน - สีกรอบ"}
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             {iconColorModesEffective.length > 1 ? (
-              <div
-                className="mb-1 flex items-center justify-between gap-0.5 rounded-lg border border-slate-200 bg-white px-0.5 py-0.5 dark:border-white/10 dark:bg-slate-800/90"
-                role="group"
-                aria-label={
-                  isListItemIcon
-                    ? "สลับแก้สีพื้นหลังหรือสีไอคอน"
-                    : allowFillModeWithoutBorder
-                    ? "สลับแก้สีพื้นหลังหรือสีไอคอน"
-                    : isImageHoverIconEdit
-                    ? "สลับแก้สีพื้นหลังหรือสีไอคอน"
-                    : "สลับแก้สีพื้นหลัง สีไอคอน หรือสีกรอบ"
-                }
-              >
-                <button
-                  type="button"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
-                  onClick={() => cycleIconColorMode(-1)}
-                  aria-label="โหมดสีก่อนหน้า"
-                >
-                  <ChevronLeft
-                    className="size-4"
-                    strokeWidth={2}
-                    aria-hidden
-                  />
-                </button>
-                <span className="min-w-0 flex-1 truncate text-center text-[11px] font-normal text-slate-800 dark:text-white/90">
-                  {iconColorModeLabel}
-                </span>
-                <button
-                  type="button"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
-                  onClick={() => cycleIconColorMode(1)}
-                  aria-label="โหมดสีถัดไป"
-                >
-                  <ChevronRight
-                    className="size-4"
-                    strokeWidth={2}
-                    aria-hidden
-                  />
-                </button>
+              <div className="mb-1">
+                <SelectLine
+                  prev={() => cycleIconColorMode(-1)}
+                  next={() => cycleIconColorMode(1)}
+                  value={iconColorModeLabel}
+                />
               </div>
             ) : null}
             {borderEnabled && iconColorMode === "border" && (
               <div className="mb-2 mt-3 space-y-2">
                 <div className="mb-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ความหนากรอบ
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <ButtonGroup
                   fullWidth
@@ -1037,10 +975,10 @@ const IconElementOffcanvas = ({
                   })}
                 </ButtonGroup>
                 <div className="mb-1 flex items-center gap-2 pt-2 pb-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     รูปแบบของกรอบ
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <ButtonGroup
                   fullWidth
@@ -1090,10 +1028,10 @@ const IconElementOffcanvas = ({
                   })}
                 </ButtonGroup>
                 <div className="mb-1 flex items-center gap-2 py-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ตำแหน่งกรอบ
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <ButtonGroup
                   fullWidth
@@ -1144,7 +1082,7 @@ const IconElementOffcanvas = ({
                 </ButtonGroup>
               </div>
             )}
-            <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+            <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
               <div className="px-[5px] pb-2">
                 <input
                   type="range"
@@ -1247,7 +1185,7 @@ const IconElementOffcanvas = ({
                   <input
                     type="text"
                     inputMode="url"
-                    className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-200 focus:outline-none focus:ring-0 dark:border-white/10 dark:bg-slate-900/80 dark:text-white/90 dark:placeholder:text-slate-500 dark:focus:border-white/10 dark:focus:ring-0"
+                    className="dash-input h-10 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:border-white/10 dark:bg-[#27272a] dark:text-white/90 dark:placeholder:text-slate-500"
                     placeholder="https://example.com"
                     value={linkUrl}
                     onChange={(e) =>
@@ -1312,10 +1250,10 @@ const IconElementOffcanvas = ({
             !isBetweenIconEdit && (
           <li>
             <div className="mb-3 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 ตำแหน่งการจัดวางปุ่ม
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <ButtonGroup
               variant="outlined"
@@ -1352,7 +1290,7 @@ const IconElementOffcanvas = ({
             <div className="grid w-full grid-cols-2 gap-x-3 gap-y-4 px-0.5">
               <div className="min-w-0">
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ระยะด้านบน
                   </span>
                   <span className="shrink-0 text-xs text-slate-500 dark:text-white/50 tabular-nums">
@@ -1360,7 +1298,7 @@ const IconElementOffcanvas = ({
                       ? listMarginTop
                       : merged.iconMarginTop ?? ICON_ELEMENT_DEFAULTS.iconMarginTop}
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <div className="px-[2px] pb-[2px] pt-[2px]">
                   <Range
@@ -1393,7 +1331,7 @@ const IconElementOffcanvas = ({
               </div>
               <div className="min-w-0">
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ระยะด้านล่าง
                   </span>
                   <span className="shrink-0 text-xs text-slate-500 dark:text-white/50 tabular-nums">
@@ -1402,7 +1340,7 @@ const IconElementOffcanvas = ({
                       : merged.iconMarginBottom ??
                         ICON_ELEMENT_DEFAULTS.iconMarginBottom}
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <div className="px-[2px] pb-[2px] pt-[2px]">
                   <Range

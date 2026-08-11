@@ -3,6 +3,7 @@ import { Box, Button, ButtonGroup, Stack, Typography } from "@mui/material";
 import Switch from "@mui/material/Switch";
 import { styled } from "@mui/material/styles";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import { PANEL_BTN_GROUP, panelGroupButtonSx } from "../panelControlSx";
 import {
   Bold,
   Check,
@@ -12,7 +13,6 @@ import {
   Link,
   Play,
   Sun,
-  Sparkles,
   Image,
 } from "lucide-react";
 import lodash from "lodash";
@@ -69,62 +69,23 @@ const IMAGE_OVERLAY_EXTRA_OPTIONS = [
 ];
 
 const OPTION_CHIP_RADIUS = "0.375rem";
-const CHIP_BORDER = "#e2e8f0";
-const CHIP_BORDER_DARK = "rgba(255, 255, 255, 0.1)";
-const CHIP_BG = "#ffffff";
-const CHIP_BG_HOVER = "#f8fafc";
-const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
-const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 
-const groupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0.75,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.25,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": {
-            backgroundColor: a,
-            borderColor: "transparent",
-          },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": {
-            borderColor: `${CHIP_BORDER} !important`,
-            backgroundColor: CHIP_BG_HOVER,
-          },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": {
-              borderColor: `${CHIP_BORDER_DARK} !important`,
-              backgroundColor: CHIP_BG_DARK_HOVER,
-            },
-          },
-        }),
-    "&.Mui-focusVisible": {
-      outline: `2px solid ${a}`,
-      outlineOffset: 1,
-      boxShadow: "none",
-    },
-    "& .MuiTouchRipple-child": {
-      backgroundColor: a,
-    },
-  };
-};
+/** ปุ่มชิป (สัดส่วน / ความโค้ง) — สีตาม Dashboard Panel Btn Group */
+const optionChipStyle = (selected) =>
+  selected
+    ? {
+        backgroundColor: PANEL_BTN_GROUP.active,
+        color: PANEL_BTN_GROUP.activeText,
+        borderColor: PANEL_BTN_GROUP.border,
+        boxShadow: "0 1px 2px rgb(0 0 0 / 0.12)",
+      }
+    : {
+        backgroundColor: PANEL_BTN_GROUP.inactive,
+        color: PANEL_BTN_GROUP.inactiveText,
+        borderColor: PANEL_BTN_GROUP.border,
+      };
+
+const groupButtonSx = panelGroupButtonSx;
 
 const groupRootSx = {
   width: "100%",
@@ -144,16 +105,16 @@ const groupRootSx = {
     borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER_DARK} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
@@ -226,7 +187,18 @@ const BTN = ({handleClick,btnClass,style,label=null,icon=null,})=>{
   </button>)
 }
 
-const BTN2 = ({handleClick,sx,label=null,icon=null,})=>{
+const PANEL_ACTIVE_BTN_SX = {
+  backgroundColor: "var(--dash-panel-btn-group-active, #333333)",
+  color: "var(--dash-panel-btn-group-active-text, #ffffff)",
+  boxShadow: "none",
+  "&:hover": {
+    backgroundColor: "var(--dash-panel-btn-group-active, #333333)",
+    color: "var(--dash-panel-btn-group-active-text, #ffffff)",
+    boxShadow: "none",
+  },
+};
+
+const BTN2 = ({handleClick,sx,label=null,icon=null, variant, className: buttonClassName})=>{
 
   const Icon = icon?.Icon
   const className = icon?.className
@@ -235,6 +207,8 @@ const BTN2 = ({handleClick,sx,label=null,icon=null,})=>{
 
   return(  <Button
     onClick={handleClick}
+    variant={variant}
+    className={buttonClassName}
     sx={sx}
   >
     <Box
@@ -333,10 +307,10 @@ const MainLabel = ({
         flex: 1,
         fontSize: 13,
         fontWeight: 600,
-        color: "rgb(51 65 85)",
+        color: "var(--dash-panel-heading, #0f172a)",
         mb,
         fontVariantNumeric: "tabular-nums",
-        ".dark &": { color: "rgba(255,255,255,0.78)" },
+        ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
       }}
     >
       {label}{" "}
@@ -345,7 +319,7 @@ const MainLabel = ({
           {valueDisplay}
         </span>
       )}
-      <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+      <div className="dash-heading-rule min-w-0 flex-1 border-b" />
       {checked !== "-" && (
         <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
           <ImagePanelAntSwitch
@@ -381,7 +355,7 @@ const SelectLine = ({prev,next,value,prevAria,nextAria,groupAria})=>{
 
   return(     
     <div
-    className="flex items-center justify-between gap-0.5 rounded-lg border border-slate-200 bg-white px-0.5 py-0.5 dark:border-white/10 dark:bg-slate-800/90"
+    className="flex dash-input items-center justify-between gap-0.5 rounded-lg border border-slate-200 bg-white px-0.5 py-0.5 dark:border-white/10 dark:bg-slate-800/90"
     role={groupAria !== "-" ? "group" : undefined}
     aria-label={groupAria}
   >
@@ -438,10 +412,6 @@ const ImageElementOffcanvas = ({
 }) => {
   const layoutSyncRafRef = useRef(0);
   const pendingLayoutRef = useRef(null);
-  const [AI,setAI] = useState({
-    useAI:false,
-    promt:""
-  })
   /** อ้างอิง element จาก parent ล่าสุด — กันชน rAF แล้ว snapshot ไม่มี src/type */
   const elementRef = useRef(element);
   elementRef.current = element;
@@ -942,38 +912,38 @@ const ImageElementOffcanvas = ({
     },
   ];
 
-  const btnStyle = {
-    backgroundColor: textColor || "#0d9488",
-    color: "#fff",
-    boxShadow: "0 1px 2px rgb(0 0 0 / 0.12)",
-  };
-  
-
-  const btnClass1 = "inline-flex h-8 items-center font-normal justify-center rounded-md border px-1 text-[11px] font-medium leading-none transition"
-  const btnClass2 = "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border transition"
-  const activeClass =
-  "border-transparent text-white shadow-sm";
-
-const normalClass =
-  "border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800/90 dark:text-slate-100 dark:hover:bg-slate-800";
-
+  const btnClass1 =
+    "inline-flex h-8 items-center font-normal justify-center rounded-md border px-1 text-[11px] font-medium leading-none transition";
+  const btnClass2 =
+    "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border transition";
 
   return (
     <aside
       className={`
-     flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10 `}
+     dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10 `}
     >
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             {panelTitle}
           </span>
-          <span
-            className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
             title={String(data?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(data?.id ?? "")}`}
+            onClick={() => {
+              const id = String(data?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
           >
-            <span className="truncate">{data?.id}</span>
-          </span>
+            {(() => {
+              const id = String(data?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -1011,11 +981,12 @@ const normalClass =
                     opt.value === "auto" ? "ต้นฉบับ" : label;
                   return (
                     <Fragment key={value}>
-                      <BTN label={chipLabel}  handleClick={() => handleAspectRatioChange(value)} btnClass={`
-                  ${btnClass1}
-                  ${selected ? activeClass : normalClass}
-                  
-                  `} style={selected ? btnStyle : undefined}/>
+                      <BTN
+                        label={chipLabel}
+                        handleClick={() => handleAspectRatioChange(value)}
+                        btnClass={btnClass1}
+                        style={optionChipStyle(selected)}
+                      />
                     
                     </Fragment>
                    
@@ -1030,7 +1001,7 @@ const normalClass =
                   bgcolor: PREVIEW_THEME.canvasBg,
                   borderRadius: PREVIEW_THEME.radius,
                   width: "100%",
-                  height: 220,
+                  height: 150,
                   position: "relative",
                   overflow: "hidden",
                 }}
@@ -1075,94 +1046,49 @@ const normalClass =
               </Box>
               
             </Box>
-            <>
-            <Box       sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                  width: "100%",
-                  mt:1,
-                }}>
-                  <BTN2 handleClick={(e) => {
-                    e.currentTarget.blur();
-                    requestAnimationFrame(() => setPickerOpen(true));
-                  }} icon={{
-                    Icon: Image,
-                    strokeWidth:2.5,
-                    className:"h-4 w-4",
-                  }} label="อัปโหลดรูปภาพ" sx={{
-                     "& .MuiButton-startIcon > *:nth-of-type(1)": {
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                width: "100%",
+                mt: 1,
+              }}
+            >
+              <BTN2
+                variant="contained"
+                className="dash-panel-button"
+                handleClick={(e) => {
+                  e.currentTarget.blur();
+                  requestAnimationFrame(() => setPickerOpen(true));
+                }}
+                icon={{
+                  Icon: Image,
+                  strokeWidth: 2.5,
+                  className: "h-4 w-4",
+                }}
+                label="อัปโหลดรูปภาพ"
+                sx={{
+                  "& .MuiButton-startIcon > *:nth-of-type(1)": {
                     fontSize: 18,
                   },
-                  boxShadow: "none",
-                  "&:hover": { boxShadow: "none" },
-                  backgroundColor: textColor,
+                  ...PANEL_ACTIVE_BTN_SX,
                   fontSize: 12,
                   height: 28,
-                  width:"100%",color:"#ffffff",
-                  py:2,}}/>
-                     <BTN2 handleClick={() =>setAI(prev=>{
-                      const next = {...prev}
-                      next.useAI = !next.useAI
-                      return next
-                     })} icon={{
-                    Icon:Sparkles,
-                    className:"size-4 text-cyan-300",
-                    strokeWidth:1.75,
-                  }}  sx={{
-                    "& .MuiButton-startIcon > *:nth-of-type(1)": {
-                   fontSize: 18,
-                 },
-                 boxShadow: "none",
-                 "&:hover": { boxShadow: "none" },
-                 backgroundColor: textColor,
-                 fontSize: 12,
-                 height: 28,
-                 width:28,color:"#ffffff",
-                 py:2,}} />
-
+                  width: "100%",
+                  py: 2,
+                }}
+              />
             </Box>
-           {AI.useAI && (  <Box sx={{ width: "100%", px: 0.25, mt: 2 }}>
-              <div className="mb-3 mt-[-5px]">
-     
-              
-              <textarea
-                      type="text"
-                      className="resize-none w-full min-h-[70px] rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400  dark:border-white/10 dark:bg-slate-900/80 dark:text-white/90 dark:placeholder:text-slate-500 "
-                      placeholder="ระบุคำสั่งเพื่อให้ AI สร้างภาพ TOKEN ของคุณจะลดลง"
-                      value={AI.promt}
-                      onChange={(e) =>
-                        setAI(prev=>{
-                          const next = {...prev}
-                          next.promt = e.target.value
-                          return next
-                        })
-                      }
-                      autoComplete="off"
-                    />
-                    
-                     <BTN2 handleClick={() =>console.log(1)}  sx={{
-                    "& .MuiButton-startIcon > *:nth-of-type(1)": {
-                   fontSize: 18,
-                 },
-                 boxShadow: "none",
-                 "&:hover": { boxShadow: "none" },
-                 backgroundColor: textColor,
-                 fontSize: 12,
-                 height: 28,
-                 width:"100%",color:"#ffffff",
-                 py:2,}} label="สร้างรูปภาพด้วย AI"/>
-                
-              
-              </div>
-
-
-            </Box>)}
-            </>
             
 
 
-            <Box sx={{ width: "100%", px: 0.25, mt: 1.5 }}>
+            <Box
+              sx={{
+                width: "100%",
+                px: 0.25,
+                mt: 1.5,
+              }}
+            >
             <MainLabel label="ปรับแสงรูปภาพ" value={brightness}/>
               <Box
                 sx={{
@@ -1209,12 +1135,13 @@ const normalClass =
                   const handleClick = () => setCornerTarget(value)
                   return (
                     <Fragment key={value}>
-                      <BTN label={label} active={active} handleClick={handleClick} 
-                      btnClass={`
-                      ${btnClass1}
-                      ${active ? activeClass : normalClass}
-                      
-                      `} style={active ? btnStyle : undefined}/>
+                      <BTN
+                        label={label}
+                        active={active}
+                        handleClick={handleClick}
+                        btnClass={btnClass1}
+                        style={optionChipStyle(active)}
+                      />
                     </Fragment>
                   );
                 })}
@@ -1258,7 +1185,7 @@ const normalClass =
                 <Box sx={{ width: "100%", px: 0.25, mb: 2 }}>
                   <div className="mb-3">
              <MainLabel
-                label="ข้อความพิเศษ"
+                label="เพิ่มข้อความ"
                 mb={1.25}
                 textColor={textColor}
                 {...(layoutElementType !== "bnr"
@@ -1287,7 +1214,7 @@ const normalClass =
                     }
                     id="img-badge-label-input"
                     type="text"
-                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:border-white/10 dark:bg-slate-900/80 dark:text-white/90 dark:placeholder:text-slate-500 "
+                    className="dash-input h-10 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:border-white/10 dark:bg-[#27272a] dark:text-white/90 dark:placeholder:text-slate-500 "
                   />
                   <BTN
                     handleClick={() =>
@@ -1298,12 +1225,8 @@ const normalClass =
                       className: "size-4",
                       strokeWidth: 2.5,
                     }}
-                    btnClass={`
-                  ${btnClass2}
-                  ${badgeMerged.bold ? activeClass : normalClass}
-                  
-                  `}
-                    style={badgeMerged.bold ? btnStyle : undefined}
+                    btnClass={btnClass2}
+                    style={optionChipStyle(Boolean(badgeMerged.bold))}
                   />
                 </div>
                 {showCarouselBadgeWarn && (
@@ -1319,7 +1242,7 @@ const normalClass =
                   mb={1}
                   textColor={textColor}
                 />
-                <div className="w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                <div className="w-full dash-card rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                   <div className="px-[5px] pb-2">
                     <input
                       type="range"
@@ -1402,7 +1325,7 @@ const normalClass =
                           gap: 1,
                           px: 0.25,
                         }}
-                        aria-label={`ขนาดข้อความพิเศษ ${bannerCaptionFontSize} พิกเซล`}
+                        aria-label={`ขนาดเพิ่มข้อความ ${bannerCaptionFontSize} พิกเซล`}
                       >
                         <div className="min-w-0 flex-1 pt-[2px] pb-[2px] px-[5px]">
                           <input
@@ -1572,7 +1495,7 @@ const normalClass =
               {layoutElementType !== "bnr" && (
               <div className="mb-3">
              <MainLabel
-                label="ข้อความพิเศษ"
+                label="เพิ่มข้อความ"
                 mb={1.25}
                 textColor={textColor}
                 handleSwitch={() =>
@@ -1594,7 +1517,7 @@ const normalClass =
                     placeholder="ข้อความบนรูปภาพ - เว้นว่าง คือ ปิดการใช้งาน"
                     id="img-badge-label-input"
                     type="text"
-                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:border-white/10 dark:bg-slate-900/80 dark:text-white/90 dark:placeholder:text-slate-500 "
+                    className="dash-input h-10 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:border-white/10 dark:bg-[#27272a] dark:text-white/90 dark:placeholder:text-slate-500 "
                   />
                   <BTN
                     handleClick={() =>
@@ -1605,12 +1528,8 @@ const normalClass =
                       className: "size-4",
                       strokeWidth: 2.5,
                     }}
-                    btnClass={`
-                  ${btnClass2}
-                  ${badgeMerged.bold ? activeClass : normalClass}
-                  
-                  `}
-                    style={badgeMerged.bold ? btnStyle : undefined}
+                    btnClass={btnClass2}
+                    style={optionChipStyle(Boolean(badgeMerged.bold))}
                   />
                 </div>
                 {showCarouselBadgeWarn && (
@@ -1638,7 +1557,7 @@ const normalClass =
     )
   })}
 </div>
-              <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+              <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                 <div className="px-[5px] pb-2">
                   <Range
                     min={0}
@@ -1715,7 +1634,7 @@ const normalClass =
                   mb={1}
                   textColor={textColor}
                 />
-                <div className="w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                <div className="w-full dash-card rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                   <div className="px-[5px] pb-2">
                     <Range
                       min={0}
@@ -1778,7 +1697,7 @@ const normalClass =
                       value={imageHoverContentOffsetY}
                       textColor={textColor}
                     />
-                    <div className="w-full rounded-md bg-white px-[5px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                    <div className="w-full dash-card rounded-md bg-white px-[5px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                       <Range
                         min={0}
                         max={100}
@@ -1796,7 +1715,7 @@ const normalClass =
                   </Box>
                 )}
                 <Box sx={{ mt: 1.75 }}>
-                  <MainLabel label="องค์ประกอบอื่นๆ" mb={1} textColor={textColor} />
+                  <MainLabel label="องค์ประกอบอื่นๆ" mb="13px" textColor={textColor} />
                   <ButtonGroup
                     fullWidth
                     variant="outlined"
@@ -1834,20 +1753,19 @@ const normalClass =
               <Box sx={{ width: "100%", px: 0.25, mt: 2 }}>
                 <div className="mb-3 flex items-center gap-2">
                   <MainLabel label=" Embed Youtube"/>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
-                <div className="flex items-stretch overflow-hidden rounded-md border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/80">
-
-                  <div className="grid w-10 shrink-0 place-items-center border-r border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-slate-800/80">
+                <div className="flex dash-input h-10 items-stretch overflow-hidden rounded-md border border-slate-200 bg-white dark:border-white/10 dark:bg-[#27272a]">
+                  <div className="grid w-10 shrink-0 place-items-center border-r border-slate-200 bg-transparent dark:border-white/10">
                     <Play
                       className="size-4"
                       strokeWidth={0}
-                      fill="#333333"
-                      color="#333333"
+                      fill="var(--dash-panel-btn-group-inactive-text, #1e293b)"
+                      color="var(--dash-panel-btn-group-inactive-text, #1e293b)"
                       aria-hidden
                     />
                   </div>
-                  <Field value={videoEmbedInputValue} handleChange={(e) => handleSrcChange(e.target.value)} placeholder="https://www.youtube.com/embed/..." id="img-badge-label-input" type="text" className="w-full bg-transparent px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400  dark:text-white/90 dark:placeholder:text-slate-500"/>
+                  <Field value={videoEmbedInputValue} handleChange={(e) => handleSrcChange(e.target.value)} placeholder="https://www.youtube.com/embed/..." id="img-badge-label-input" type="text" className="w-full bg-transparent px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:text-white/90 dark:placeholder:text-slate-500"/>
                 </div>
               </Box>
             ) : isCarouselSlideEdit || layoutElementType === "bnr" || isListBoxItemImageEdit ? (
@@ -1877,9 +1795,14 @@ const normalClass =
                     {/* Link URL form */}
                     {slideLinkMode === "url" && (
                       <div className="space-y-1">
-                        <div className="flex items-stretch overflow-hidden rounded-md border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/80">
-                          <div className="grid w-10 shrink-0 place-items-center border-r border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-slate-800/80">
-                            <Link className="size-4" strokeWidth={2.5} color="#333333" aria-hidden />
+                        <div className="flex dash-input h-10 items-stretch overflow-hidden rounded-md border border-slate-200 bg-white dark:border-white/10 dark:bg-[#27272a]">
+                          <div className="grid w-10 shrink-0 place-items-center border-r border-slate-200 bg-transparent dark:border-white/10">
+                            <Link
+                              className="size-4"
+                              strokeWidth={2.5}
+                              color="var(--dash-panel-btn-group-inactive-text, #1e293b)"
+                              aria-hidden
+                            />
                           </div>
                           <input
                             type="text"
@@ -1908,9 +1831,15 @@ const normalClass =
                     )}
                     {/* Video Youtube form */}
                     {slideLinkMode === "video" && (
-                      <div className="flex items-stretch overflow-hidden rounded-md border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/80">
-                        <div className="grid w-10 shrink-0 place-items-center border-r border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-slate-800/80">
-                          <Play className="size-4" strokeWidth={0} fill="#333333" color="#333333" aria-hidden />
+                      <div className="flex dash-input h-10 items-stretch overflow-hidden rounded-md border border-slate-200 bg-white dark:border-white/10 dark:bg-[#27272a]">
+                        <div className="grid w-10 shrink-0 place-items-center border-r border-slate-200 bg-transparent dark:border-white/10">
+                          <Play
+                            className="size-4"
+                            strokeWidth={0}
+                            fill="var(--dash-panel-btn-group-inactive-text, #1e293b)"
+                            color="var(--dash-panel-btn-group-inactive-text, #1e293b)"
+                            aria-hidden
+                          />
                         </div>
                         <input
                           type="text"
@@ -1937,7 +1866,7 @@ const normalClass =
                     <input
                       type="text"
                       inputMode="url"
-                      className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400  dark:border-white/10 dark:bg-slate-900/80 dark:text-white/90 dark:placeholder:text-slate-500 "
+                      className="dash-input h-10 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:border-white/10 dark:bg-[#27272a] dark:text-white/90 dark:placeholder:text-slate-500"
                       placeholder="h t t p s : / / w w w . l i n k . c o m"
                       value={linkUrl}
                       onChange={(e) =>

@@ -1,3 +1,4 @@
+import { PANEL_BTN_GROUP, panelGroupButtonSx } from "../panelControlSx";
 import {
   useCallback,
   useEffect,
@@ -51,72 +52,26 @@ const LINK_TARGET_OPTIONS = [
 /** เท่ากับ Tailwind rounded-md บนปุ่ม «รูปแบบปุ่ม» */
 const OPTION_CHIP_RADIUS = "0.375rem";
 
-/** ปุ่มเลือกรูปแบบปุ่ม (ทึบ / ขอบ / ลอย) — แบบเดิม */
-const optionChipClass = (selected) =>
-  `inline-flex min-h-[32px] w-full items-center justify-center rounded-md border px-1 py-1 text-[11px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/60 dark:focus-visible:ring-white/30 ${
-    selected
-      ? "border-transparent text-white shadow-sm"
-      : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800/90 dark:text-slate-100 dark:hover:bg-slate-800"
-  }`;
+/** ปุ่มเลือกรูปแบบปุ่ม — สีตาม Dashboard Panel Btn Group */
+const optionChipClass =
+  "inline-flex min-h-[32px] w-full items-center justify-center rounded-md border px-1 py-1 text-[11px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/60 dark:focus-visible:ring-white/30";
 
-/** กรอบ/พื้นเดียวกับปุ่ม "รูปแบบปุ่ม" (optionChipClass — slate-200 / dark white/10) */
-const CHIP_BORDER = "#e2e8f0";
-const CHIP_BORDER_DARK = "rgba(255, 255, 255, 0.1)";
-const CHIP_BG = "#ffffff";
-const CHIP_BG_HOVER = "#f8fafc";
-const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
-const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
+const optionChipStyle = (selected) =>
+  selected
+    ? {
+        backgroundColor: PANEL_BTN_GROUP.active,
+        color: PANEL_BTN_GROUP.activeText,
+        borderColor: PANEL_BTN_GROUP.border,
+        boxShadow: "0 1px 2px rgb(0 0 0 / 0.12)",
+      }
+    : {
+        backgroundColor: PANEL_BTN_GROUP.inactive,
+        color: PANEL_BTN_GROUP.inactiveText,
+        borderColor: PANEL_BTN_GROUP.border,
+      };
 
 /** สไตล์ปุ่มใน ButtonGroup — กรอบเหมือนรูปแบบปุ่ม; ตอนเลือกยังใช้สี accent */
-const groupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0.75,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.25,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": {
-            backgroundColor: a,
-            borderColor: "transparent",
-          },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": {
-            borderColor: `${CHIP_BORDER} !important`,
-            backgroundColor: CHIP_BG_HOVER,
-          },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": {
-              borderColor: `${CHIP_BORDER_DARK} !important`,
-              backgroundColor: CHIP_BG_DARK_HOVER,
-            },
-          },
-        }),
-    "&.Mui-focusVisible": {
-      outline: `2px solid ${a}`,
-      outlineOffset: 1,
-      boxShadow: "none",
-    },
-    "& .MuiTouchRipple-child": {
-      backgroundColor: a,
-    },
-  };
-};
+const groupButtonSx = panelGroupButtonSx;
 
 /** กรอบรวม ButtonGroup — เส้นขอบเดียวกับรูปแบบปุ่ม (ไม่ใช้ primary น้ำเงิน); มุมโค้งเท่า rounded-md ของรูปแบบปุ่ม */
 const groupRootSx = {
@@ -137,16 +92,16 @@ const groupRootSx = {
     borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER_DARK} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
@@ -233,10 +188,10 @@ const THEME_RANGE_INPUT_CLASS = `
                         <MainLabel label={title} mb={0} color={textColor}/>
                         </div>
                   
-                        <div className="flex w-full overflow-hidden rounded-md border border-slate-200 bg-white transition focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200 dark:border-white/10 dark:bg-slate-900/80 dark:focus-within:border-white/20 dark:focus-within:ring-white/10">
+                        <div className="flex dash-input h-10 w-full overflow-hidden rounded-md border border-slate-200 bg-white dark:border-white/10 dark:bg-[#27272a]">
                           <button
                             type="button"
-                            className="flex shrink-0 items-center justify-center border-r border-slate-200 bg-slate-50 px-2.5 py-2 text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800/95"
+                            className="flex shrink-0 items-center justify-center border-r border-slate-200 bg-transparent px-2.5 py-2 text-slate-600 transition hover:opacity-80 dark:border-white/10 dark:text-slate-300"
                             aria-label={iconAriaLabel}
                             onClick={() => setLinkIconModalSlot(iconSlot)}
                           >
@@ -269,7 +224,7 @@ const THEME_RANGE_INPUT_CLASS = `
                   
                           {linkEnabled && (
                             <div className="space-y-1">
-                              <Field handleChange={(e) => patch({ [linkUrlField]: e.target.value })} value={linkUrl} type="url" placeholder="h t t p s : / / w w w . l i n k . c o m" className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-2 focus:ring-slate-200 dark:border-white/10 dark:bg-slate-900/80 dark:text-white/90 dark:placeholder:text-slate-500 dark:focus:border-white/20 dark:focus:ring-white/10" />
+                              <Field handleChange={(e) => patch({ [linkUrlField]: e.target.value })} value={linkUrl} type="url" placeholder="h t t p s : / / w w w . l i n k . c o m" className="dash-input h-10 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:border-white/10 dark:bg-[#27272a] dark:text-white/90 dark:placeholder:text-slate-500" />
                               <ButtonGroup
                                 fullWidth
                                 variant="outlined"
@@ -309,7 +264,7 @@ const THEME_RANGE_INPUT_CLASS = `
                           <SelectLine prev={() => cycleColorMode(-1)} next={() => cycleColorMode(1)} value={buttonColorModeLabel}/>
                        
                   
-                          <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                          <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                             <div className="px-[5px] pb-2">
                               <input
                                 type="range"
@@ -748,19 +703,30 @@ const ButtonElementOffcanvas = ({
   return (
     <aside
       className={`
-     flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10 `}
+     dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10 `}
     >
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-gray-900/50">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-gray-900/50">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             {isDual ? "Button Dual" : "Button"}
           </span>
-          <span
-            className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
             title={String(data?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(data?.id ?? "")}`}
+            onClick={() => {
+              const id = String(data?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
           >
-            <span className="truncate">{data?.id}</span>
-          </span>
+            {(() => {
+              const id = String(data?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -791,19 +757,13 @@ const ButtonElementOffcanvas = ({
               {BUTTON_VARIANT_OPTIONS.map((opt) => {
                 const {value,label} = opt
                 const selected = muiVariant === value;
-                const style =  selected
-                ? {
-                    backgroundColor: textColor || "#0d9488",
-                    boxShadow: "0 1px 2px rgb(0 0 0 / 0.12)",
-                  }
-                : undefined
                 const handleClick = () => patch({ buttonVariant: value })
                 return (
                   <Fragment key={value}>
                     <NormalBtn
                       handleClick={handleClick}
-                      btnClass={optionChipClass(selected)}
-                      style={style}
+                      btnClass={optionChipClass}
+                      style={optionChipStyle(selected)}
                       label={label}
                     />
                   </Fragment>
@@ -881,13 +841,13 @@ const ButtonElementOffcanvas = ({
            {isDual && muiVariant === "outlined" ? (
             <li>
               <div className="mb-3 flex items-center gap-2">
-                <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                   สีกรอบ <span className="font-normal text-gray-400">  ใช้ร่วมกันทั้งสองปุ่ม </span>
                 </span>
-                <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <div className="dash-heading-rule min-w-0 flex-1 border-b" />
               </div>
               {/* <ServiceColor color={activeBorderColorSwatch} opacity={borderOpVal} handleColor={(color)=>patch({buttonBorderColor:color})} handleOpacity={(e)=>patch({buttonBorderOpacity:e.target.value})} rangeColor={textColor || "#0d9488"} darkMode={darkMode}/> */}
-              <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+              <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                 <div className="px-[5px] pb-2">
                   <input
                     type="range"
@@ -953,9 +913,9 @@ const ButtonElementOffcanvas = ({
                 sx={{
                   fontSize: 13,
                   fontWeight: 600,
-                  color: "rgb(51 65 85)",
+                  color: "var(--dash-panel-heading, #0f172a)",
                   mb: 0.5,
-                  ".dark &": { color: "rgba(255,255,255,0.78)" },
+                  ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                 }}
               >
                 ความหนาเส้นขอบ <span className="text-gray-400"> {borderWVal}</span>
@@ -1025,10 +985,10 @@ const ButtonElementOffcanvas = ({
               })}
             </ButtonGroup>
           </li>
-          {!isImageHoverButtonEdit && !isButtonMultiButtonEdit && (
+          {!isDual && !isImageHoverButtonEdit && !isButtonMultiButtonEdit && (
           <li>
             <MainLabel
-              label="ข้อความพิเศษ"
+              label="เพิ่มข้อความ"
               mb={1.5}
               checked={data?.buttonSpecialTextEnabled === true}
               handleSwitch={(e) =>
@@ -1040,13 +1000,13 @@ const ButtonElementOffcanvas = ({
           )}
           {!isImageHoverButtonEdit &&
             !isButtonMultiButtonEdit &&
-            data?.buttonSpecialTextEnabled !== true && (
+            (isDual || data?.buttonSpecialTextEnabled !== true) && (
           <li>
             <div className="mb-3 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 ตำแหน่งการจัดวางปุ่ม
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <ButtonGroup
               variant="outlined"

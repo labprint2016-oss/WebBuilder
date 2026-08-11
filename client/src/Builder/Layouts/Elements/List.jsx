@@ -334,9 +334,13 @@ function ListItemRow({
     ? Math.max(0, Math.min(100, rowFrameGlassLevelRaw))
     : LIST_ELEMENT_DEFAULTS.listItemRowFrameGlass;
   const rowFrameGlassRatio = rowFrameGlassLevel / 100;
-  const rowFrameFillOpacity = Math.round(
-    Math.max(10, Math.min(170, rowFrameOpacity * (0.16 + rowFrameGlassRatio * 0.48)))
-  );
+  /* กรอบเบลอ = 0 → ความทึบตามสไลเดอร์เต็ม (ถึง 255); มีเบลอ → สูตร glass เดิม */
+  const rowFrameFillOpacity =
+    rowFrameGlassLevel <= 0
+      ? rowFrameOpacity
+      : Math.round(
+          Math.max(10, Math.min(170, rowFrameOpacity * (0.16 + rowFrameGlassRatio * 0.48)))
+        );
   const rowFrameBlurPx = Math.max(0, Math.min(22, rowFrameGlassRatio * 22));
   const rowFrameSaturatePct = Math.round(100 + rowFrameGlassRatio * 70);
   const rowFrameBgColor = rowFrameEnabled
@@ -1625,9 +1629,16 @@ const ListElement = ({
       ? Math.max(0, Math.min(100, iconsRowFrameGlassLevelRaw))
       : LIST_ELEMENT_DEFAULTS.listItemRowFrameGlass;
     const iconsRowFrameGlassRatio = iconsRowFrameGlassLevel / 100;
-    const iconsRowFrameFillOpacity = Math.round(
-      Math.max(10, Math.min(170, iconsRowFrameOpacity * (0.16 + iconsRowFrameGlassRatio * 0.48)))
-    );
+    /* กรอบเบลอ = 0 → ความทึบตามสไลเดอร์เต็ม (ถึง 255); มีเบลอ → สูตร glass เดิม */
+    const iconsRowFrameFillOpacity =
+      iconsRowFrameGlassLevel <= 0
+        ? iconsRowFrameOpacity
+        : Math.round(
+            Math.max(
+              10,
+              Math.min(170, iconsRowFrameOpacity * (0.16 + iconsRowFrameGlassRatio * 0.48))
+            )
+          );
     const iconsRowFrameBlurPx = Math.max(0, Math.min(22, iconsRowFrameGlassRatio * 22));
     const iconsRowFrameSaturatePct = Math.round(100 + iconsRowFrameGlassRatio * 70);
     const iconsRowFrameBgColor = iconsRowFrameEnabled

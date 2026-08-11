@@ -108,7 +108,7 @@ const COMMON_FIELD_SX = (darkMode,error) => {
       };
   };
 
-const ServicePage = ({open,onClose,darkMode,complete})=>{
+const ServicePage = ({open,onClose,darkMode,complete,onCreated=null})=>{
 
     const primaryColor = darkMode === "dark" ? "#3d85c6" : "#3677b2";
     const secondaryColor = darkMode === "dark" ? "#3d85c6" : "#18354f";
@@ -128,20 +128,21 @@ const ServicePage = ({open,onClose,darkMode,complete})=>{
     const [validating,setValidating] = useState(false)
 
 
-    const validation = (pageName)=>{
-        if(pageName.length < 3){
-            setError("กรุณากรอกชื่อหน้าให้ถูกต้อง")
-        }else{
-            setError("")
+    const validatePageName = (pageName) => {
+        const trimmedPageName = String(pageName || "").trim();
+        if(trimmedPageName.length < 3){
+            return "กรุณากรอกชื่อหน้าให้ถูกต้อง";
         }
+        return "";
+    };
+
+    const validation = (pageName)=>{
+        const nextError = validatePageName(pageName);
+        setError(nextError);
+        return !nextError;
     }
 
     const bgColorValidate = error ? dangerColor :bgColor
-
-
-    useEffect(()=>{
-        console.log(error);
-    },[error])
 
 
     const handleClose = ()=>{
@@ -245,11 +246,11 @@ const ServicePage = ({open,onClose,darkMode,complete})=>{
                  value={data.pageName}
                  onChange={(e)=>{
                     e.preventDefault()
-                    if(error === "ต้องมีชื่อหน้าอย่างน้อย 3 ขึ้นไป"){
-                        setError("")
-                    }
                     const {name,value} = e.target
-                    if(validating) validation(value)
+                    if(validating) {
+                      const nextError = validatePageName(value);
+                      setError(nextError);
+                    }
                     setData({...data,[name]:value})
                  }}
                     type="text"
@@ -286,12 +287,14 @@ const ServicePage = ({open,onClose,darkMode,complete})=>{
                     fontWeight:400,
 
                 }} onClick={()=>{
+                    const trimmedPageName = String(data.pageName || "").trim();
                     setValidating(true)
-                    validation(data.pageName)
-                    if(error) return
-                    createPage(data)
+                    const isValid = validation(trimmedPageName)
+                    if(!isValid) return
+                    createPage({pageName:trimmedPageName})
                     .then((res)=>{
-                        complete()
+                        complete?.()
+                        onCreated?.(res?.data || null)
                         handleClose()
                     })
                     .catch((err)=>{

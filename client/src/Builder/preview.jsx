@@ -2,6 +2,8 @@ import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 
 const SNAPSHOT_KEY = "wb:preview:snapshot:v1";
 const PreviewCanvas = lazy(() => import("./PreviewCanvas"));
+const PreviewSiteChrome = lazy(() => import("./PreviewSiteChrome"));
+const PagePopupOverlay = lazy(() => import("./PagePopupOverlay"));
 
 const IMAGE_TYPES = new Set(["img", "imgh", "imgo", "bnr", "post"]);
 
@@ -62,6 +64,27 @@ function PreviewRuntime() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleStorage = (event) => {
+      if (event.key !== SNAPSHOT_KEY) return;
+      try {
+        const parsed = event.newValue ? JSON.parse(event.newValue) : null;
+        if (parsed && parsed.layouts && parsed.page && parsed.theme) {
+          setSnapshot(parsed);
+          return;
+        }
+        setSnapshot(null);
+      } catch (_) {
+        setSnapshot(null);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!firstImageSrc || typeof document === "undefined") return undefined;
     const preload = document.createElement("link");
     preload.rel = "preload";
@@ -75,12 +98,12 @@ function PreviewRuntime() {
   }, [firstImageSrc]);
 
   if (isSnapshotLoading) {
-    return <div className="h-full min-h-0 flex-1 bg-white" />;
+    return <div className="min-h-screen w-full bg-white" />;
   }
 
   if (!snapshot) {
     return (
-      <div className="flex h-full min-h-0 flex-1 items-center justify-center p-6">
+      <div className="flex min-h-screen w-full items-center justify-center p-6">
         <div className="rounded-lg border border-slate-200 bg-white px-5 py-4 text-sm text-slate-600">
           ไม่พบข้อมูล Preview ล่าสุด กรุณากดปุ่มตัวอย่างจากหน้า Builder อีกครั้ง
         </div>
@@ -89,7 +112,7 @@ function PreviewRuntime() {
   }
 
   return (
-    <div className="relative h-full min-h-0 flex-1">
+    <div className="relative w-full min-h-screen">
       {!auditMode ? (
         <style>{`
           @keyframes previewFeedIn {
@@ -102,12 +125,27 @@ function PreviewRuntime() {
           }
         `}</style>
       ) : null}
-      <Suspense fallback={<div className="h-full min-h-0 flex-1 bg-white" />}>
+      {snapshot?.siteChrome ? (
+        <Suspense fallback={<div className="h-[120px] w-full bg-white" />}>
+          <PreviewSiteChrome
+            siteChrome={snapshot.siteChrome}
+            theme={snapshot.theme}
+            device={snapshot?.device || "Desktop"}
+          />
+        </Suspense>
+      ) : null}
+      <Suspense fallback={<div className="min-h-[240px] w-full bg-white" />}>
         <PreviewCanvas
           device={snapshot?.device || "Desktop"}
           layouts={snapshot.layouts}
           theme={snapshot.theme}
           auditMode={auditMode}
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <PagePopupOverlay
+          pagePopup={snapshot?.page?.pagePopup}
+          pageId={String(snapshot?.page?._id || "preview")}
         />
       </Suspense>
     </div>

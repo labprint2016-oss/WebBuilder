@@ -27,6 +27,82 @@ const toGridSpan = (size) => {
   return Number.isFinite(n) ? Math.min(12, Math.max(1, Math.round(n))) : DEFAULT_COL_SIZE;
 };
 
+const strictLayoutBool = (v) => v === true || v === 1 || v === "true" || v === "1";
+
+const opacityToHex = (opacityValue) => {
+  const n = Number(opacityValue);
+  const safe = Number.isFinite(n) ? Math.min(255, Math.max(0, Math.round(n))) : 255;
+  return safe.toString(16).toUpperCase().padStart(2, "0");
+};
+
+const resolveDividerColor = (theme, colorToken, opacityValue) => {
+  const resolved = setColor(theme, colorToken, opacityValue);
+  if (typeof resolved === "string" && resolved.trim() !== "") return resolved;
+  const fallback = typeof colorToken === "string" ? colorToken : "#d8d8d8";
+  return `${fallback}${opacityToHex(opacityValue)}`;
+};
+
+const resolveSectionDividerMeta = (container, theme) => {
+  const noColumnGap = strictLayoutBool(container?.noColumnGap);
+  const gridBorder = strictLayoutBool(container?.gridBorder) && !noColumnGap;
+  const styleRaw = String(container?.columnDividerStyle || "dashed").toLowerCase();
+  const dividerStyle =
+    styleRaw === "solid" || styleRaw === "dotted" ? styleRaw : "dashed";
+  const dividerOpacity = container?.columnDividerOpacity ?? 255;
+  const dividerColorToken = container?.columnDividerColor ?? "#d8d8d8";
+  const rawLen = Number(container?.columnDividerVerticalLengthPercent);
+  const dividerLengthPct = Math.min(
+    100,
+    Math.max(10, Number.isFinite(rawLen) ? rawLen : 95)
+  );
+  return {
+    gridBorder,
+    noColumnGap,
+    dividerStyle,
+    dividerColor: resolveDividerColor(theme, dividerColorToken, dividerOpacity),
+    dividerLengthPct,
+  };
+};
+
+const resolveColumnEdgeMap = (columns, device) => {
+  const map = {};
+  if (!Array.isArray(columns) || columns.length === 0) return map;
+
+  const rows = [];
+  let row = [];
+  let used = 0;
+
+  columns.forEach((column, idx) => {
+    const size = toGridSpan(resolveResponsiveGridSpan(column?.size, device));
+    if (used > 0 && used + size > 12) {
+      rows.push(row);
+      row = [{ idx, size }];
+      used = size;
+      return;
+    }
+    row.push({ idx, size });
+    used += size;
+    if (used >= 12) {
+      rows.push(row);
+      row = [];
+      used = 0;
+    }
+  });
+  if (row.length > 0) rows.push(row);
+
+  rows.forEach((items, rowIndex) => {
+    const hasBottomRow = rowIndex < rows.length - 1;
+    items.forEach((item, itemIndex) => {
+      map[item.idx] = {
+        hasRightEdge: itemIndex < items.length - 1,
+        hasBottomEdge: hasBottomRow,
+      };
+    });
+  });
+
+  return map;
+};
+
 const resolveSurfaceBackground = (node, theme) => {
   if (!node) return "transparent";
   const isGradient = node?.isGradient === true;
@@ -56,6 +132,7 @@ const PreviewElement = ({ element, theme, device, ids }) => {
       builderMode="Preview Mode"
       ids={ids}
       hover={() => {}}
+      isSiteRuntime
     />
   );
 };
@@ -155,7 +232,16 @@ const PreviewSpan = ({ span, theme, device, ids, noColumnGap }) => {
   );
 };
 
-const PreviewColumn = ({ column, theme, device, conI, colI, noColumnGap }) => {
+const PreviewColumn = ({
+  column,
+  theme,
+  device,
+  conI,
+  colI,
+  noColumnGap,
+  sectionDividerMeta,
+  edgeMeta,
+}) => {
   const bg = resolveSurfaceBackground(column, theme);
   const borderColor = resolveSurfaceBorder(column, theme);
   const isSpan = column?.isSpan === true;
@@ -164,17 +250,63 @@ const PreviewColumn = ({ column, theme, device, conI, colI, noColumnGap }) => {
 
   const gridSpan = toGridSpan(resolveResponsiveGridSpan(column?.size, device));
   const gapPx = noColumnGap ? 0 : DEFAULT_GAP_PX;
+  const dividerOffsetPx = noColumnGap ? 0 : gapPx / 2;
+  const dividerMeta = sectionDividerMeta || {};
+  const hasRightEdge = Boolean(edgeMeta?.hasRightEdge);
+  const hasBottomEdge = Boolean(edgeMeta?.hasBottomEdge);
+  const useSectionDividerLines =
+    dividerMeta.gridBorder === true && (hasRightEdge || hasBottomEdge);
 
   return (
     <div
-      className="min-w-0"
+      className="relative min-w-0"
       style={{
         gridColumn: `span ${gridSpan} / span ${gridSpan}`,
       }}
     >
+      {useSectionDividerLines ? (
+        <>
+          {hasRightEdge ? (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute top-0 bottom-0 z-[5] box-border flex items-center justify-end"
+              style={{ width: 0, right: -dividerOffsetPx }}
+            >
+              <span
+                style={{
+                  height: `${dividerMeta.dividerLengthPct}%`,
+                  width: 1,
+                  borderLeftWidth: 1,
+                  borderLeftStyle: dividerMeta.dividerStyle,
+                  borderLeftColor: dividerMeta.dividerColor,
+                  boxSizing: "border-box",
+                }}
+              />
+            </span>
+          ) : null}
+          {hasBottomEdge ? (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute left-0 right-0 z-[5] flex justify-center"
+              style={{ height: 0, bottom: -dividerOffsetPx }}
+            >
+              <span
+                style={{
+                  width: `${dividerMeta.dividerLengthPct}%`,
+                  height: 1,
+                  borderTopWidth: 1,
+                  borderTopStyle: dividerMeta.dividerStyle,
+                  borderTopColor: dividerMeta.dividerColor,
+                  boxSizing: "border-box",
+                }}
+              />
+            </span>
+          ) : null}
+        </>
+      ) : null}
       {isSpan ? (
         <div
-          className="grid w-full min-w-0 grid-cols-12"
+          className="relative z-[2] grid w-full min-w-0 grid-cols-12"
           style={{ columnGap: gapPx, rowGap: gapPx }}
         >
           {spans.map((span, spnI) => (
@@ -190,7 +322,7 @@ const PreviewColumn = ({ column, theme, device, conI, colI, noColumnGap }) => {
         </div>
       ) : (
         <div
-          className="h-full min-h-0 w-full min-w-0"
+          className="relative z-[2] h-full min-h-0 w-full min-w-0"
           style={{
             background: bg,
             borderRadius: Number(column?.borderRadius) || 0,
@@ -220,8 +352,13 @@ const PreviewSection = ({ layout, theme, device, conI }) => {
   const columns = Array.isArray(layout?.columns) ? layout.columns : [];
   const isFluid = container?.isFluid === true;
   const bg = resolveSurfaceBackground(container, theme);
-  const noColumnGap = Boolean(container?.noColumnGap);
+  const sectionDividerMeta = resolveSectionDividerMeta(container, theme);
+  const noColumnGap = sectionDividerMeta.noColumnGap;
   const gapPx = noColumnGap ? 0 : 22;
+  const edgeMap = useMemo(
+    () => resolveColumnEdgeMap(columns, device),
+    [columns, device]
+  );
 
   return (
     <section
@@ -238,7 +375,7 @@ const PreviewSection = ({ layout, theme, device, conI }) => {
         />
       ) : null}
       <div
-        className={`${isFluid ? "w-full" : "container"} relative z-[1] mx-auto`}
+        className={`${isFluid ? "w-full" : "w-full max-w-[1280px]"} relative z-[1] mx-auto`}
         style={{
           paddingTop: Number(container?.paddingTop) || 0,
           paddingBottom: Number(container?.paddingBottom) || 0,
@@ -257,6 +394,8 @@ const PreviewSection = ({ layout, theme, device, conI }) => {
               conI={conI}
               colI={colI}
               noColumnGap={noColumnGap}
+              sectionDividerMeta={sectionDividerMeta}
+              edgeMeta={edgeMap[colI]}
             />
           ))}
         </div>
@@ -265,7 +404,12 @@ const PreviewSection = ({ layout, theme, device, conI }) => {
   );
 };
 
-function PreviewCanvas({ layouts = [], theme, device = "Desktop", auditMode = false }) {
+function PreviewCanvas({
+  layouts = [],
+  theme,
+  device = "Desktop",
+  auditMode = false,
+}) {
   const mobileSkeletonSvg = `
 <svg xmlns='http://www.w3.org/2000/svg' width='375' height='1320' viewBox='0 0 375 1320'>
   <rect width='375' height='1320' fill='#f5f5f6'/>
@@ -337,7 +481,7 @@ function PreviewCanvas({ layouts = [], theme, device = "Desktop", auditMode = fa
 
   return (
     <div
-      className="content-area min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-0"
+      className="content-area relative w-full overflow-x-hidden p-0"
       style={mobileSkeletonStyle}
     >
       <div className="w-full">

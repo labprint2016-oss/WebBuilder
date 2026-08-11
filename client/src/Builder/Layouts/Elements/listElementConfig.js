@@ -40,7 +40,7 @@ export const LIST_IMAGE_DEFAULT_CAPTION_FONT_SIZE = 18;
 
 /** ค่า default ของ element-level shared fields */
 export const LIST_ELEMENT_DEFAULTS = {
-  /* shared icon styling — พื้นหลังกรอบไอคอน = ช่อง #333333 ในแถบสีพื้นฐาน */
+  /* shared icon styling — พื้นหลังกรอบไอคอน (ค่าเริ่มต้นเข้ม; แถบสีพื้นฐานช่องดำ = #000000) */
   backgroundColor: "#333333",
   backgroundOpacity: 255,
   iconColor: "#ffffff",

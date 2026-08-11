@@ -7,6 +7,7 @@ import Field from "../HTML/Field";
 import Range from "../HTML/Range";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
+import { panelGroupButtonSx } from "../panelControlSx";
 
 const PostPanelSwitch = styled(Switch, {
   shouldForwardProp: (prop) => prop !== "accentColor",
@@ -56,40 +57,13 @@ const chipRootSx = {
     borderTopRightRadius: "0.375rem !important",
     borderBottomRightRadius: "0.375rem !important",
   },
-  "& .MuiButtonGroup-grouped.MuiButton-outlined": { borderColor: "#e2e8f0 !important" },
+  "& .MuiButtonGroup-grouped.MuiButton-outlined": { borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important" },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "rgba(255,255,255,0.1) !important",
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
-const chipBtnSx = (selected, accent = "#0d9488") => ({
-  flex: 1,
-  py: 0,
-  px: 0.5,
-  lineHeight: 1.2,
-  ...(selected
-    ? {
-        backgroundColor: accent,
-        color: "#fff",
-        borderColor: "transparent",
-        "&:hover": { backgroundColor: accent, borderColor: "transparent" },
-      }
-    : {
-        color: "#1e293b",
-        borderColor: "#e2e8f0 !important",
-        backgroundColor: "#ffffff",
-        "&:hover": { backgroundColor: "#f8fafc", borderColor: "#e2e8f0 !important" },
-        ".dark &": {
-          color: "#f1f5f9",
-          borderColor: "rgba(255,255,255,0.1) !important",
-          backgroundColor: "rgba(30,41,59,0.9)",
-          "&:hover": {
-            backgroundColor: "rgba(30,41,59,1)",
-            borderColor: "rgba(255,255,255,0.1) !important",
-          },
-        },
-      }),
-});
+const chipBtnSx = panelGroupButtonSx;
 
 const DIVIDER_OPTIONS = [
   { value: "none", label: "ไม่มี" },
@@ -238,13 +212,27 @@ const PostElementOffcanvas = ({
   const contentOnlyMode = draft.postLayoutMode === "content_only";
 
   return (
-    <aside className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10">
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-gray-900/50">
+    <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-gray-900/50">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">Post</span>
-          <span className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums">
-            <span className="truncate">{draft?.id}</span>
-          </span>
+          <span className="shrink-0 font-bold tracking-wide">Post</span>
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
+            title={String(draft?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(draft?.id ?? "")}`}
+            onClick={() => {
+              const id = String(draft?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
+          >
+            {(() => {
+              const id = String(draft?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -260,9 +248,9 @@ const PostElementOffcanvas = ({
       <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-14 scroll-pb-10 w-full">
         <ul className="mt-4 pl-1 space-y-5">
           <li>
-            <div className="mb-2 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">รูปแบบ</span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+            <div className="mb-[13px] mt-1 flex items-center gap-2">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">รูปแบบ</span>
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <ButtonGroup variant="outlined" fullWidth sx={chipRootSx}>
               {POST_LAYOUT_OPTIONS.map((opt) => (
@@ -284,9 +272,9 @@ const PostElementOffcanvas = ({
           </li>
 
           <li>
-            <div className="mb-2 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">หัวข้อ</span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+            <div className="mb-[13px] mt-1 flex items-center gap-2">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">หัวข้อ</span>
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
               {!contentOnlyMode && (
                 <PostPanelSwitch
                   checked={Boolean(draft.postHeadingEnabled)}
@@ -297,21 +285,21 @@ const PostElementOffcanvas = ({
               )}
             </div>
             {draft.postHeadingEnabled && (
-              <div className="flex items-stretch rounded-md border border-slate-200 dark:border-white/10 overflow-hidden">
+              <div className="flex dash-input h-9 w-full items-stretch overflow-hidden rounded-md border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-800/90">
                 <Field
                   id={`post-heading-${draft?.id}`}
                   type="text"
                   placeholder="หัวข้อ"
                   value={draft.postHeading}
                   handleChange={(e) => patch({ postHeading: String(e.target.value || "") })}
-                  className="h-9 min-w-0 flex-1 border-0 bg-white px-2.5 py-0 text-[12px] text-slate-800 outline-none dark:bg-slate-900/60 dark:text-white/90"
+                  className="h-9 min-w-0 flex-1 border-0 bg-transparent px-2.5 py-0 text-[12px] leading-snug text-slate-800 outline-none ring-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 dark:text-white/90 dark:placeholder:text-white/40"
                 />
                 <button
                   type="button"
                   className={`h-9 w-10 shrink-0 border-l border-slate-200 text-[13px] font-bold transition dark:border-white/10 ${
                     draft.postHeadingBold
                       ? "bg-[#333333] text-white"
-                      : "bg-slate-50 text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                      : "bg-transparent text-slate-600 hover:opacity-80 dark:text-slate-300"
                   }`}
                   aria-label="เปิดตัวหนา"
                   onClick={() => patch({ postHeadingBold: !draft.postHeadingBold })}
@@ -376,11 +364,11 @@ const PostElementOffcanvas = ({
                 <div className="grid grid-cols-2 gap-3 px-0.5">
                   <Box sx={{ width: "100%" }}>
                     <div className="mb-1 mt-1 flex items-center gap-2">
-                      <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">ระยะห่าง</span>
+                      <span className="dash-panel-label shrink-0 text-[13px] font-semibold">ระยะห่าง</span>
                       <span className="shrink-0 text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
                         {draft.postHeadingGap}
                       </span>
-                      <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                      <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     </div>
                     <Range
                       min={10}
@@ -398,11 +386,11 @@ const PostElementOffcanvas = ({
                   </Box>
                   <Box sx={{ width: "100%" }}>
                     <div className="mb-1 mt-1 flex items-center gap-2">
-                      <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">ขนาดตัวอักษร</span>
+                      <span className="dash-panel-label shrink-0 text-[13px] font-semibold">ขนาดตัวอักษร</span>
                       <span className="shrink-0 text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
                         {draft.postHeadingFontSize}
                       </span>
-                      <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                      <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     </div>
                     <Range
                       min={12}
@@ -427,9 +415,9 @@ const PostElementOffcanvas = ({
           {draft.postHeadingEnabled && (
             <>
               <li>
-                <div className="mb-2 mt-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">เส้นคั่น</span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <div className="mb-[13px] mt-1 flex items-center gap-2">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">เส้นคั่น</span>
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <ButtonGroup variant="outlined" fullWidth sx={chipRootSx}>
                   {DIVIDER_OPTIONS.map((opt) => (
@@ -454,14 +442,14 @@ const PostElementOffcanvas = ({
                   ))}
                 </ButtonGroup>
                 <div className="mt-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <div className="mb-[5px] flex items-center gap-2">
+                    <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                       ขนาดเส้นคั่น
                     </span>
                     <span className="shrink-0 text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
                       {draft.postDividerWidth}
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <Range
                     min={1}
@@ -477,10 +465,10 @@ const PostElementOffcanvas = ({
                     color={textColor}
                   />
                   <div className="mb-1 mt-1 flex items-center gap-2">
-                    <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                    <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                       สีเส้นคั่น
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   {allColors.length > 0 && (
                     <div>
@@ -531,9 +519,9 @@ const PostElementOffcanvas = ({
               </li>
 
               <li>
-                <div className="mb-2 mt-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">การจัดวาง</span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <div className="mb-[13px] mt-1 flex items-center gap-2">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">การจัดวาง</span>
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <ButtonGroup variant="outlined" fullWidth sx={chipRootSx}>
                   {ALIGN_OPTIONS.map(({ value, label, Icon }) => (
@@ -557,14 +545,14 @@ const PostElementOffcanvas = ({
           <li>
             <div className="grid w-full grid-cols-2 gap-3 px-0.5">
               <Box sx={{ width: "100%" }}>
-                <div className="mb-1 mt-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                <div className="mb-[9px] mt-1 flex items-center gap-2">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ระยะด้านบน
                   </span>
                   <span className="shrink-0 text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
                     {draft.postMarginTop}
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <Range
                   min={0}
@@ -581,14 +569,14 @@ const PostElementOffcanvas = ({
                 />
               </Box>
               <Box sx={{ width: "100%" }}>
-                <div className="mb-1 mt-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                <div className="mb-[9px] mt-1 flex items-center gap-2">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ระยะด้านล่าง
                   </span>
                   <span className="shrink-0 text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
                     {draft.postMarginBottom}
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <Range
                   min={0}

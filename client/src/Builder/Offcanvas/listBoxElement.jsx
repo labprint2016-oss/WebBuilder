@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Button, ButtonGroup, Stack, Switch, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
+import { panelGroupButtonSx } from "../panelControlSx";
 import {
   ArrowDown,
   ArrowUp,
@@ -61,14 +62,15 @@ const LISTBOX_PERVIEW_INPUTS = [
   },
 ];
 
+/** per-view — พื้นหลัง/กรอบตาม Dashboard (dash-input) */
 const perViewIconAddonClass =
-  "flex h-[34px] w-9 shrink-0 items-center justify-center border-r border-slate-200 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-slate-800/70 dark:text-white/75";
+  "flex h-[34px] w-9 shrink-0 items-center justify-center border-r border-slate-200 bg-transparent text-slate-600 dark:border-white/10 dark:text-white/75";
 
 const perViewTextInputClass =
-  "h-[34px] min-w-0 w-0 flex-1 border-0 bg-white px-2 pr-1 text-[12px] font-normal tabular-nums text-slate-800 outline-none ring-0 placeholder:text-slate-400 focus:outline-none dark:bg-slate-900/80 dark:text-white/90 dark:placeholder:text-white/40";
+  "h-[34px] min-w-0 w-0 flex-1 border-0 bg-transparent px-2 pr-1 text-[12px] font-normal tabular-nums text-slate-800 outline-none ring-0 placeholder:text-slate-400 focus:outline-none dark:text-white/90 dark:placeholder:text-white/40";
 
 const perViewSpinnerBtnClass =
-  "flex flex-1 min-h-0 w-full items-center justify-center border-0 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 disabled:pointer-events-none disabled:opacity-35 dark:bg-slate-900/80 dark:text-white/60 dark:hover:bg-white/10 dark:hover:text-white/90";
+  "flex flex-1 min-h-0 w-full items-center justify-center border-0 bg-transparent text-slate-500 transition hover:bg-black/5 hover:text-slate-800 disabled:pointer-events-none disabled:opacity-35 dark:text-white/60 dark:hover:bg-white/10 dark:hover:text-white/90";
 
 const itemRowReorderBtnClass =
   "rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-white/10 dark:hover:text-white/80";
@@ -126,50 +128,14 @@ const lbDividerGroupRootSx = {
     borderBottomRightRadius: "0.375rem !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "#e2e8f0 !important",
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "rgba(255,255,255,0.1) !important",
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
-const lbDividerBtnSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.2,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": { backgroundColor: a, borderColor: "transparent" },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: "#e2e8f0 !important",
-          backgroundColor: "#ffffff",
-          "&:hover": { backgroundColor: "#f8fafc", borderColor: "#e2e8f0 !important" },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: "rgba(255,255,255,0.1) !important",
-            backgroundColor: "rgba(30,41,59,0.9)",
-            "&:hover": {
-              backgroundColor: "rgba(30,41,59,1)",
-              borderColor: "rgba(255,255,255,0.1) !important",
-            },
-          },
-        }),
-    "&.Mui-focusVisible": { outline: `2px solid ${a}`, outlineOffset: 1, boxShadow: "none" },
-    "& .MuiTouchRipple-child": { backgroundColor: a },
-  };
-};
+const lbDividerBtnSx = panelGroupButtonSx;
 
 /** สไตล์ปุ่มกลุ่ม — เหมือน Carousel / container panel */
 const OPTION_CHIP_RADIUS = "0.375rem";
@@ -180,58 +146,7 @@ const CHIP_BG_HOVER = "#f8fafc";
 const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
 const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 
-const sectionLayoutGroupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 11,
-    minHeight: 34,
-    py: 0,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.2,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": {
-            backgroundColor: a,
-            borderColor: "transparent",
-          },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": {
-            borderColor: `${CHIP_BORDER} !important`,
-            backgroundColor: CHIP_BG_HOVER,
-          },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": {
-              borderColor: `${CHIP_BORDER_DARK} !important`,
-              backgroundColor: CHIP_BG_DARK_HOVER,
-            },
-          },
-        }),
-    "&.Mui-focusVisible": {
-      outline: `2px solid ${a}`,
-      outlineOffset: 1,
-      boxShadow: "none",
-    },
-    "& .MuiTouchRipple-child": {
-      backgroundColor: a,
-    },
-  };
-};
+const sectionLayoutGroupButtonSx = panelGroupButtonSx;
 
 const sectionLayoutGroupRootSx = {
   width: "100%",
@@ -251,16 +166,16 @@ const sectionLayoutGroupRootSx = {
     borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER_DARK} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
@@ -292,15 +207,15 @@ const MarginLabel = ({ label, value, mb = 0.35 }) => (
       flex: 1,
       fontSize: 13,
       fontWeight: 600,
-      color: "rgb(51 65 85)",
+      color: "var(--dash-panel-heading, #0f172a)",
       mb,
       fontVariantNumeric: "tabular-nums",
-      ".dark &": { color: "rgba(255,255,255,0.78)" },
+      ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
     }}
   >
     {label}{" "}
     <span className="text-slate-400 dark:text-slate-400">{Math.round(value)}</span>
-    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
   </Typography>
 );
 
@@ -446,20 +361,31 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
 
   return (
     <aside
-      className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10"
+      className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
       style={{ color: textColor || undefined }}
     >
-      <div className="flex shrink-0 items-center justify-between bg-gray-100 px-6 pb-3 pt-5">
+      <div className="flex shrink-0 items-center justify-between dash-panel-header bg-gray-100 px-6 pb-3 pt-5 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             List Box
           </span>
-          <span
-            className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 font-mono text-[11px] font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
             title={String(element?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(element?.id ?? "")}`}
+            onClick={() => {
+              const id = String(element?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
           >
-            <span className="truncate">{element?.id}</span>
-          </span>
+            {(() => {
+              const id = String(element?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -488,16 +414,16 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
             <Stack spacing={2}>
               <Box>
                 <div className="mb-3 mt-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     จำนวนไอเทมที่แสดง
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <Stack direction="row" spacing={1} className="w-full">
                   {LISTBOX_PERVIEW_INPUTS.map(({ id, field, min, max, Icon, deviceLabel }) => (
                     <div
                       key={id}
-                      className="flex min-w-0 flex-1 overflow-hidden rounded-md border border-slate-200 dark:border-white/10"
+                      className="dash-input flex h-[34px] min-w-0 flex-1 overflow-hidden rounded-md border border-slate-200 dark:border-white/10"
                     >
                       <span
                         className={perViewIconAddonClass}
@@ -640,10 +566,10 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
 
               <Box>
                 <div className="mb-3 mt-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     รูปแบบ
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <ButtonGroup
                   fullWidth
@@ -928,10 +854,10 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
 
               <Box>
                 <div className="mb-3 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     เส้นคั่น
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   <div className="flex shrink-0 items-center gap-1.5">
                     <ListBoxPanelDividerSwitch
                       className="shrink-0"
@@ -999,7 +925,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                   })}
                 </ButtonGroup>
                 {draft.listBoxGridDividerStyle !== "none" && allColors.length > 0 && (
-                  <div className="mt-1 rounded-md bg-white px-1 pb-1.5 pt-0.5 dark:bg-zinc-800">
+                  <div className="mt-1 dash-card rounded-md bg-white px-1 pb-1.5 pt-0.5 dark:bg-zinc-800">
                     <div className="px-1 pb-1.5 pt-0.5">
                       <input
                         type="range"
@@ -1077,11 +1003,11 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
               </Box>
 
               <Box sx={{ pb: 4 }}>
-                <div className="mb-2 mt-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                <div className="mb-[13px] mt-1 flex items-center gap-2">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     รายการทั้งหมด
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   <button
                     type="button"
                     disabled={items.length >= 12}
@@ -1119,9 +1045,10 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                             sx={{
                               fontSize: 12,
                               lineHeight: 1.4,
-                              opacity: 0.8,
                               minWidth: 0,
                               flex: "1 1 auto",
+                              color:
+                                "var(--dash-panel-btn-group-active-text, #ffffff)",
                             }}
                             className="truncate"
                             component="span"

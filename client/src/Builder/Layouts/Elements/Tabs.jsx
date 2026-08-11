@@ -117,6 +117,7 @@ const Tabs = ({
   onTabElementsReorder,
   tabGhostData,
   tabSelectedElId,
+  onUpdate,
   theme,
 }) => {
 
@@ -376,15 +377,19 @@ const Tabs = ({
   };
 
   const isClassic = styleMode === "classic";
+  const showAreaGuides = builderMode === "Layout Mode";
   let tabContentSurfaceClass = "";
-  if (isThisTabHovered) {
+  if (!showAreaGuides) {
+    tabContentSurfaceClass = "border border-transparent bg-transparent";
+  } else if (isThisTabHovered) {
     tabContentSurfaceClass =
-      "border border-dashed border-blue-400 bg-blue-50 dark:border-blue-400/70 dark:bg-blue-900/10";
+      "border border-dashed border-slate-300/40 bg-slate-50/40 dark:border-slate-400/40 dark:bg-white/5";
   } else if (hasElements) {
-    tabContentSurfaceClass = "border-0 bg-transparent";
+    tabContentSurfaceClass =
+      "border border-dashed border-slate-300/40 bg-transparent dark:border-slate-400/40";
   } else {
     tabContentSurfaceClass =
-      "border border-dashed border-slate-300 bg-slate-50 dark:border-white/20 dark:bg-white/5";
+      "border border-dashed border-slate-300/40 bg-slate-50/30 dark:border-slate-400/40 dark:bg-white/5";
   }
 
   const tabContentLayoutClass = (() => {
@@ -521,10 +526,25 @@ const Tabs = ({
             >
             <button
               type="button"
-              aria-disabled="true"
               className={`${baseClass} ${tabLookClass} ${
                 tabsTabLabelStyle === "iconText" ? "gap-1.5" : ""
               } ${isVertical ? "w-full justify-start" : ""}`}
+              onMouseDown={(e) => {
+                // กันการลาก/เลือก element host ตอนคลิกสลับแท็บ
+                if (builderMode === "Layout Mode" || builderMode === "Editor Mode") {
+                  e.stopPropagation();
+                }
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (tab.disabled) return;
+                if (String(tab.id) === String(activeId)) return;
+                onUpdate?.({
+                  ...elementData,
+                  tabsActiveId: tab.id,
+                });
+              }}
               style={{
                 fontSize: labelFontSize,
                 paddingLeft: effPadX,

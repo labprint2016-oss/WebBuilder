@@ -148,6 +148,8 @@ import { mergeCounterElement } from "./Layouts/Elements/counterElementConfig";
 import { mergeTableElement } from "./Layouts/Elements/tableElementConfig";
 import { mergeBetweenElement } from "./Layouts/Elements/betweenElementConfig";
 import { mergeDividerElement } from "./Layouts/Elements/dividerElementConfig";
+import FormElementPreview from "./Layouts/Elements/FormElement";
+import FormBlock from "./Layouts/Elements/FormBlock";
 import HeadingDividerTextBlock from "./Layouts/Elements/HeadingDividerTextBlock";
 import { setColor, setFont } from "../../function";
 
@@ -198,6 +200,15 @@ const LAYOUT_ELEMENT_ID_PREFIX = {
   post: "Post-",
   dts: "Dts-",
   ctg: "Ctg-",
+  frmInput: "FrmInput-",
+  frmText: "FrmText-",
+  frmNum: "FrmNum-",
+  frmSum: "FrmSum-",
+  frmTextarea: "FrmTextarea-",
+  frmSelect: "FrmSelect-",
+  frmRadio: "FrmRadio-",
+  frmCheckbox: "FrmCheckbox-",
+  frmSubmit: "FrmSubmit-",
 };
 
 /** ความกว้างขั้นต่ำ (หน่วยแถว 12 คอลัมน์) — Carousel / List Box / List (iTems, iCons, iMage) ต้อง ≥ เทียบเท่า Col-3 */
@@ -218,6 +229,8 @@ const LIST_IMAGE_MIN_COL_UNITS = 3;
 const TABLE_MIN_COL_UNITS = 4;
 /** ความกว้างขั้นต่ำของ Post (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-5 */
 const POST_MIN_COL_UNITS = 6;
+/** ความกว้างขั้นต่ำของ Data Slider (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-4 (ค่าเริ่มต้นคอลัมน์) */
+const DATA_SLIDER_MIN_COL_UNITS = 4;
 const TOAST_VOICE_MESSAGES = {
   carousel: "ไม่สำเร็จ กรุณาเพิ่มความกว้างของคอลัมน์",
   listImage: "ไม่สำเร็จ กรุณาเพิ่มความกว้างของคอลัมน์",
@@ -245,6 +258,18 @@ const LAYOUT_MODE_SINGLE_CLICK_ONLY_TYPES = new Set([
   "ctn",
   "divider",
 ]);
+const FORM_ELEMENT_TYPES = new Set([
+  "frmInput",
+  "frmText",
+  "frmNum",
+  "frmSum",
+  "frmTextarea",
+  "frmSelect",
+  "frmRadio",
+  "frmCheckbox",
+  "frmSubmit",
+]);
+const FORM_ROW_GAP_PX = 12;
 const IMAGE_HOVER_ICON_PANEL_DEFAULT = mergeIconElement({ type: "icon" });
 const IMAGE_HOVER_BUTTON_PANEL_DEFAULT = {
   type: "btn",
@@ -329,9 +354,16 @@ function shouldBlockCarouselDrop(layouts, active, destConI, destColI, destSpnI, 
 
 function shouldBlockPostDrop(layouts, active, destConI, destColI, destSpnI, destMspnI) {
   const el = resolveLayoutElementByDragData(layouts, active);
-  if (el?.type !== "post" && el?.type !== "dts" && el?.type !== "ctg") return false;
+  if (el?.type !== "post" && el?.type !== "ctg") return false;
   const w = getLayoutBucketWidthUnits(layouts, destConI, destColI, destSpnI, destMspnI);
   return !Number.isFinite(w) || w < POST_MIN_COL_UNITS;
+}
+
+function shouldBlockDataSliderDrop(layouts, active, destConI, destColI, destSpnI, destMspnI) {
+  const el = resolveLayoutElementByDragData(layouts, active);
+  if (el?.type !== "dts") return false;
+  const w = getLayoutBucketWidthUnits(layouts, destConI, destColI, destSpnI, destMspnI);
+  return !Number.isFinite(w) || w < DATA_SLIDER_MIN_COL_UNITS;
 }
 
 function shouldBlockTableDrop(layouts, active, destConI, destColI, destSpnI, destMspnI) {
@@ -381,6 +413,15 @@ const DATA_SLIDER_ALLOWED_ELEMENT_TYPES = new Set([
   "vid",
   "ctn",
   "divider",
+  "frmInput",
+  "frmText",
+  "frmNum",
+  "frmSum",
+  "frmTextarea",
+  "frmSelect",
+  "frmRadio",
+  "frmCheckbox",
+  "frmSubmit",
 ]);
 
 function isAllowedInDataSliderArea(el) {
@@ -390,7 +431,7 @@ function isAllowedInDataSliderArea(el) {
 
 function hasPostMinWidthElementDeep(el) {
   if (!el || typeof el !== "object") return false;
-  if (el.type === "post" || el.type === "dts" || el.type === "ctg") return true;
+  if (el.type === "post" || el.type === "ctg") return true;
   const nestedBuckets = [];
   if (Array.isArray(el.tabsItems)) {
     for (const item of el.tabsItems) nestedBuckets.push(item?.elements);
@@ -418,6 +459,40 @@ function bucketHasPostMinWidthElement(elements) {
   if (!Array.isArray(elements)) return false;
   for (const el of elements) {
     if (hasPostMinWidthElementDeep(el)) return true;
+  }
+  return false;
+}
+
+function hasDataSliderMinWidthElementDeep(el) {
+  if (!el || typeof el !== "object") return false;
+  if (el.type === "dts") return true;
+  const nestedBuckets = [];
+  if (Array.isArray(el.tabsItems)) {
+    for (const item of el.tabsItems) nestedBuckets.push(item?.elements);
+  }
+  if (Array.isArray(el.accordionItems)) {
+    for (const item of el.accordionItems) nestedBuckets.push(item?.elements);
+  }
+  if (Array.isArray(el.dataSliderItems)) {
+    for (const item of el.dataSliderItems) nestedBuckets.push(item?.elements);
+  }
+  if (Array.isArray(el.catagoriesItems)) {
+    for (const item of el.catagoriesItems) nestedBuckets.push(item?.elements);
+  }
+  if (Array.isArray(el.postElements)) nestedBuckets.push(el.postElements);
+  for (const bucket of nestedBuckets) {
+    if (!Array.isArray(bucket)) continue;
+    for (const child of bucket) {
+      if (hasDataSliderMinWidthElementDeep(child)) return true;
+    }
+  }
+  return false;
+}
+
+function bucketHasDataSliderMinWidthElement(elements) {
+  if (!Array.isArray(elements)) return false;
+  for (const el of elements) {
+    if (hasDataSliderMinWidthElementDeep(el)) return true;
   }
   return false;
 }
@@ -923,6 +998,12 @@ function canColumnSizeContainPostMinWidthElements(column, targetColSize) {
   if (bucketHasPostMinWidthElement(column?.elements) && colSize < POST_MIN_COL_UNITS) {
     return false;
   }
+  if (
+    bucketHasDataSliderMinWidthElement(column?.elements) &&
+    colSize < DATA_SLIDER_MIN_COL_UNITS
+  ) {
+    return false;
+  }
   const spans = Array.isArray(column?.spans) ? column.spans : [];
   for (const span of spans) {
     const rawSpanSize = Number(span?.size);
@@ -934,6 +1015,12 @@ function canColumnSizeContainPostMinWidthElements(column, targetColSize) {
     ) {
       return false;
     }
+    if (
+      bucketHasDataSliderMinWidthElement(span?.elements) &&
+      (!Number.isFinite(spanUnits) || spanUnits < DATA_SLIDER_MIN_COL_UNITS)
+    ) {
+      return false;
+    }
     const nestedSpans = Array.isArray(span?.nestedSpans) ? span.nestedSpans : [];
     for (const mini of nestedSpans) {
       const rawMiniSize = Number(mini?.size);
@@ -942,6 +1029,12 @@ function canColumnSizeContainPostMinWidthElements(column, targetColSize) {
       if (
         bucketHasPostMinWidthElement(mini?.elements) &&
         (!Number.isFinite(miniUnits) || miniUnits < POST_MIN_COL_UNITS)
+      ) {
+        return false;
+      }
+      if (
+        bucketHasDataSliderMinWidthElement(mini?.elements) &&
+        (!Number.isFinite(miniUnits) || miniUnits < DATA_SLIDER_MIN_COL_UNITS)
       ) {
         return false;
       }
@@ -972,6 +1065,25 @@ function chunkColumnElementsForInlineRows(elements, flattenInlineRows = false) {
       chunks.push({ kind: "single", startIndex: i, item: e });
       i += 1;
       continue;
+    }
+    if (FORM_ELEMENT_TYPES.has(String(e?.type || ""))) {
+      const colsRaw = Number(e?.formLayoutColumns);
+      const cols = colsRaw === 2 || colsRaw === 3 ? colsRaw : 1;
+      if (cols > 1) {
+        let j = i + 1;
+        while (j < elements.length) {
+          const next = elements[j];
+          if (!FORM_ELEMENT_TYPES.has(String(next?.type || ""))) break;
+          const nextColsRaw = Number(next?.formLayoutColumns);
+          const nextCols =
+            nextColsRaw === 2 || nextColsRaw === 3 ? nextColsRaw : 1;
+          if (nextCols <= 1) break;
+          j += 1;
+        }
+        chunks.push({ kind: "formRow", startIndex: i, items: elements.slice(i, j) });
+        i = j;
+        continue;
+      }
     }
     if (e?.type === "btn" || e?.type === "btnG") {
       const gid =
@@ -1075,6 +1187,7 @@ function buttonRowJustifyCss(align) {
 }
 
 function inlineRowJustifyFromChunk(chunk) {
+  if (chunk.kind === "formRow") return "flex-start";
   if (chunk.kind === "iconRow" || chunk.kind === "listRow") {
     return buttonRowJustifyCss(chunk.items[0]?.iconLayoutAlign);
   }
@@ -1097,6 +1210,7 @@ function inlineRowJustifyFromChunk(chunk) {
  * — 24px เมื่อคู่ (ซ้าย, ขวา) เป็น List iCons และชุดซ้ายเลือกเส้นคั่น "ไม่มี" (รวมช่องก่อนชุดสุดท้าย แม้ชุดขวาจะมีเส้นคั่น)
  */
 function inlineChunkRowFlexGapClass(chunk) {
+  if (chunk.kind === "formRow") return "gap-x-3 gap-y-2";
   if (chunk.kind === "listRow") return "gap-x-0 gap-y-2";
   if (chunk.kind === "iconRow") return "gap-x-0 gap-y-2";
   if (chunk.kind === "counterRow") return "gap-x-0 gap-y-2";
@@ -2189,6 +2303,170 @@ const MaybeDndContext = ({ enabled, children, ...props }) => {
   return <DndContext {...props}>{children}</DndContext>;
 };
 
+function resolveDeleteElementName(id, layouts) {
+  if (!id) return "Item";
+  if (typeof id === "object") {
+    if (id.nestID && id.spnID) return "Mini Span";
+    if (id.spnID && !id.nestID) return "Span";
+    return "Column";
+  }
+  const section = Array.isArray(layouts)
+    ? layouts.find((l) => l.container?.id === id)
+    : null;
+  if (section?.splitRowId) return "Split Section";
+  if (section?.columns) return "Section";
+  return "Header";
+}
+
+function BuilderConfirmModal({ data, close, layouts }) {
+  const id = data?.id;
+  const deleteFn = data?.funct;
+  const open = Boolean(id) && typeof deleteFn === "function";
+  const elementName = resolveDeleteElementName(id, layouts);
+
+  const closeModal = () => {
+    close?.();
+  };
+
+  const confirmDelete = () => {
+    if (!open) return;
+    closeModal();
+    deleteFn(id);
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={closeModal}
+      aria-labelledby="basic-modal-title"
+      aria-describedby="basic-modal-desc"
+      slotProps={{ backdrop: { timeout: 200 } }}
+      closeAfterTransition
+      slots={{ backdrop: Backdrop }}
+    >
+      <Fade in={open} timeout={200}>
+        <Box
+          sx={{
+            position: "relative",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 400,
+            height: "auto",
+            backgroundColor: "white",
+            borderRadius: 3,
+          }}
+          container={document.getElementById("app-root")}
+        >
+          <div className="flex justify-between px-4 pt-3 pb-1">
+            <div className="text-[15px] font-bold">
+              <span className="text-red-600 dark:text-emerald-300">Delete</span>{" "}
+              {elementName}
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="cursor-pointer bg-transparent p-0 text-[14px]"
+              >
+                X
+              </button>
+            </div>
+          </div>
+          <div className="border-b border-dotted border-gray-500/50 flex-1" />
+          <div className="flex justify-center mt-4 text-[13px]">
+            คุณต้องการลบ {elementName} นี้ใช่หรือไม่?
+          </div>
+
+          <div className="flex justify-center my-4 pb-5">
+            <Button
+              sx={{
+                backgroundColor: "#B91C1C",
+                color: "white",
+                fontSize: 13,
+                fontWeight: "normal",
+                height: 25,
+                padding: "15px 12px",
+                marginRight: 1,
+              }}
+              onClick={confirmDelete}
+            >
+              ใช่... ฉันต้องการลบ
+            </Button>
+            <Button
+              sx={{
+                backgroundColor: "#333",
+                color: "white",
+                fontSize: 13,
+                fontWeight: "normal",
+                height: 25,
+                padding: "15px 12px",
+                marginLeft: 1,
+              }}
+              onClick={closeModal}
+            >
+              ยกเลิก
+            </Button>
+          </div>
+        </Box>
+      </Fade>
+    </Modal>
+  );
+}
+
+function BuilderAlertModal({ open, onClose }) {
+  const isOpen = Boolean(open);
+  return (
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      aria-labelledby="basic-modal-title"
+      aria-describedby="basic-modal-desc"
+      slotProps={{ backdrop: { timeout: 200 } }}
+      closeAfterTransition
+      slots={{ backdrop: Backdrop }}
+    >
+      <Fade in={isOpen} timeout={200}>
+        <Box
+          sx={{
+            position: "relative",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 400,
+            height: "auto",
+            backgroundColor: "white",
+            borderRadius: 3,
+          }}
+          container={document.getElementById("app-root")}
+        >
+          <div className="flex justify-between px-4 pt-3 pb-1">
+            <div className="text-[15px] font-bold">
+              <span className="text-red-600 dark:text-emerald-300">คำเตือน !!!</span>{" "}
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="cursor-pointer bg-transparent p-0 text-[14px]"
+              >
+                X
+              </button>
+            </div>
+          </div>
+          <div className="border-b border-dotted border-gray-500/50 flex-1" />
+          <div className="pl-4 mt-2 pt-1 pb-4 text-[13px]">
+            คอลัมน์ประเภทนี้ ไม่สามารถปรับขนาดของคอลัมน์{" "}
+            <span className="text-red-600 dark:text-emerald-300">
+              "ให้แคบกว่านี้ได้"
+            </span>
+          </div>
+        </Box>
+      </Fade>
+    </Modal>
+  );
+}
+
 const Content = ({
   handleDropElement,
   openOffcavanas,
@@ -2314,8 +2592,9 @@ const Content = ({
   const canvasTotalButtonClass = useMemo(() => {
     const base =
       "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-left text-[12px] font-medium shadow-sm transition focus:outline-none focus-visible:ring-2 ";
+    // สถานะปกติใช้สีเดียวกับปุ่ม Header (CTA)
     if (canvasTotalTone === "green") {
-      return `${base}text-white border-emerald-700/90 bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-400/80 dark:border-emerald-500/80 dark:bg-emerald-700 dark:hover:bg-emerald-600`;
+      return `${base}dash-button border-transparent hover:opacity-90 focus-visible:ring-[color-mix(in_srgb,var(--dash-header-button,#374151)_45%,transparent)]`;
     }
     if (canvasTotalTone === "yellow") {
       return `${base}border-yellow-600/90 bg-yellow-400 text-yellow-950 hover:bg-yellow-500 focus-visible:ring-yellow-300/90 dark:border-yellow-500/80 dark:bg-yellow-500 dark:text-yellow-950 dark:hover:bg-yellow-400`;
@@ -3695,6 +3974,9 @@ const Content = ({
       /* Layout Mode: เฉพาะ types ที่มี panel ใน Layout Mode เท่านั้น
          (Counter เปิด panel ได้เฉพาะ Editor Mode — เหมือน text/heading/img ฯลฯ) */
       if (builderMode === "Layout Mode") {
+        if (FORM_ELEMENT_TYPES.has(type)) {
+          return openOffcavanas("Form", tabElementForPanel, onUpdateNested);
+        }
         if (type === "imgh") return openOffcavanas("Image Hover", tabElementForPanel, onUpdateNested);
         if (type === "imgo") return openOffcavanas("Overlay", tabElementForPanel, onUpdateNested);
         if (type === "list") return openOffcavanas("List", tabElementForPanel, onUpdateNested);
@@ -3704,6 +3986,7 @@ const Content = ({
         if (type === "tbl") return openOffcavanas("Table", tabElementForPanel, onUpdateNested);
         if (type === "btw") return openOffcavanas("Between", tabElementForPanel, onUpdateNested);
         if (type === "divider") return openOffcavanas("Divider", tabElementForPanel, onUpdateNested);
+        if (type === "form") return openOffcavanas("FormBlock", tabElementForPanel, onUpdateNested);
         if (type === "lstb") return openOffcavanas("List Box", tabElementForPanel, onUpdateNested);
         if (type === "tabs") return openOffcavanas("Tabs", tabElementForPanel, onUpdateNested);
         if (type === "acc") return openOffcavanas("Accordion", tabElementForPanel, onUpdateNested);
@@ -3712,9 +3995,12 @@ const Content = ({
       }
 
       /* Editor Mode */
-      if (type === "text") {
+      if (type === "text" || type === "frmText") {
         setTextEditModal({ elementData: tabElement });
         return;
+      }
+      if (FORM_ELEMENT_TYPES.has(type)) {
+        return openOffcavanas("Form", tabElementForPanel, onUpdateNested);
       }
       if (type === "img") return openOffcavanas("Image", tabElementForPanel, onUpdateNested);
       if (type === "imgh") return openOffcavanas("Image", tabElementForPanel, onUpdateNested);
@@ -3736,6 +4022,7 @@ const Content = ({
       if (type === "lstb") return openOffcavanas("List Box", tabElementForPanel, onUpdateNested);
       if (type === "ctn") return openOffcavanas("Counter", tabElementForPanel, onUpdateNested);
       if (type === "divider") return openOffcavanas("Divider", tabElementForPanel, onUpdateNested);
+      if (type === "form") return openOffcavanas("FormBlock", tabElementForPanel, onUpdateNested);
       if (type === "tabs") return openOffcavanas("Tabs", tabElementForPanel, onUpdateNested);
       if (type === "acc") return openOffcavanas("Accordion", tabElementForPanel, onUpdateNested);
       if (type === "post") return openOffcavanas("Post", tabElementForPanel, onUpdateNested);
@@ -4850,9 +5137,22 @@ const Content = ({
       clearGhost();
       return;
     }
-    if (element?.type === "post" || element?.type === "dts" || element?.type === "ctg") {
+    if (element?.type === "post" || element?.type === "ctg") {
       const w = getLayoutBucketWidthUnits(layouts, conI, colI, spnI, nestI);
       if (!Number.isFinite(w) || w < POST_MIN_COL_UNITS) {
+        if (!postColWarnedRef.current) {
+          postColWarnedRef.current = true;
+          setPostColToastOpen(true);
+        }
+        clearGhost();
+        return;
+      }
+      setPostColToastOpen(false);
+      postColWarnedRef.current = false;
+    }
+    if (element?.type === "dts") {
+      const w = getLayoutBucketWidthUnits(layouts, conI, colI, spnI, nestI);
+      if (!Number.isFinite(w) || w < DATA_SLIDER_MIN_COL_UNITS) {
         if (!postColWarnedRef.current) {
           postColWarnedRef.current = true;
           setPostColToastOpen(true);
@@ -4889,6 +5189,9 @@ const Content = ({
     }
     getID();
 
+    const makeDropUniqueSuffix = () =>
+      `${Date.now().toString(36)}-${Math.ceil(Math.random() * 1e9).toString(36)}`;
+
     const bundle = element?.listIconsBundleDefaults;
     if (
       element.type === "list" &&
@@ -4921,7 +5224,7 @@ const Content = ({
         listRowGroupId: gid,
         iconLayoutAlign: align,
         listIconTextGapPx: element.listIconTextGapPx,
-        id: `List-${id}-${lid0 + i}`,
+        id: `List-${id}-${lid0 + i}-${makeDropUniqueSuffix()}`,
       }));
 
       const ok = insertRowsIntoDropTarget({
@@ -4945,7 +5248,9 @@ const Content = ({
       return;
     }
 
-    element.id += `${id}-${latestEleID}`;
+    if (!isCanvasElementMove) {
+      element.id += `${id}-${latestEleID}-${makeDropUniqueSuffix()}`;
+    }
     console.log(element);
     console.log(element.id);
     const newLayouts = lodash.cloneDeep(layouts);
@@ -5080,6 +5385,7 @@ const Content = ({
       clearGhost();
       return;
     }
+
     const tabContent = findTabContent(e.clientX, e.clientY);
     const tabNested = findTabNestedItem(e.clientX, e.clientY);
     const hostIdRaw =
@@ -5685,7 +5991,7 @@ const Content = ({
       }
     }
 
-    if (element?.type === "post" || element?.type === "dts" || element?.type === "ctg") {
+    if (element?.type === "post" || element?.type === "ctg") {
       const w = readCarouselTargetWidthUnits(
         conI,
         colI,
@@ -5693,6 +5999,19 @@ const Content = ({
         overMiniSpan
       );
       if (!Number.isFinite(w) || w < POST_MIN_COL_UNITS) {
+        blockedDropToastRef.current = "post";
+        return null;
+      }
+    }
+
+    if (element?.type === "dts") {
+      const w = readCarouselTargetWidthUnits(
+        conI,
+        colI,
+        overSpan,
+        overMiniSpan
+      );
+      if (!Number.isFinite(w) || w < DATA_SLIDER_MIN_COL_UNITS) {
         blockedDropToastRef.current = "post";
         return null;
       }
@@ -6197,6 +6516,21 @@ const Content = ({
           type: "ELEMENT",
           isLast: false,
         };
+      }
+
+      /* ช่วยให้ "วางบนสุด" ง่ายขึ้นเฉพาะตอนลาก element ใหม่จาก sidebar */
+      if (!isCanvasElementMove) {
+        const colTopInsertAssistPx = Math.min(
+          56,
+          Math.max(28, rectCol.height * 0.22)
+        );
+        if (mouseY <= rectCol.top + colTopInsertAssistPx) {
+          return {
+            index: { conI, colI, eleI: 0 },
+            type: "ELEMENT",
+            isLast: false,
+          };
+        }
       }
 
       if (!overEl) {
@@ -8066,8 +8400,10 @@ const Content = ({
       String(gbStr).trim() !== "border-0" &&
       !String(gbStr).includes("border-b-0");
     const useCustomEdgeLines = gridBorder && (hasRightEdge || hasBottomEdge);
-    const colDividerTopInsetPx = colRowIndex > 0 ? 12 : 0; // match inner p-3 top gap
-    const colDividerBottomInsetPx = hasBottomEdge ? 12 : 0; // match inner p-3 bottom gap
+    // Use full column height as the divider reference.
+    // If we subtract top/bottom inset first, a 95% setting appears visually shorter.
+    const colDividerTopInsetPx = 0;
+    const colDividerBottomInsetPx = 0;
 
     const setRef = (el,n=0)=>{
       setColRef(IDX, idx, el);
@@ -8636,6 +8972,16 @@ const Content = ({
       type === "ctn" &&
       typeof elementData?.counterRowGroupId === "string" &&
       elementData.counterRowGroupId.trim() !== "";
+    const formLayoutColsRaw = Number(elementData?.formLayoutColumns);
+    const formLayoutCols =
+      formLayoutColsRaw === 2 || formLayoutColsRaw === 3 ? formLayoutColsRaw : 1;
+    const inFormRowGroup = FORM_ELEMENT_TYPES.has(type) && formLayoutCols > 1;
+    const formRowWidthStyle =
+      formLayoutCols === 2
+        ? `calc((100% - ${FORM_ROW_GAP_PX}px) / 2)`
+        : formLayoutCols === 3
+          ? `calc((100% - ${FORM_ROW_GAP_PX * 2}px) / 3)`
+          : "100%";
     const [hoverElement, setHoverElement] = useState(false);
 
     const IDX = layouts.findIndex((l) => l.container.id === containerId);
@@ -8684,7 +9030,8 @@ const Content = ({
         inButtonRowGroup) ||
       (type === "icon" && inIconRowGroup) ||
       (type === "ctn" && inCounterRowGroup) ||
-      (type === "list" && inListRowGroup);
+      (type === "list" && inListRowGroup) ||
+      inFormRowGroup;
     const dragDropIndex = dropTargetRef.current?.index;
     const isElementDropPreview =
       Boolean(activeID?.eleID) &&
@@ -8778,6 +9125,14 @@ const Content = ({
       width: tightSortableWidth ? "auto" : "100%",
       ...(tightSortableWidth
         ? { maxWidth: "100%", flexShrink: 0 }
+        : {}),
+      ...(inFormRowGroup
+        ? {
+            width: formRowWidthStyle,
+            maxWidth: formRowWidthStyle,
+            flexBasis: formRowWidthStyle,
+            flexShrink: 0,
+          }
         : {}),
       ...(collapseDraggingSlot
         ? {
@@ -9103,7 +9458,8 @@ const Content = ({
               type === "ctn" ||
               type === "tabs" ||
               type === "acc" ||
-              type === "post") &&
+              type === "post" ||
+              FORM_ELEMENT_TYPES.has(type)) &&
             e.detail === 2
           )
             return;
@@ -9267,7 +9623,7 @@ const Content = ({
                 const needsOuterHandler =
                   nt === "text" || nt === "heading" || nt === "img" || nt === "bnr" ||
                   nt === "lbx" || nt === "vid" || nt === "btn" || nt === "btnG" || nt === "icon" || nt === "acc" || nt === "post" || nt === "imgh" || nt === "imgo" || nt === "tbl" || nt === "btw" || nt === "divider" ||
-                  nt === "ctn" || nt === "list" || nt === "crl" || nt === "lstb";
+                  nt === "ctn" || nt === "list" || nt === "crl" || nt === "lstb" || FORM_ELEMENT_TYPES.has(nt);
                 if (needsOuterHandler) {
                   e.preventDefault();
                   e.stopPropagation();
@@ -9496,6 +9852,26 @@ const Content = ({
             setSelectID({ ids: {}, status: "" });
             setPositionElementSetting({ x: null, y: null });
             openOffcavanas("Divider", elementData, (next) =>
+              patchLayoutElement(next, { eleID: elementData.id })
+            );
+            return;
+          }
+          if (builderMode === "Layout Mode" && type === "form") {
+            e.preventDefault();
+            e.stopPropagation();
+            setSelectID({ ids: {}, status: "" });
+            setPositionElementSetting({ x: null, y: null });
+            openOffcavanas("FormBlock", elementData, (next) =>
+              patchLayoutElement(next, { eleID: elementData.id })
+            );
+            return;
+          }
+          if (builderMode === "Layout Mode" && FORM_ELEMENT_TYPES.has(type)) {
+            e.preventDefault();
+            e.stopPropagation();
+            setSelectID({ ids: {}, status: "" });
+            setPositionElementSetting({ x: null, y: null });
+            openOffcavanas("Form", elementData, (next) =>
               patchLayoutElement(next, { eleID: elementData.id })
             );
             return;
@@ -9801,6 +10177,14 @@ const Content = ({
             setTextEditModal({ elementData });
             return;
           }
+          if (type === "frmText") {
+            e.preventDefault();
+            e.stopPropagation();
+            setSelectID({ ids: {}, status: "" });
+            setPositionElementSetting({ x: null, y: null });
+            setTextEditModal({ elementData });
+            return;
+          }
           if (type === "heading") {
             e.preventDefault();
             e.stopPropagation();
@@ -9817,6 +10201,16 @@ const Content = ({
             setSelectID({ ids: {}, status: "" });
             setPositionElementSetting({ x: null, y: null });
             openOffcavanas("Divider", elementData, (next) =>
+              patchLayoutElement(next, { eleID: elementData.id })
+            );
+            return;
+          }
+          if (type === "form") {
+            e.preventDefault();
+            e.stopPropagation();
+            setSelectID({ ids: {}, status: "" });
+            setPositionElementSetting({ x: null, y: null });
+            openOffcavanas("FormBlock", elementData, (next) =>
               patchLayoutElement(next, { eleID: elementData.id })
             );
             return;
@@ -11056,9 +11450,10 @@ const Content = ({
 
   const ElementPreview = ({ element }) => {
     const layoutPreviewPe = isLayoutMode ? " pointer-events-none" : "";
-    const isSidebarElementDrag =
-      activeDragRef.current?.data?.current?.type !== "ELEMENT";
+    const isCanvasElementDrag =
+      activeDragRef.current?.data?.current?.type === "ELEMENT";
     const isElementGhostPlaceholder =
+      isCanvasElementDrag &&
       Boolean(activeID?.eleID) &&
       preview &&
       element &&
@@ -11079,6 +11474,53 @@ const Content = ({
       );
     }
 
+    const isFormElementType = FORM_ELEMENT_TYPES.has(String(element?.type || ""));
+    // ลาก Form Element จาก panel เข้า Col → Ghost แบบการ์ดไอคอนเดิม
+    // ไม่ใช้ FormElement เต็มแบบหน้าออกแบบฟอร์ม
+    const isFormPaletteGhost =
+      isFormElementType &&
+      preview &&
+      String(element?.id || "") !== "" &&
+      String(element?.id || "") === String(preview?.id || "") &&
+      !(
+        activeID &&
+        typeof activeID === "object" &&
+        Boolean(activeID.eleID)
+      );
+    if (isFormPaletteGhost) {
+      const {
+        icon,
+        label,
+        lucideIcon,
+        lucideStrokeWidth,
+        lucideSize,
+      } = element?.preview || {};
+      const previewIconSize = Number(lucideSize);
+      const previewStrokeWidth = Number(lucideStrokeWidth);
+      return (
+        <div className="bg-gray-50 dark:bg-black/50 w-[95.5px] h-[70px] rounded-md text-center px-3 py-2">
+          {lucideIcon ? (
+            <span className="inline-flex h-[30px] w-full items-center justify-center px-2 text-slate-600 dark:text-white/50 [&>svg]:shrink-0">
+              <IconLucide
+                iconName={lucideIcon}
+                size={Number.isFinite(previewIconSize) ? previewIconSize : 30}
+                strokeWidth={
+                  Number.isFinite(previewStrokeWidth) ? previewStrokeWidth : 1.75
+                }
+              />
+            </span>
+          ) : (
+            <span className="material-symbols-outlined text-[30px] px-2 dark:text-white/50">
+              {icon}
+            </span>
+          )}
+          <p className="text-[12px] dark:text-white/40 antialiased">
+            {label}
+          </p>
+        </div>
+      );
+    }
+
     const imagePreviewLike =
       element.type === "img" ||
       element.type === "imgh" ||
@@ -11086,6 +11528,19 @@ const Content = ({
       element.type === "bnr" ||
       element.type === "lbx" ||
       element.type === "vid";
+    const isFormElementPreview = isFormElementType;
+    const rawFormCols = Number(element?.formLayoutColumns);
+    const formCols = rawFormCols === 2 || rawFormCols === 3 ? rawFormCols : 1;
+    const formWidthPct = formCols === 2 ? 50 : formCols === 3 ? 33.333333 : 100;
+    const previewWrapperStyle = isFormElementPreview
+      ? {
+          width: `${formWidthPct}%`,
+          maxWidth: `${formWidthPct}%`,
+          textAlign: "left",
+          display: formCols === 1 ? "block" : "inline-block",
+          verticalAlign: "top",
+        }
+      : { width: "100%", textAlign: "center" };
     const imagePreviewLink =
       imagePreviewLike &&
       element.type !== "lbx" &&
@@ -11211,7 +11666,7 @@ const Content = ({
 
     return (
       <Box
-        style={{ width: "100%", textAlign: "center" }}
+        style={previewWrapperStyle}
         onDragOver={(e) => {
           handleDuring(e);
         }}
@@ -11513,6 +11968,21 @@ const Content = ({
             </Box>
           );
         })()}
+        {(element.type === "frmInput" ||
+          element.type === "frmText" ||
+          element.type === "frmNum" ||
+          element.type === "frmSum" ||
+          element.type === "frmTextarea" ||
+          element.type === "frmSelect" ||
+          element.type === "frmRadio" ||
+          element.type === "frmCheckbox" ||
+          element.type === "frmSubmit") && (
+          <FormElementPreview
+            elementData={element}
+            theme={theme}
+            builderMode={builderMode}
+          />
+        )}
         {element.type === "divider" && (() => {
           const d = mergeDividerElement(element);
           const marginTopRaw = Number(d.dividerMarginTop);
@@ -11537,6 +12007,16 @@ const Content = ({
             </div>
           );
         })()}
+        {element.type === "form" && (
+          <FormBlock
+            elementData={element}
+            selected={false}
+            hover={() => {}}
+            theme={theme}
+            builderMode={builderMode}
+            lite
+          />
+        )}
         {element.type === "btnG" && (() => {
           const bv = getButtonMuiVariant(element);
           const bsx1 = getButtonMuiSx(element, theme, bv, 1);
@@ -12462,6 +12942,14 @@ const Content = ({
               destColI,
               destSpnI,
               destMspnI
+            ) &&
+            !shouldBlockDataSliderDrop(
+              layouts,
+              active,
+              destConI,
+              destColI,
+              destSpnI,
+              destMspnI
             )
           )
             return false;
@@ -13265,194 +13753,8 @@ const Content = ({
   const removeClass = () =>
     document.documentElement.classList.remove("dragging");
 
-  function ConfirmModal({ data, close }) {
-
-    if(!data) return <></>;
-
-    const { id, funct } = data;
-    
-    if(!id || !funct) return <></>;
-
-    const [open, setOpen] = useState(true);
-
-    if (!open) setTimeout(() => close(), 200);
-
-    let elementName;
-
-    if (typeof id === "object") {
-      if (id.nestID && id.spnID) {
-        elementName = "Mini Span";
-      } else if (id.spnID && !id.nestID) {
-        elementName = "Span";
-      } else {
-        elementName = "Column";
-      }
-    } else {
-      const sec = layouts.find(l => l.container?.id === id)
-      if(sec?.splitRowId){
-        elementName = "Split Section";
-      } else if(sec?.columns){
-        elementName = "Section";
-      }else{
-        elementName = "Header";
-      }
-      
-    }
-
-
-
-    return (
-      <Modal
-        open={open}
-        onClose={(_, reason) => {
-          setOpen(false);
-        }}
-        aria-labelledby="basic-modal-title"
-        aria-describedby="basic-modal-desc"
-        slotProps={{ backdrop: { timeout: 200 } }}
-        closeAfterTransition
-        slots={{ backdrop: Backdrop }}
-      >
-        <Fade in={open} timeout={200} onExited={close}>
-          <Box
-            sx={{
-              position: "relative",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              width: 400,
-              height: "auto",
-              backgroundColor: "white",
-              borderRadius: 3,
-            }}
-            container={document.getElementById("app-root")}
-          >
-            <div className="flex justify-between px-4 pt-3 pb-1">
-              <div className="text-[15px] font-bold">
-                <span className="text-red-600 dark:text-emerald-300">
-                  Delete
-                </span>{" "}
-                {elementName}
-              </div>
-              <div>
-                <a onClick={() => setOpen(false)} style={{ cursor: "pointer" }}>
-                  X
-                </a>
-              </div>
-            </div>
-            <div
-              className={`border-b border-dotted border-gray-500/50 flex-1`}
-            ></div>
-            <div className="flex justify-center mt-4 text-[13px] ">
-              คุณต้องการลบ {elementName} นี้ใช่หรือไม่?
-            </div>
-
-            <div className="flex justify-center my-4 pb-5">
-              <Button
-                sx={{
-                  backgroundColor: "#B91C1C",
-                  color: "white",
-                  fontSize: 13,
-                  fontWeight: "normal",
-                  height: 25,
-                  padding: "15px 12px",
-                  marginRight: 1,
-                }}
-                onClick={() => {
-                  setOpen(false);
-                  setTimeout(() => {
-                    close();
-                    funct(id);
-                  }, 200);
-                }}
-              >
-                ใช่... ฉันต้องการลบ
-              </Button>
-              <Button
-                sx={{
-                  backgroundColor: "#333",
-                  color: "white",
-                  fontSize: 13,
-                  fontWeight: "normal",
-                  height: 25,
-                  padding: "15px 12px",
-                  marginLeft: 1,
-                }}
-                onClick={() => setOpen(false)}
-              >
-                ยกเลิก
-              </Button>
-            </div>
-          </Box>
-        </Fade>
-      </Modal>
-    );
-  }
-  function AlertModal() {
-    const [open, setOpen] = useState(true);
-
-    if (!open) setTimeout(() => setAlert(false), 200);
-
-    return (
-      <Modal
-        open={alert}
-        onClose={(_, resson) => {
-          setOpen(false)
-        }}
-        aria-labelledby="basic-modal-title"
-        aria-describedby="basic-modal-desc"
-        slotProps={{ backdrop: { timeout: 200 } }}
-        closeAfterTransition
-        slots={{ backdrop: Backdrop }}
-      >
-        <Fade in={open} timeout={200} onExited={()=>setAlert(false)}>
-          <Box
-            sx={{
-              position: "relative",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              width: 400,
-              height: "auto",
-              backgroundColor: "white",
-              borderRadius: 3,
-            }}
-            container={document.getElementById("app-root")}
-          >
-            <div className="flex justify-between px-4 pt-3 pb-1">
-              <div className="text-[15px] font-bold">
-                <span className="text-red-600 dark:text-emerald-300">
-                  คำเตือน !!!
-                </span>{" "}
-              </div>
-              <div>
-                <a
-                  onClick={(e) => setOpen(false)}
-                  style={{ cursor: "pointer" }}
-                >
-                  X
-                </a>
-              </div>
-            </div>
-            <div
-              className={`border-b border-dotted border-gray-500/50 flex-1`}
-            ></div>
-            <div className="pl-4 mt-2 pt-1 pb-4 text-[13px]">
-              คอลัมน์ประเภทนี้ ไม่สามารถปรับขนาดของคอลัมน์{" "}
-              <span className="text-red-600 dark:text-emerald-300">
-                "ให้แคบกว่านี้ได้"
-              </span>
-            </div>
-          </Box>
-        </Fade>
-      </Modal>
-    );
-  }
-
-
-  const sizes = {Tablet:768, Mobile: 375,Desktop: "100%"};
-
-  const canvasSize = {width: sizes[device]};
+  const sizes = { Tablet: 768, Mobile: 375, Desktop: "100%" };
+  const canvasSize = { width: sizes[device] };
   const mobileSkeletonSvg = `
 <svg xmlns='http://www.w3.org/2000/svg' width='375' height='1320' viewBox='0 0 375 1320'>
   <rect width='375' height='1320' fill='#f5f5f6'/>
@@ -13640,7 +13942,8 @@ const Content = ({
         <div className={`w-full flex ${isPreview ? "justify-start" : "justify-center"}`}>
 
         <div
-          className={`content-area min-h-[600px] ${
+          data-builder-canvas="true"
+          className={`content-area relative min-h-[600px] ${
             isPreview ? "" : "rounded-xl border border-white/10 bg-white/5"
           }`}
           style={{
@@ -13820,9 +14123,9 @@ const Content = ({
                                                       {chunkColumnElementsForInlineRows(
                                                         elements
                                                       ).map((chunk) => {
-                                                        if (chunk.kind === "btnRow" || chunk.kind === "iconRow" || chunk.kind === "counterRow" || chunk.kind === "listRow") {
+                                                        if (chunk.kind === "btnRow" || chunk.kind === "iconRow" || chunk.kind === "counterRow" || chunk.kind === "listRow" || chunk.kind === "formRow") {
                                                           return (
-                                                            <div key={`${chunk.kind}-${chunk.items[0].id}`} dir="ltr" className={`mb-2 flex w-full flex-row ${isDraggingLayout ? "flex-nowrap" : "flex-wrap"} items-center ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`} style={{ justifyContent: inlineRowJustifyFromChunk(chunk) }}>
+                                                            <div key={`${chunk.kind}-${chunk.items[0].id}`} dir="ltr" className={`mb-2 flex w-full flex-row ${isDraggingLayout ? "flex-nowrap" : "flex-wrap"} ${chunk.kind === "formRow" ? "items-start" : "items-center"} ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`} style={{ justifyContent: inlineRowJustifyFromChunk(chunk) }}>
                                                               {chunk.items.map((ele, localIdx) => {
                                                                 const eleI = chunk.startIndex + localIdx;
                                                                 return (
@@ -14294,11 +14597,12 @@ const Content = ({
                                                     chunk.kind === "btnRow" ||
                                                     chunk.kind === "iconRow" ||
                                                     chunk.kind === "counterRow" ||
-                                                    chunk.kind === "listRow" ? (
+                                                    chunk.kind === "listRow" ||
+                                                    chunk.kind === "formRow" ? (
                                                       <div
                                                         key={`${chunk.kind}-${chunk.items[0].id}`}
                                                         dir="ltr"
-                                                        className={`mb-2 flex w-full flex-row ${isDraggingLayout ? "flex-nowrap" : "flex-wrap"} items-center ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`}
+                                                        className={`mb-2 flex w-full flex-row ${isDraggingLayout ? "flex-nowrap" : "flex-wrap"} ${chunk.kind === "formRow" ? "items-start" : "items-center"} ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`}
                                                         onDragOver={(e) => {
                                                           if (
                                                             chunk.kind ===
@@ -14327,6 +14631,11 @@ const Content = ({
                                                               );
                                                               return;
                                                             }
+                                                            handleDuring(e);
+                                                          } else if (
+                                                            chunk.kind ===
+                                                            "formRow"
+                                                          ) {
                                                             handleDuring(e);
                                                           }
                                                         }}
@@ -14727,11 +15036,12 @@ const Content = ({
                                             chunk.kind === "btnRow" ||
                                             chunk.kind === "iconRow" ||
                                             chunk.kind === "counterRow" ||
-                                            chunk.kind === "listRow" ? (
+                                            chunk.kind === "listRow" ||
+                                            chunk.kind === "formRow" ? (
                                               <div
                                                 key={`${chunk.kind}-${chunk.items[0].id}`}
                                                 dir="ltr"
-                                                className={`mb-2 flex w-full flex-row ${isDraggingLayout ? "flex-nowrap" : "flex-wrap"} items-center ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`}
+                                                className={`mb-2 flex w-full flex-row ${isDraggingLayout ? "flex-nowrap" : "flex-wrap"} ${chunk.kind === "formRow" ? "items-start" : "items-center"} ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`}
                                                 onDragOver={(e) => {
                                                   if (
                                                     chunk.kind === "listRow"
@@ -14756,6 +15066,10 @@ const Content = ({
                                                       );
                                                       return;
                                                     }
+                                                    handleDuring(e);
+                                                  } else if (
+                                                    chunk.kind === "formRow"
+                                                  ) {
                                                     handleDuring(e);
                                                   }
                                                 }}
@@ -15364,7 +15678,7 @@ const Content = ({
 
       {!isPreview && (
       <footer
-        className="flex h-[50px] w-full shrink-0 items-center justify-between gap-4 border-t border-slate-200/80 bg-white px-4 dark:border-white/10 dark:bg-gray-900"
+        className="dash-header flex h-[50px] w-full shrink-0 items-center justify-between gap-4 border-t px-4"
         aria-label="แถบด้านล่างของแคนวาส"
       >
         <div className="flex min-w-0 flex-1 items-center gap-[10px] overflow-hidden">
@@ -15394,12 +15708,12 @@ const Content = ({
               ) : null}
             </span>
           </button>
-          <span className="min-w-0 truncate text-[12px] text-slate-400 dark:text-white/55 ml-5">
+          <span className="ml-5 min-w-0 truncate text-[12px]">
             โครงสร้าง {canvasLayoutCounts.structureTotal} + องค์ประกอบ {" "}
             {canvasLayoutCounts.elements}
           </span>
         </div>
-        <span className="shrink-0 text-[12px] text-slate-500 dark:text-white/55">
+        <span className="shrink-0 text-[12px]">
           Copyright © {new Date().getFullYear()} Web Builder. All rights reserved.
         </span>
       </footer>
@@ -15929,8 +16243,12 @@ const Content = ({
           },
         }}
       />
-      <ConfirmModal data={modal} close={()=>openModal()}/>
-      <AlertModal/>
+      <BuilderConfirmModal
+        data={modal}
+        close={() => openModal()}
+        layouts={layouts}
+      />
+      <BuilderAlertModal open={alert} onClose={() => setAlert(false)} />
       {!isDraggingLayout ? (
         <ElementSetting id={selectID} x={positionElementSetting.x} y={positionElementSetting.y}/>
       ) : null}

@@ -60,13 +60,13 @@ const RangeRow = ({ label, value, min, max, step = 1, onChange, accentColor, mt 
       <div className="mb-1">
         <Typography component="div" sx={{
           display: "flex", alignItems: "center", gap: 1, flex: 1,
-          fontSize: 13, fontWeight: 600, color: "rgb(51 65 85)", mb: 0.35,
+          fontSize: 13, fontWeight: 600, color: "var(--dash-panel-heading, #0f172a)", mb: 0.35,
           fontVariantNumeric: "tabular-nums",
-          ".dark &": { color: "rgba(255,255,255,0.78)" },
+          ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
         }}>
           {label}{" "}
           <span className="text-slate-400 dark:text-slate-400">{Math.round(value)}</span>
-          <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+          <div className="dash-heading-rule min-w-0 flex-1 border-b" />
         </Typography>
       </div>
     )}
@@ -103,7 +103,7 @@ const ColorRow = ({ label, value, onChange }) => (
         const v = e.target.value;
         if (/^#[0-9a-fA-F]{0,6}$/.test(v)) onChange(v);
       }}
-      className="w-[72px] shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-mono text-slate-700 outline-none dark:border-white/10 dark:bg-slate-900/50 dark:text-white/80"
+      className="w-[72px] dash-card shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-mono text-slate-700 outline-none dark:border-white/10 dark:bg-slate-900/50 dark:text-white/80"
       maxLength={7}
       placeholder="#ffffff"
     />
@@ -118,8 +118,11 @@ const ALIGN_OPTS = [
 ];
 
 const AlignGroup = ({ value, onChange, accent }) => (
-  <div className="flex h-[28px] overflow-hidden rounded border border-slate-200 dark:border-white/10 divide-x divide-slate-200 dark:divide-white/10">
-    {ALIGN_OPTS.map(({ value: v, Icon, label }) => {
+  <div
+    className="flex h-[28px] overflow-hidden rounded border"
+    style={{ borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)" }}
+  >
+    {ALIGN_OPTS.map(({ value: v, Icon, label }, idx) => {
       const active = value === v;
       return (
         <button
@@ -128,10 +131,20 @@ const AlignGroup = ({ value, onChange, accent }) => (
           aria-label={label}
           onClick={() => onChange(v)}
           className="flex w-[32px] shrink-0 items-center justify-center transition"
-          style={active
-            ? { backgroundColor: accent || "#0d9488", color: "#fff" }
-            : { backgroundColor: "white", color: "#64748b" }
-          }
+          style={{
+            ...(active
+              ? {
+                  backgroundColor: "var(--dash-panel-btn-group-active, #333333)",
+                  color: "var(--dash-panel-btn-group-active-text, #ffffff)",
+                }
+              : {
+                  backgroundColor: "var(--dash-panel-btn-group-inactive, #ffffff)",
+                  color: "var(--dash-panel-btn-group-inactive-text, #1e293b)",
+                }),
+            ...(idx < ALIGN_OPTS.length - 1
+              ? { borderRight: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)" }
+              : null),
+          }}
         >
           <Icon size={11} strokeWidth={3.5} />
         </button>
@@ -268,12 +281,12 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
   };
 
   return (
-    <aside className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10">
+    <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
 
       {/* Header */}
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-slate-800/60">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">Data Table</span>
+          <span className="shrink-0 font-bold tracking-wide">Data Table</span>
           <span
             className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums"
             title={String(merged?.id ?? "")}
@@ -299,8 +312,8 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
           <li>
             <Box sx={{ width: "100%", px: 0.25, pt: 0.5 }}>
               <div className="mb-2 flex items-center gap-2">
-                <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">คอลัมน์</span>
-                <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <span className="dash-panel-label shrink-0 text-[13px] font-semibold">คอลัมน์</span>
+                <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 <button
                   type="button"
                   onClick={addColumn}
@@ -462,7 +475,7 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
                       accentColor={accent}
                       mt={1}
                     />
-                    <div className="mt-2 w-full rounded-md bg-white px-0 pb-[5px] pt-[2px] dark:bg-zinc-800">
+                    <div className="mt-2 dash-card w-full rounded-md bg-white px-0 pb-[5px] pt-[2px] dark:bg-zinc-800">
                       <div className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]">
                         {allColors.map((color, i) => {
                           const bgColor = typeof color === "string" ? color : theme?.[color.type]?.[color.index];
@@ -518,7 +531,10 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
               {/* รูปแบบกรอบ */}
               <Box sx={{ width: "100%", px: 0.25, mt: 2 }}>
                 <MainLabel label="รูปแบบกรอบ" color={accent} mb={1.25} />
-                <div className="flex w-full overflow-hidden rounded-lg border border-slate-200 dark:border-white/10">
+                <div
+                  className="flex w-full overflow-hidden rounded-lg border"
+                  style={{ borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)" }}
+                >
                   {[
                     { value: "none",   label: "ไม่มี" },
                     { value: "solid",  label: "ตรง"   },
@@ -531,13 +547,21 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
                         key={value}
                         type="button"
                         onClick={() => patch({ tableBorderStyle: value })}
-                        className={`flex flex-1 items-center justify-center py-1.5 text-[12px] font-medium transition
-                          ${idx !== arr.length - 1 ? "border-r border-slate-200 dark:border-white/10" : ""}
-                          ${active
-                            ? "text-white"
-                            : "bg-white text-slate-600 hover:bg-slate-50 dark:bg-slate-900/60 dark:text-white/70 dark:hover:bg-white/5"
-                          }`}
-                        style={active ? { backgroundColor: accent } : undefined}
+                        className="flex flex-1 items-center justify-center py-1.5 text-[12px] font-medium transition"
+                        style={{
+                          ...(active
+                            ? {
+                                backgroundColor: "var(--dash-panel-btn-group-active, #333333)",
+                                color: "var(--dash-panel-btn-group-active-text, #ffffff)",
+                              }
+                            : {
+                                backgroundColor: "var(--dash-panel-btn-group-inactive, #ffffff)",
+                                color: "var(--dash-panel-btn-group-inactive-text, #1e293b)",
+                              }),
+                          ...(idx !== arr.length - 1
+                            ? { borderRight: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)" }
+                            : null),
+                        }}
                       >
                         {label}
                       </button>

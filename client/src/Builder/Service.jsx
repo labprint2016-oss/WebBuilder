@@ -121,7 +121,30 @@ import {
   }}
 
 >
-    <div className="w-[363px] rounded-md border  px-[5px] pt-[8px] pb-[15px]  flex flex-col gap-2" id="popper-color" style={{backgroundColor:darkMode==="dark"?"#27272a":"white",borderColor:darkMode==="dark"?"#5e5e5e":"#dedee0"}}>
+    <div
+      className="w-[363px] rounded-md border px-[5px] pt-[8px] pb-[15px] flex flex-col gap-2"
+      id="popper-color"
+      style={{
+        backgroundColor: darkMode === "dark" ? "#27272a" : "white",
+        borderColor: darkMode === "dark" ? "#5e5e5e" : "#dedee0",
+        // คัดลอก token สีกรอบให้วงกลมสีใน Popper (portal นอก .dashboard-chrome)
+        ...(typeof document !== "undefined"
+          ? (() => {
+              const chrome = document.querySelector(".dashboard-chrome");
+              if (!chrome) return {};
+              const border = getComputedStyle(chrome)
+                .getPropertyValue("--dash-panel-btn-group-border")
+                .trim();
+              return border
+                ? {
+                    "--dash-panel-btn-group-border": border,
+                    "--dash-panel-input-border": border,
+                  }
+                : {};
+            })()
+          : {}),
+      }}
+    >
       
       <div className="pt-[2px] pb-[2px] px-[8px]">
            {/* <input type="range" className="w-full accent-slate-900 dark:accent-emerald-300 border border-0"/> */}
@@ -279,16 +302,16 @@ const Service = ({color,field,opacity,opacityField,open,anchorRef,anchorEl,click
            fontSize:13,
          },
          "& .MuiOutlinedInput-notchedOutline": {
-           borderColor: "#A1A1AA",
+           borderColor: "var(--dash-panel-input-border, #e2e8f0)",
            borderTopLeftRadius: 5,
            borderBottomLeftRadius: 5,
            borderRightWidth: 0
          },
          "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
-           borderColor: "#A1A1AA",
+           borderColor: "var(--dash-panel-input-border, #e2e8f0)",
          },
          "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-           borderColor: "#A1A1AA",
+           borderColor: "var(--dash-panel-input-border, #e2e8f0)",
            borderWidth: 1,
            borderRightWidth: 0
          },
@@ -303,17 +326,17 @@ const Service = ({color,field,opacity,opacityField,open,anchorRef,anchorEl,click
          },
      
          ".dark & .MuiOutlinedInput-notchedOutline": {
-           borderColor: "#494d55",
+           borderColor: "var(--dash-panel-input-border, #e2e8f0)",
            borderTopLeftRadius: 5,
            borderBottomLeftRadius: 5,
            borderRightWidth: 0
          },
          ".dark & .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
-           borderColor: "#494d55",
+           borderColor: "var(--dash-panel-input-border, #e2e8f0)",
            borderRightWidth: 0
          },
          ".dark & .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-           borderColor: "#494d55",
+           borderColor: "var(--dash-panel-input-border, #e2e8f0)",
            borderWidth: 1,
            borderRightWidth: 0
          },
@@ -340,7 +363,7 @@ const Service = ({color,field,opacity,opacityField,open,anchorRef,anchorEl,click
      
          // 2) ให้ปุ่มมี "กรอบ" แบบเดียวกับ TextField
          border: "1px solid",
-         borderColor: "#A1A1AA",
+         borderColor: "var(--dash-panel-input-border, #e2e8f0)",
      
          // (ตัวเลือก) ถ้าไม่อยากให้มีเส้นหนาตรงรอยต่อกลาง
          // ให้ตัดเส้นซ้ายของปุ่มออก จะเหลือเส้นของ TextField ฝั่งเดียวพอดี
@@ -350,7 +373,7 @@ const Service = ({color,field,opacity,opacityField,open,anchorRef,anchorEl,click
          backgroundColor: hexColor(color)|| "transparent",
          "&:hover": {
            backgroundColor: hexColor(color) || "transparent",
-           borderColor: "#A1A1AA",
+           borderColor: "var(--dash-panel-input-border, #e2e8f0)",
            boxShadow: "none", // กันธีมเพิ่มเงาตอนโฮเวอร์
          },
      
@@ -358,8 +381,8 @@ const Service = ({color,field,opacity,opacityField,open,anchorRef,anchorEl,click
          color: "inherit",
      
          ".dark &": {
-           borderColor: "#494d55", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
-           "&:hover": { borderColor: "#494d55" },
+           borderColor: "var(--dash-panel-input-border, #e2e8f0)", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
+           "&:hover": { borderColor: "var(--dash-panel-input-border, #e2e8f0)" },
            borderTopRightRadius: 5,
            borderBottomRightRadius: 5,
          },

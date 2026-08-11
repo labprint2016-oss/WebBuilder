@@ -4,14 +4,9 @@ import {
   SwatchBook,
   FileText,
   Bell,
-  Users,
   Settings,
   Gift,
-  BarChart3,
   Layers,
-  Database,
-  Grid3X3,
-  MapPin,
   ChevronRight,
   Menu,
   LogOut,
@@ -21,12 +16,16 @@ import {
   Plus,
   Download,
   SlidersHorizontal,
+  SendHorizontal,
+  PencilRuler,
+  AppWindowMac,
   RefreshCw,
   Sun,
   Moon,
   Container,
   Bluetooth,
   LayoutGrid,
+  Mail,
 } from "lucide-react";
 import IconLucide from "../IconLucide";
 import TextField from "@mui/material/TextField";
@@ -120,7 +119,7 @@ const AntSwitch = styled(Switch)(({ theme }) => ({
 
 /** ไอคอนใน tile ลาก element ของ Builder — Material Symbols หรือ Lucide (`lucideIcon` = ชื่อ export เช่น AppWindowMac) */
 function BuilderPaletteElementIcon({ item }) {
-  const builderPanelIconColor = "#333333";
+  const builderPanelIconColor = "var(--dash-nav-panel-icon, #333333)";
   if (item?.lucideIcon) {
     const iconSize = Number(item?.lucideSize);
     const strokeWidth = Number(item?.lucideStrokeWidth);
@@ -315,8 +314,8 @@ function Btn({
           color: "inherit",
 
           ".dark &": {
-            borderColor: "#494d55", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
-            "&:hover": { borderColor: "#494d55" },
+            borderColor: "var(--dash-panel-input-border, #e2e8f0)", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
+            "&:hover": { borderColor: "var(--dash-panel-input-border, #e2e8f0)" },
             borderTopRightRadius: 5,
             borderBottomRightRadius: 5,
           },
@@ -516,7 +515,7 @@ function SelectInput({ label, name, value, datas, handleChange }) {
 
 
 
-function Navbar({ handleDragElement,isDark,setOption,post,updateNewTheme,option,navOpen,setNavOpen,selectedMenuId,setSelectedMenuId }) {
+function Navbar({ handleDragElement,isDark,updateNewTheme,navOpen,setNavOpen,selectedMenuId,setSelectedMenuId, railExpanded = false }) {
 
 
  const navigate = useNavigate()
@@ -560,23 +559,11 @@ function Navbar({ handleDragElement,isDark,setOption,post,updateNewTheme,option,
   };
 
 
-  useEffect(()=>{
-    if(option === "AddPost" || option === "editPost"){
-      setSelectedMenuId(option)
-    }
-  },[option])
-
-
-  
-
-
   const [currentPost,setCurrentPost] = useState(defaultPost)
 
   useEffect(()=>{
-    if(post.title){
-      setCurrentPost(post)
-    }
-  },[post])
+    setCurrentPost(defaultPost);
+  },[])
 
 
   const getImg = (path)=>{
@@ -686,15 +673,11 @@ function Navbar({ handleDragElement,isDark,setOption,post,updateNewTheme,option,
       {  label: "Builder",path:"/builder", icon: Layers },
       {  label: "Theme",   icon: SwatchBook },
       {  label: "Pages" ,  icon: FileText },
-      {  label: "Team",   icon: Users },
-      {  label: "Posts",path:"/posts" , icon: Settings },
-      {  label: "Category",path:"/categories", icon: Settings },
-      {  label: "Hero",path:"/heros", icon: Settings },
-      {  label: "Menu",path:"/menus", icon: Settings },
-      {  label: "Reports",  icon: BarChart3 },
-      {  label: "Apps",     icon: Grid3X3 },
-      {  label: "Data",     icon: Database },
-      {  label: "Map",      icon: MapPin },
+      {  label: "Hero",path:"/builder/heros", icon: PencilRuler },
+      {  label: "Menu",path:"/builder/menus", icon: AppWindowMac },
+      {  label: "Forms",path:"/builder/forms", icon: SendHorizontal },
+      {  label: "Message", path: "/builder/messages", icon: Mail },
+      {  label: "Settings", path: "/builder/settings", icon: SlidersHorizontal },
     ],
     Elements: [
       {
@@ -740,6 +723,7 @@ function Navbar({ handleDragElement,isDark,setOption,post,updateNewTheme,option,
       { label: "Video", icon: "slow_motion_video" },
       { label: "Counter", icon: "timer" },
       { label: "Divider", icon: "insert_page_break" },
+      { label: "Form", icon: "send", dragLabel: "Form" },
       {
         label: "List Items",
         icon: "layout-list",
@@ -830,10 +814,6 @@ function Navbar({ handleDragElement,isDark,setOption,post,updateNewTheme,option,
         lucideSize: 28,
         lucideStrokeWidth: 2.2,
       },
-      { label: "Form", icon: "forum" },
-      { label: "Card", icon: "confirmation_number" },
-      { label: "Footer", icon: "power_input" }
-      
     ],
     Theme: {
       headingOptions: [
@@ -988,19 +968,16 @@ function Navbar({ handleDragElement,isDark,setOption,post,updateNewTheme,option,
   }, [updated]);
 
 
-  const navWidth = ()=>{
-    if(navOpen && (selectedMenuId === "AddPost" || selectedMenuId === "editPost" )){
-      return "w-[400px]"
+  const isChromeOnlyPage = ["Hero", "Menu", "Forms", "Message", "Settings"].includes(selectedMenuId);
+  const navWidth = () => {
+    if (navOpen && !isChromeOnlyPage) {
+      return "w-60";
     }
-    else if(navOpen && !["AddPost","Posts","Category","Hero","editPost","Menu"].includes(selectedMenuId) && !["AddPost","Posts","Category","Hero","editPost","Menu"].includes(option) ){
-      return "w-60"
-    }else if(!navOpen || (selectedMenuId === "Posts"  || selectedMenuId === "Category" || selectedMenuId === "Hero" || selectedMenuId === "Menu")){
-      return "w-0"
-    }
-  }
+    return "w-0";
+  };
 
   const gridCols = ()=>{
-    const {columnAmount} = post
+    const {columnAmount} = currentPost
     if(columnAmount === 2){
       return "2"
     }else if(columnAmount === 3){
@@ -1032,10 +1009,10 @@ function Navbar({ handleDragElement,isDark,setOption,post,updateNewTheme,option,
 
   const setTextPosition = ()=>{
     const CORNER = ["ริบบิ้น","วงกลม"]
-    if(CORNER.includes(post.decorationType) && post.position === "center"){
+    if(CORNER.includes(currentPost.decorationType) && currentPost.position === "center"){
       return "end"
   }else{
-    return post.position
+    return currentPost.position
   }
 }
 
@@ -1117,7 +1094,7 @@ const pages = ["Page1","Page2","Page3"]
     }
     const structure = els.slice(0, basicStartIdx);
     const basicAll = els.slice(basicStartIdx);
-    /** พื้นฐาน: Text … Divider — พิเศษ: ตั้งแต่ List Items เป็นต้นไป */
+    /** พื้นฐาน: Text … Form — พิเศษ: ตั้งแต่ List Items เป็นต้นไป */
     let specialStartRel = basicAll.findIndex((item) => item.label === "List Items");
     if (specialStartRel < 0) {
       return { structure, basic: basicAll, sectionSpecial: [], special: [] };
@@ -1133,45 +1110,98 @@ const pages = ["Page1","Page2","Page3"]
       special: specialAll.filter((item) => !sectionSpecialLabelSet.has(item.label)),
     };
   }, [data.Elements]);
+  const formBuilderPreviewElements = useMemo(
+    () => [
+      { label: "Input", icon: "text_fields", dragLabel: "Form Input" },
+      { label: "Text", icon: "format_size", dragLabel: "Form Text" },
+      { label: "Textarea", icon: "subject", dragLabel: "Form Textarea" },
+      { label: "Select", icon: "arrow_drop_down_circle", dragLabel: "Form Select" },
+      { label: "Radio", icon: "radio_button_checked", dragLabel: "Form Radio" },
+      { label: "Checkbox", icon: "check_box", dragLabel: "Form Checkbox" },
+      { label: "Submit", icon: "send", dragLabel: "Form Submit" },
+    ],
+    []
+  );
 
   return (
     <>
-      <aside className="sm:flex flex-col items-center gap-4 py-4 w-12 border-r border-slate-200 dark:border-white/10 bg-white/90 dark:bg-gray-950/70">
-        <div className="h-10 w-10 grid place-items-center rounded-lg bg-slate-100 dark:bg-white/5">
-          <Layers className="h-5 w-5 text-slate-700 dark:text-white/90" />
+      <aside
+        className={`dash-nav-rail sm:flex flex-col items-center border-r transition-[width] duration-300 ease-in-out ${
+          railExpanded
+            ? "w-[104px] gap-2.5 px-2 py-3"
+            : "w-12 gap-4 px-0 py-4"
+        }`}
+      >
+        <div
+          className={`grid place-items-center shrink-0 ${
+            railExpanded ? "h-11 w-11" : "h-10 w-10"
+          }`}
+        >
+          <Layers
+            className={railExpanded ? "h-6 w-6" : "h-5 w-5"}
+            style={{ color: "var(--dash-icon)" }}
+          />
         </div>
-        {data.Navbar.map((item,i)=>(
-                 <IconButton
-           key={i}
-           icon={item.icon}
-           label={item.label}
-           onClick={() => {
-             setSelectedMenuId(item.label);
-             setNavOpen(true);
-             if(!item.path) return
-             navigate(item.path)
-           }}
-         />
-         
-      
-           
-        ))}
-  
-        <div className="mt-auto">
-          <IconButton icon={LogOut} label="Logout" onClick={() => {}} />
+        <div
+          className={`flex w-full min-h-0 flex-1 flex-col items-center overflow-y-auto overflow-x-hidden ${
+            railExpanded ? "gap-3" : "gap-4"
+          }`}
+        >
+          {data.Navbar.map((item, i) => (
+            <IconButton
+              key={i}
+              icon={item.icon}
+              label={item.label}
+              expanded={railExpanded}
+              active={selectedMenuId === item.label}
+              onClick={() => {
+                setSelectedMenuId(item.label);
+                setNavOpen(true);
+                if (!item.path) return;
+                navigate(item.path);
+              }}
+            />
+          ))}
+        </div>
+
+        <div
+          className="flex shrink-0 items-center justify-center py-3"
+          aria-label="Web Builder"
+        >
+          <span
+            className={`select-none font-bold uppercase tracking-[0.16em] leading-none ${
+              railExpanded ? "text-[14px]" : "text-[12px]"
+            }`}
+            style={{
+              color: "var(--dash-nav-active, #334155)",
+              writingMode: "vertical-rl",
+            }}
+          >
+            WEB BUILDER
+          </span>
+        </div>
+
+        <div className={`mt-auto flex w-full flex-col items-center ${railExpanded ? "gap-1.5" : "gap-2"}`}>
+          <IconButton
+            icon={LogOut}
+            label="Logout"
+            expanded={railExpanded}
+            onClick={() => {}}
+          />
         </div>
       </aside>
 
       <aside
-        className={`${
+        className={`dash-nav-panel ${
           navWidth()
-        } sm:block transition-all duration-300 overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10`}
+        } sm:block ${isChromeOnlyPage ? "" : "transition-all duration-300"} overflow-hidden border-r`}
       >
         <div className="px-6 py-[14px] flex items-center justify-between">
-          <div className="font-semibold tracking-wide">{selectedMenuId === 'AddPost' ? "Preview":selectedMenuId}</div>
+          <div className="dash-heading font-semibold tracking-wide">{selectedMenuId}</div>
           <button
             onClick={() => setNavOpen((s) => !s)}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5"
+            style={{ color: "var(--dash-nav-panel-heading, #0f172a)" }}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -1187,7 +1217,11 @@ const pages = ["Page1","Page2","Page3"]
             </svg>
           </button>
         </div>
-        <nav className={`px-${selectedMenuId == "Menu"?"2":"4"} pb-6 overflow-y-auto h-[calc(100%-64px)]`}>
+        <nav
+          className={`dash-nav-panel-scroll ${
+            selectedMenuId == "Menu" ? "px-2" : "px-4"
+          } pb-6 overflow-y-auto h-[calc(100%-64px)]`}
+        >
           <ul className="mt-1 pl-1">
             <li>
               {selectedMenuId === "Builder" && (
@@ -1196,7 +1230,8 @@ const pages = ["Page1","Page2","Page3"]
                   <div className="grid grid-cols-2 gap-3 mx-0">
                     {builderElementsPanels.structure.map((items, index) => (
                       <div
-                        className="bg-gray-50 dark:bg-white/5 rounded-md text-center px-3 py-2 cursor-grab active:cursor-grabbing"
+                        className="dash-nav-item rounded-md border px-3 py-2 text-center cursor-grab active:cursor-grabbing"
+                        style={{ background: "var(--dash-nav-panel-item-bg)", borderColor: "var(--dash-nav-panel-item-border)" }}
                         draggable
                         key={`builder-struct-${items.label}-${index}`}
                         onDragStart={() => {
@@ -1208,7 +1243,7 @@ const pages = ["Page1","Page2","Page3"]
                       >
                         {" "}
                         <BuilderPaletteElementIcon item={items} />
-                        <p className="text-[12px] dark:text-white/40 antialiased whitespace-nowrap">
+                        <p className="dash-muted text-[12px] antialiased whitespace-nowrap">
                           {items.label}
                         </p>
                       </div>
@@ -1220,7 +1255,8 @@ const pages = ["Page1","Page2","Page3"]
                       <div className="grid grid-cols-2 gap-3 mx-0">
                         {builderElementsPanels.basic.map((items, index) => (
                           <div
-                            className="bg-gray-50 dark:bg-white/5 rounded-md text-center px-3 py-2 cursor-grab active:cursor-grabbing"
+                            className="dash-nav-item rounded-md border px-3 py-2 text-center cursor-grab active:cursor-grabbing"
+                            style={{ background: "var(--dash-nav-panel-item-bg)", borderColor: "var(--dash-nav-panel-item-border)" }}
                             draggable
                             key={`builder-basic-${items.label}-${index}`}
                             onDragStart={() => {
@@ -1232,7 +1268,7 @@ const pages = ["Page1","Page2","Page3"]
                           >
                             {" "}
                             <BuilderPaletteElementIcon item={items} />
-                            <p className="text-[12px] dark:text-white/40 antialiased whitespace-nowrap">
+                            <p className="dash-muted text-[12px] antialiased whitespace-nowrap">
                               {items.label}
                             </p>
                           </div>
@@ -1249,7 +1285,8 @@ const pages = ["Page1","Page2","Page3"]
                           <div className="grid grid-cols-2 gap-3 mx-0">
                             {builderElementsPanels.sectionSpecial.map((items, index) => (
                               <div
-                                className="bg-gray-50 dark:bg-white/5 rounded-md text-center px-3 py-2 cursor-grab active:cursor-grabbing"
+                                className="dash-nav-item rounded-md border px-3 py-2 text-center cursor-grab active:cursor-grabbing"
+                                style={{ background: "var(--dash-nav-panel-item-bg)", borderColor: "var(--dash-nav-panel-item-border)" }}
                                 draggable
                                 key={`builder-section-special-${items.label}-${index}`}
                                 onDragStart={() => {
@@ -1261,7 +1298,7 @@ const pages = ["Page1","Page2","Page3"]
                               >
                                 {" "}
                                 <BuilderPaletteElementIcon item={items} />
-                                <p className="text-[12px] dark:text-white/40 antialiased whitespace-nowrap">
+                                <p className="dash-muted text-[12px] antialiased whitespace-nowrap">
                                   {items.label}
                                 </p>
                               </div>
@@ -1275,7 +1312,8 @@ const pages = ["Page1","Page2","Page3"]
                           <div className="grid grid-cols-2 gap-3 mx-0">
                             {builderElementsPanels.special.map((items, index) => (
                               <div
-                                className="bg-gray-50 dark:bg-white/5 rounded-md text-center px-3 py-2 cursor-grab active:cursor-grabbing"
+                                className="dash-nav-item rounded-md border px-3 py-2 text-center cursor-grab active:cursor-grabbing"
+                                style={{ background: "var(--dash-nav-panel-item-bg)", borderColor: "var(--dash-nav-panel-item-border)" }}
                                 draggable
                                 key={`builder-special-${items.label}-${index}`}
                                 onDragStart={() => {
@@ -1287,7 +1325,7 @@ const pages = ["Page1","Page2","Page3"]
                               >
                                 {" "}
                                 <BuilderPaletteElementIcon item={items} />
-                                <p className="text-[12px] dark:text-white/40 antialiased whitespace-nowrap">
+                                <p className="dash-muted text-[12px] antialiased whitespace-nowrap">
                                   {items.label}
                                 </p>
                               </div>
@@ -1295,6 +1333,33 @@ const pages = ["Page1","Page2","Page3"]
                           </div>
                         </>
                       )}
+                    </>
+                  )}
+                  {formBuilderPreviewElements.length > 0 && (
+                    <>
+                      <MainLabel label="Form" />
+                      <div className="grid grid-cols-2 gap-3 mx-0">
+                        {formBuilderPreviewElements.map((items, index) => (
+                          <div
+                            className="dash-nav-item rounded-md border px-3 py-2 text-center cursor-grab active:cursor-grabbing"
+                            style={{ background: "var(--dash-nav-panel-item-bg)", borderColor: "var(--dash-nav-panel-item-border)" }}
+                            key={`builder-form-preview-${items.label}-${index}`}
+                            title="ลากวางลงคอลัมน์"
+                            draggable
+                            onDragStart={() => {
+                              handleDragElement(items.dragLabel ?? items.label);
+                            }}
+                            onDragEnd={() => {
+                              handleDragElement(null);
+                            }}
+                          >
+                            <BuilderPaletteElementIcon item={items} />
+                            <p className="dash-muted text-[12px] antialiased whitespace-nowrap">
+                              {items.label}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     </>
                   )}
                 </>
@@ -1600,17 +1665,36 @@ const pages = ["Page1","Page2","Page3"]
   );
 }
 
-function IconButton({ icon: Icon, label, onClick }) {
+function IconButton({ icon: Icon, label, onClick, active = false, expanded = false }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="group relative p-2 rounded-lg hover:bg-slate-100 text-slate-700 dark:text-white/70 dark:hover:bg-white/5"
+      className={`group relative rounded-lg transition-colors ${
+        expanded
+          ? "flex w-full flex-col items-center gap-1 px-1.5 py-2"
+          : "p-2"
+      }`}
+      style={{
+        color: active ? "var(--dash-nav-active)" : "var(--dash-icon)",
+        background: active
+          ? "color-mix(in srgb, var(--dash-nav-active) 14%, transparent)"
+          : "transparent",
+      }}
       aria-label={label}
+      aria-current={active ? "page" : undefined}
+      title={expanded ? undefined : label}
     >
-      <Icon className="h-5 w-5 group-hover:text-slate-900 dark:group-hover:text-white" />
-      <span className="pointer-events-none absolute left-11 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-slate-800 text-white dark:bg-gray-800 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 border border-slate-700/40 dark:border-white/10 z-[999999]">
-        {label}
-      </span>
+      <Icon className={`shrink-0 ${expanded ? "h-6 w-6" : "h-5 w-5"}`} />
+      {expanded ? (
+        <span className="max-w-full truncate text-center text-[12px] font-medium leading-tight tracking-tight opacity-40">
+          {label}
+        </span>
+      ) : (
+        <span className="pointer-events-none absolute left-11 top-1/2 z-[999999] -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-700/40 bg-slate-800 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 dark:border-white/10 dark:bg-gray-800">
+          {label}
+        </span>
+      )}
     </button>
   );
 }
@@ -1618,10 +1702,10 @@ function IconButton({ icon: Icon, label, onClick }) {
 function MainLabel({ label }) {
   return (
     <div className="mt-5 mb-2 flex items-center gap-2">
-      <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/[0.78]">
+      <span className="dash-heading shrink-0 text-[13px] font-semibold">
         {label}
       </span>
-      <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+      <div className="dash-nav-heading-rule min-w-0 flex-1 border-b" />
     </div>
   );
 }

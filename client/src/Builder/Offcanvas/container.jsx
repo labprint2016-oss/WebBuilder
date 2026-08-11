@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getTheme } from "../../../Functions/theme";
+import { panelGroupButtonSx } from "../panelControlSx";
 import {
   Dialog,
   DialogTitle,
@@ -12,10 +13,6 @@ import {
   Box,
   Slider,
   Typography,
-
-
-
-
 } from "@mui/material";
 import lodash, { isNull } from "lodash";
 import { Check, Monitor, Smartphone, Tablet } from "lucide-react";
@@ -68,55 +65,7 @@ const CHIP_BG_HOVER = "#f8fafc";
 const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
 const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 
-const sectionLayoutGroupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0.75,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.25,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": {
-            backgroundColor: a,
-            borderColor: "transparent",
-          },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": {
-            borderColor: `${CHIP_BORDER} !important`,
-            backgroundColor: CHIP_BG_HOVER,
-          },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": {
-              borderColor: `${CHIP_BORDER_DARK} !important`,
-              backgroundColor: CHIP_BG_DARK_HOVER,
-            },
-          },
-        }),
-    "&.Mui-focusVisible": {
-      outline: `2px solid ${a}`,
-      outlineOffset: 1,
-      boxShadow: "none",
-    },
-    "& .MuiTouchRipple-child": {
-      backgroundColor: a,
-    },
-  };
-};
+const sectionLayoutGroupButtonSx = panelGroupButtonSx;
 
 const sectionLayoutGroupRootSx = {
   width: "100%",
@@ -136,16 +85,16 @@ const sectionLayoutGroupRootSx = {
     borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER_DARK} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
@@ -203,8 +152,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
         color: '#fff',
         '& + .MuiSwitch-track': {
           opacity: 1,
-          backgroundColor: textColor,
-
+          backgroundColor: "var(--dash-panel-switch-on, #333333)",
         },
       },
     },
@@ -463,11 +411,11 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
     <aside
       className={`
      
-     sm:block 0 overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10`}
+     dash-panel flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10`}
     >
-      <div className="shrink-0 flex items-center justify-between border-b border-slate-200 bg-gray-100 px-6 pt-5 pb-3 dark:border-white/10 dark:bg-slate-800/70">
+      <div className="shrink-0 flex items-center justify-between border-b border-slate-200 dash-panel-header bg-gray-100 px-6 pt-5 pb-3 dark:border-white/10">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             Section
           </span>
           <span
@@ -495,7 +443,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
           </svg>
         </button>
       </div>
-      <nav className="px-4 pb-6  overflow-y-auto h-[calc(100%-64px)] w-[400px]">
+      <nav className="dash-panel flex-1 min-h-0 px-4 pb-6 overflow-y-auto w-full">
         <ul className="mt-1 pl-1">
           <li>
             {/* ระยะบน / ล่าง — Slider แบบเดียวกับ panel รูปภาพ */}
@@ -637,10 +585,10 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
 
             {/* รูปแบบการแสดงผล — ปุ่มกลุ่มแบบ panel ไอคอน «รูปทรงกรอบ» */}
             <div className="mb-3 mt-4 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 รูปแบบการแสดงผล
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <ButtonGroup
               fullWidth
@@ -683,7 +631,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
             {!data.isGradient ? (
               // Solid — รูปแบบเดียวกับ panel Heading (สีข้อความ): กล่องขาว + สไลด์ความทึบ + ตารางสี
               <Box sx={{ width: "100%", px: 0.25, pt: 0 }}>
-                <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                   <div className="px-[5px] pb-2">
                     <Range
                       min={0}
@@ -774,7 +722,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                 </ButtonGroup>
                 {/* ไล่โทน — รูปแบบเดียวกับ panel Heading (สีข้อความ): กล่องขาว + สไลด์ความทึบ + ตารางสี */}
                 <Box sx={{ width: "100%", px: 0.25, pt: 0.75 }}>
-                  <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                  <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                     <div className="px-[5px] pb-2">
                       <Range
                         min={0}
@@ -862,17 +810,17 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                       flex: 1,
                       fontSize: 13,
                       fontWeight: 600,
-                      color: "rgb(51 65 85)",
+                      color: "var(--dash-panel-heading, #0f172a)",
                       mb: 0.35,
                       fontVariantNumeric: "tabular-nums",
-                      ".dark &": { color: "rgba(255,255,255,0.78)" },
+                      ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                     }}
                   >
                     องศาไล่โทน{" "}
                     <span className="text-slate-400 dark:text-slate-400">
                       {Math.round(sectionGradientDeg)}
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </Typography>
                   <div className="w-full pt-0 pb-[2px] px-[2px]">
                     <Range
@@ -1087,13 +1035,13 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                     minWidth: 0,
                     fontSize: 13,
                     fontWeight: 600,
-                    color: "rgb(51 65 85)",
+                    color: "var(--dash-panel-heading, #0f172a)",
                     mb: 0.75,
-                    ".dark &": { color: "rgba(255,255,255,0.78)" },
+                    ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                   }}
                 >
                   <span className="shrink-0">รูปแบบเส้น</span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </Typography>
                 <ButtonGroup
                   fullWidth
@@ -1128,7 +1076,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                     );
                   })}
                 </ButtonGroup>
-                <Box sx={{ width: "100%", mt: 1.5 }}>
+                <Box sx={{ width: "100%", mt: 1.5, pt: "5px" }}>
                   <Typography
                     component="div"
                     sx={{
@@ -1138,16 +1086,16 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                       minWidth: 0,
                       fontSize: 13,
                       fontWeight: 600,
-                      color: "rgb(51 65 85)",
+                      color: "var(--dash-panel-heading, #0f172a)",
                       mb: 0.35,
-                      ".dark &": { color: "rgba(255,255,255,0.78)" },
+                      ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                     }}
                   >
                     <span className="shrink-0">ความยาวเส้นคั่น (ตั้ง-นอน)</span>
                     <span className="text-slate-400 dark:text-slate-400 tabular-nums">
                       {Math.round(columnDividerVerticalLengthPct)}%
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </Typography>
                   <div className="w-full px-[2px] pb-[2px] pt-[2px]">
                     <Range
@@ -1183,16 +1131,16 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                     minWidth: 0,
                     fontSize: 13,
                     fontWeight: 600,
-                    color: "rgb(51 65 85)",
+                    color: "var(--dash-panel-heading, #0f172a)",
                     mt: 1.5,
                     mb: 0.25,
-                    ".dark &": { color: "rgba(255,255,255,0.78)" },
+                    ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                   }}
                 >
                   <span className="shrink-0">สีเส้นคั่น</span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </Typography>
-                <div className="mt-1 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                <div className="mt-1 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                   <div className="px-[5px] pb-2">
                     <Range
                       min={0}
@@ -1281,6 +1229,10 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
         : label === "Padding Bottom"
         ? "w-[64px]"
         : "flex-1";
+    const isBgColorLabel = [
+      "สีพื้นหลังแบบสีพื้น",
+      "สีพื้นหลังแบบไล่โทน",
+    ].includes(label);
     const colorSwitch = [
       "สีพื้นหลังแบบสีพื้น",
       "สีพื้นหลังแบบไล่โทน",
@@ -1288,7 +1240,11 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
       "ไม่มีช่องว่างระหว่างคอลัมน์",
       "เพิ่มมิติพื้นหลัง",
     ].includes(label);
-    const typography = label === "สีพื้นหลังแบบสีพื้น" ? "สีไล่โทน" : label === "สีพื้นหลังแบบไล่โทน" ? "สีพื้น":""
+    // หัวข้อสีพื้นหลัง: แสดง "สีพื้นหลัง" / "สีไล่โทน" คงที่ — ไม่ดึงชื่อหรือค่าสีตามโหมด
+    const displayLabel = isBgColorLabel ? "สีพื้นหลัง" : label;
+    const typography = isBgColorLabel
+      ? "สีไล่โทน"
+      : "";
     const showMetric =
       metricValue !== undefined &&
       metricValue !== null &&
@@ -1301,8 +1257,8 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
             : "mt-5 mb-2 flex items-center gap-2"
         }
       >
-        <span className="text-dark dark:text-white/80 text-[13px] font-bold">
-          {label}
+        <span className="dash-panel-label text-[13px] font-bold">
+          {displayLabel}
         </span>
         {showMetric && (
           <span className="text-[13px] font-semibold tabular-nums text-slate-400 dark:text-slate-400">
@@ -1310,7 +1266,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
           </span>
         )}
         <div
-          className={`border-b border-slate-200 dark:border-white/15 ${w}`}
+          className={`dash-heading-rule border-b ${w}`}
         />
         {colorSwitch && (
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
@@ -1332,7 +1288,14 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                 
                 
              }}/>
-             <Typography sx={{ fontSize: 13 }}>{typography}</Typography>
+             {typography ? (
+               <Typography
+                 className="text-slate-400 dark:text-slate-400"
+                 sx={{ fontSize: 13 }}
+               >
+                 {typography}
+               </Typography>
+             ) : null}
           </Stack>
          
         )}

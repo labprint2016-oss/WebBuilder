@@ -80,7 +80,7 @@ function Container({
 
 
 
-  const fluid = isFluid ? "w-full" : "container";
+  const fluid = isFluid ? "w-full" : "w-full max-w-[1280px]";
 
   let color;
 

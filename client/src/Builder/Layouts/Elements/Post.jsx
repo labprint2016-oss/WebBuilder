@@ -187,15 +187,14 @@ const PostElement = ({
     }
   };
 
-  const contentSurfaceClass = isThisDropHovered
-    ? "border border-dashed border-blue-400 bg-blue-50 dark:border-blue-400/70 dark:bg-blue-900/10"
-    : useLayoutSelectionFrame && hasElements
-      ? "border-0 bg-transparent"
-    : isLayoutMode
-      ? "border border-dashed border-slate-300 bg-transparent dark:border-white/20"
+  const showAreaGuides = isLayoutMode;
+  const contentSurfaceClass = !showAreaGuides
+    ? "border border-transparent bg-transparent"
+    : isThisDropHovered
+      ? "border border-dashed border-slate-300/40 bg-slate-50/40 dark:border-slate-400/40 dark:bg-white/5"
       : hasElements
-        ? "border-0 bg-transparent"
-        : "border border-dashed border-slate-300 bg-slate-50 dark:border-white/20 dark:bg-white/5";
+        ? "border border-dashed border-slate-300/40 bg-transparent dark:border-slate-400/40"
+        : "border border-dashed border-slate-300/40 bg-slate-50/30 dark:border-slate-400/40 dark:bg-white/5";
 
   const contentJustifyClass =
     align === "center" ? "items-center text-center" : align === "end" ? "items-end text-right" : "items-start text-left";

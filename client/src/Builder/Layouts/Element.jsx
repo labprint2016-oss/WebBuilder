@@ -18,8 +18,10 @@ import PostElement from "./Elements/Post";
 import TableElement from "./Elements/Table";
 import BetweenElement from "./Elements/Between";
 import DividerElement from "./Elements/Divider";
+import FormBlock from "./Elements/FormBlock";
 import DataSlider from "./Elements/DataSlider";
 import Catagories from "./Elements/Catagories";
+import FormElement from "./Elements/FormElement";
 
 
 const Element = ({
@@ -50,6 +52,7 @@ const Element = ({
   onUpdate,
   builderMode,
   device = "Desktop",
+  isSiteRuntime = false,
 }) => {
     const elementData = elementDataProp ?? element;
     if (!elementData) return null;
@@ -252,6 +255,23 @@ const Element = ({
               theme={theme}
             />
           )}
+          {(type === "frmInput" ||
+            type === "frmText" ||
+            type === "frmNum" ||
+            type === "frmSum" ||
+            type === "frmTextarea" ||
+            type === "frmSelect" ||
+            type === "frmRadio" ||
+            type === "frmCheckbox" ||
+            type === "frmSubmit") && (
+            <FormElement
+              elementData={elementData}
+              selected={selected}
+              hover={hover}
+              theme={theme}
+              builderMode={builderMode}
+            />
+          )}
           {type === "icon" && (
             <Icon
               builderMode={builderMode}
@@ -325,6 +345,7 @@ const Element = ({
               onTabElementsReorder={onTabElementsReorder}
               tabGhostData={tabGhostData}
               tabSelectedElId={tabSelectedElId}
+              onUpdate={onUpdate}
               onHostDoubleClick={onDataSliderDoubleClick}
               theme={theme}
             />
@@ -344,6 +365,7 @@ const Element = ({
               tabGhostData={tabGhostData}
               tabSelectedElId={tabSelectedElId}
               theme={theme}
+              isSiteRuntime={isSiteRuntime}
             />
           )}
           {type === "ctg" && (
@@ -375,6 +397,7 @@ const Element = ({
               onTabElementsReorder={onTabElementsReorder}
               tabGhostData={tabGhostData}
               tabSelectedElId={tabSelectedElId}
+              onUpdate={onUpdate}
               theme={theme}
             />
           )}
@@ -421,6 +444,15 @@ const Element = ({
               selected={selected}
               hover={hover}
               animationForElement={animationForElement}
+              theme={theme}
+              builderMode={builderMode}
+            />
+          )}
+          {type === "form" && (
+            <FormBlock
+              elementData={elementData}
+              selected={selected}
+              hover={hover}
               theme={theme}
               builderMode={builderMode}
             />

@@ -27,6 +27,10 @@ export const deletePage = async (id)=>{
     return await api.delete("/deletePage/"+id)
 }
 
+export const setDefaultPage = async (id)=>{
+    return await api.put("/setDefaultPage/"+id)
+}
+
 
 export const listPages = async ()=>{
     return await api.get("/listPages")

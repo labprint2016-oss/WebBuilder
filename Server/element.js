@@ -155,6 +155,16 @@ const elements = {
         dividerMarginBottom:8,
         preview:{ label: "Divider", icon: "insert_page_break" }
     },
+    Form:{
+        type:"form",
+        id:"Form-",
+        formPresetId:"",
+        formMarginX:0,
+        formMarginY:8,
+        formMarginTop:8,
+        formMarginBottom:8,
+        preview:{ label: "Form", icon: "send" }
+    },
     "Button Dual":{
         type:"btnG",
         id:"btnG-",
@@ -327,7 +337,7 @@ const elements = {
         listDividerOpacity:255,
         listMarginTop:8,
         listMarginBottom:8,
-        listItemRowGap:8,
+        listItemRowGap:16,
         listIconTextGapPx:12,
         /* alignment / layout */
         listIconsAlign:"flex-start",
@@ -478,6 +488,7 @@ const elements = {
         dataSliderPerViewMobile:1,
         dataSliderGap:12,
         dataSliderNavShape:"square",
+        dataSliderNavShowOnWebsite:true,
         dataSliderNavColor:"#d8d8d8",
         dataSliderNavColorOpacity:255,
         dataSliderNavActiveColor:{ type:"mainColor", index:0 },

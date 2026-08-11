@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, ButtonGroup, Stack, Switch, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import Range from "../HTML/Range";
+import { panelGroupButtonSx } from "../panelControlSx";
 import {
   AlignCenter,
   AlignLeft,
@@ -9,6 +10,8 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Minus,
   Plus,
@@ -104,56 +107,62 @@ const dividerGroupRootSx = {
     borderBottomRightRadius: "0.375rem !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "#e2e8f0 !important",
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "rgba(255,255,255,0.1) !important",
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
-const dividerBtnSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.2,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": { backgroundColor: a, borderColor: "transparent" },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: "#e2e8f0 !important",
-          backgroundColor: "#ffffff",
-          "&:hover": { backgroundColor: "#f8fafc", borderColor: "#e2e8f0 !important" },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: "rgba(255,255,255,0.1) !important",
-            backgroundColor: "rgba(30,41,59,0.9)",
-            "&:hover": { backgroundColor: "rgba(30,41,59,1)", borderColor: "rgba(255,255,255,0.1) !important" },
-          },
-        }),
-    "&.Mui-focusVisible": { outline: `2px solid ${a}`, outlineOffset: 1, boxShadow: "none" },
-    "& .MuiTouchRipple-child": { backgroundColor: a },
-  };
-};
+const dividerBtnSx = panelGroupButtonSx;
 
+/** สลับชุดสี เส้นคั่น / สีกรอบ — List iCons */
+const ListIconsColorSelectLine = ({
+  prev,
+  next,
+  value,
+  prevAria,
+  nextAria,
+  groupAria,
+}) => (
+  <div
+    className="flex dash-input items-center justify-between gap-0.5 rounded-lg border border-slate-200 bg-white px-0.5 py-0.5 dark:border-white/10 dark:bg-slate-800/90"
+    role="group"
+    aria-label={groupAria}
+  >
+    <button
+      type="button"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+      onClick={prev}
+      aria-label={prevAria}
+    >
+      <ChevronLeft className="size-4" strokeWidth={2} aria-hidden />
+    </button>
+    <span className="min-w-0 flex-1 truncate text-center text-[11px] font-normal text-slate-800 dark:text-white/90">
+      {value}
+    </span>
+    <button
+      type="button"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+      onClick={next}
+      aria-label={nextAria}
+    >
+      <ChevronRight className="size-4" strokeWidth={2} aria-hidden />
+    </button>
+  </div>
+);
+
+const LIST_ICONS_COLOR_EDIT_MODES = [
+  { id: "divider", label: "สีเส้นคั่น" },
+  { id: "frame", label: "สีกรอบ" },
+];
+
+/** stepper — พื้นหลัง/กรอบตาม Dashboard (dash-input) */
 const stepperBtnClass =
-  "inline-flex h-[34px] w-10 shrink-0 items-center justify-center border-0 bg-white text-slate-700 transition hover:bg-slate-50 dark:bg-slate-900/80 dark:text-white/90 dark:hover:bg-white/10";
-const stepperMidClass =
-  "flex h-[34px] min-w-0 flex-1 items-center justify-center border-x border-slate-200 bg-white px-2 text-left text-[12px] font-normal tabular-nums text-slate-800 dark:border-white/10 dark:bg-slate-900/80 dark:text-white/90";
-
+  "flex h-[34px] w-9 shrink-0 items-center justify-center border-0 bg-transparent text-[12px] font-normal text-slate-700 transition hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/10";
 /** ช่องกลางแบบพิมพ์ได้ — min แคบลงให้ปุ่ม ± กว้างขึ้น; ยังพอเลข 2 หลัก */
 const stepperMidNumericClass =
-  "flex h-[34px] min-w-[1.5rem] flex-1 items-stretch justify-center border-x border-slate-200 bg-white px-0.5 dark:border-white/10 dark:bg-slate-900/80";
+  "flex h-[34px] min-w-[1.5rem] flex-1 items-stretch justify-center border-x border-slate-200 bg-transparent px-0.5 dark:border-white/10";
 
 const itemRowReorderBtnClass =
   "rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-white/10 dark:hover:text-white/80";
@@ -229,17 +238,17 @@ function ListImagePanelRangeRow({
             flex: 1,
             fontSize: compact ? 12 : 13,
             fontWeight: 600,
-            color: "rgb(51 65 85)",
+            color: "var(--dash-panel-heading, #0f172a)",
             mb: 0.35,
             fontVariantNumeric: "tabular-nums",
-            ".dark &": { color: "rgba(255,255,255,0.78)" },
+            ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
           }}
         >
           {label}{" "}
           <span className="text-slate-400 dark:text-slate-400">
             {formatLabelValue ? formatLabelValue(value) : Math.round(value)}
           </span>
-          <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+          <div className="dash-heading-rule min-w-0 flex-1 border-b" />
         </Typography>
       </div>
       <div className="w-full px-[2px] pb-[2px] pt-[2px]">
@@ -300,14 +309,14 @@ function NumericStepper({
   );
 
   return (
-    <div className="flex w-full overflow-hidden rounded-md border border-slate-200 dark:border-white/10">
+    <div className="dash-input flex h-[34px] w-full overflow-hidden rounded-md border border-slate-200 dark:border-white/10">
       <button
         type="button"
         className={stepperBtnClass}
         aria-label={decLabel}
         onClick={() => onChange(Math.max(min, value - 1))}
       >
-        <Minus className="h-4 w-4 shrink-0" strokeWidth={2.35} aria-hidden />
+        <Minus className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden />
       </button>
       <div className={stepperMidNumericClass} style={{ cursor: "text" }}>
         <input
@@ -336,7 +345,7 @@ function NumericStepper({
         aria-label={incLabel}
         onClick={() => onChange(Math.min(max, value + 1))}
       >
-        <Plus className="h-4 w-4 shrink-0" strokeWidth={2.35} aria-hidden />
+        <Plus className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden />
       </button>
     </div>
   );
@@ -351,10 +360,29 @@ const LIST_ITEMS_ICON_CORNER_SLIDER_MAX = 80;
 
 const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) => {
   const [draft, setDraft] = useState(() => mergeListElement(element));
+  const itemNodeRefs = useRef(new Map());
+  const itemStableKeysRef = useRef([]);
+  const flipRectsRef = useRef(null);
+  const moveLockRef = useRef(false);
+  const [movingItemKey, setMovingItemKey] = useState(null);
+  /** List iCons — โหมดชุดสีรวม เส้นคั่น / สีกรอบ */
+  const [listIconsColorEditMode, setListIconsColorEditMode] = useState("divider");
 
   useEffect(() => {
     setDraft(mergeListElement(element));
   }, [element]);
+
+  useEffect(() => {
+    setListIconsColorEditMode("divider");
+  }, [element?.id]);
+
+  useEffect(() => {
+    itemStableKeysRef.current = [];
+    itemNodeRefs.current = new Map();
+    flipRectsRef.current = null;
+    moveLockRef.current = false;
+    setMovingItemKey(null);
+  }, [element?.id]);
 
   const commit = useCallback(
     (next) => {
@@ -363,6 +391,28 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
     },
     [onUpdate]
   );
+
+  const ensureStableKeys = useCallback((count) => {
+    const keys = itemStableKeysRef.current;
+    while (keys.length < count) {
+      keys.push(`li-k-${Date.now()}-${keys.length}-${Math.random().toString(36).slice(2, 7)}`);
+    }
+    if (keys.length > count) keys.length = count;
+    return keys;
+  }, []);
+
+  const captureItemRects = useCallback(() => {
+    const rects = new Map();
+    itemNodeRefs.current.forEach((el, id) => {
+      if (el) rects.set(id, el.getBoundingClientRect());
+    });
+    flipRectsRef.current = rects;
+  }, []);
+
+  const setItemNodeRef = useCallback((id, el) => {
+    if (el) itemNodeRefs.current.set(id, el);
+    else itemNodeRefs.current.delete(id);
+  }, []);
 
   const allColors = useMemo(() => {
     if (!theme?.mainColor?.length) return [];
@@ -381,18 +431,82 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
   };
 
   const items = draft.listItems || [];
+  ensureStableKeys(items.length);
+  const itemOrderKey = itemStableKeysRef.current.slice(0, items.length).join("|");
+
+  useLayoutEffect(() => {
+    const prevRects = flipRectsRef.current;
+    if (!prevRects) return;
+    flipRectsRef.current = null;
+
+    const animations = [];
+    itemNodeRefs.current.forEach((el, id) => {
+      const first = prevRects.get(id);
+      if (!el || !first) return;
+      const last = el.getBoundingClientRect();
+      const dy = first.top - last.top;
+      if (Math.abs(dy) < 0.5) return;
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+      animations.push(el);
+    });
+
+    if (!animations.length) {
+      moveLockRef.current = false;
+      setMovingItemKey(null);
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      animations.forEach((el) => {
+        el.style.transition = "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)";
+        el.style.transform = "";
+      });
+    });
+
+    const unlockTimer = window.setTimeout(() => {
+      animations.forEach((el) => {
+        el.style.transition = "";
+        el.style.transform = "";
+      });
+      moveLockRef.current = false;
+      setMovingItemKey(null);
+    }, 260);
+
+    return () => {
+      window.clearTimeout(unlockTimer);
+    };
+  }, [itemOrderKey]);
 
   const handleCountChange = (newCount) => {
     const clamped = Math.min(12, Math.max(1, newCount));
     const m = mergeListElement({ ...draft, listItemCount: clamped });
+    ensureStableKeys(m.listItems?.length || clamped);
     setDraft(m);
     commit(m);
   };
 
   const moveItem = (fromIdx, toIdx) => {
-    if (toIdx < 0 || toIdx >= items.length) return;
+    if (moveLockRef.current) return;
+    if (
+      fromIdx < 0 ||
+      toIdx < 0 ||
+      fromIdx >= items.length ||
+      toIdx >= items.length ||
+      fromIdx === toIdx
+    ) {
+      return;
+    }
+    const keys = ensureStableKeys(items.length);
+    captureItemRects();
+    moveLockRef.current = true;
     const next = [...items];
-    [next[fromIdx], next[toIdx]] = [next[toIdx], next[fromIdx]];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    const [movedKey] = keys.splice(fromIdx, 1);
+    keys.splice(toIdx, 0, movedKey);
+    itemStableKeysRef.current = keys;
+    setMovingItemKey(movedKey || null);
     const m = mergeListElement({ ...draft, listItems: next, listItemCount: next.length });
     setDraft(m);
     commit(m);
@@ -400,6 +514,9 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
 
   const deleteItem = (idx) => {
     if (items.length <= 1) return;
+    const keys = ensureStableKeys(items.length);
+    keys.splice(idx, 1);
+    itemStableKeysRef.current = keys;
     const next = items.filter((_, j) => j !== idx);
     const m = mergeListElement({ ...draft, listItems: next, listItemCount: next.length });
     setDraft(m);
@@ -408,8 +525,15 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
 
   const cloneItem = (idx) => {
     if (items.length >= 12) return;
+    const keys = ensureStableKeys(items.length);
     const next = [...items];
     next.splice(idx + 1, 0, lodash.cloneDeep(items[idx]));
+    keys.splice(
+      idx + 1,
+      0,
+      `li-k-${Date.now()}-${keys.length}-${Math.random().toString(36).slice(2, 7)}`
+    );
+    itemStableKeysRef.current = keys;
     const m = mergeListElement({ ...draft, listItems: next, listItemCount: next.length });
     setDraft(m);
     commit(m);
@@ -417,25 +541,36 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
 
   return (
     <aside
-      className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10"
+      className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
       style={{ color: textColor || undefined }}
     >
       {/* Header */}
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-slate-800/60">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             {element?.listIconsElement
               ? "List iCons"
               : element?.listImageElement
                 ? "List Images"
                 : "List Items"}
           </span>
-          <span
-            className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
             title={String(element?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(element?.id ?? "")}`}
+            onClick={() => {
+              const id = String(element?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
           >
-            <span className="truncate">{element?.id}</span>
-          </span>
+            {(() => {
+              const id = String(element?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -467,10 +602,10 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
               {draft.listIconsElement === true && (
                 <div>
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="shrink-0 text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                    <span className="dash-panel-label shrink-0 text-[12px] font-semibold">
                       การแสดงผล
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <ButtonGroup variant="outlined" fullWidth sx={dividerGroupRootSx}>
                     {LIST_ICONS_DISPLAY_MODE_OPTIONS.map(({ value, label }) => {
@@ -501,10 +636,10 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                 (draft.listIconsDisplayMode ?? "iconText") === "iconText" && (
                 <div>
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="shrink-0 text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                    <span className="dash-panel-label shrink-0 text-[12px] font-semibold">
                       รูปแบบ
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <ButtonGroup variant="outlined" fullWidth sx={dividerGroupRootSx}>
                     {LAYOUT_OPTIONS.map(({ value, label }) => {
@@ -763,10 +898,10 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
               {draft.listIconsElement === true && (
                 <div>
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="shrink-0 text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                    <span className="dash-panel-label shrink-0 text-[12px] font-semibold">
                       ตำแหน่ง
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <ButtonGroup variant="outlined" fullWidth sx={dividerGroupRootSx}>
                     {ALIGN_OPTIONS.map(({ value, label, Icon }) => {
@@ -791,80 +926,76 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
               )}
 
               {/* ขนาดรูปภาพ — เฉพาะ List iMage */}
-              {draft.listImageElement === true && (
-                <div>
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className="shrink-0 text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                      ขนาดรูปภาพ
-                    </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
-                  </div>
-                  {(() => {
-                    const LIST_IMAGE_SIZE_MIN = 28;
-                    const LIST_IMAGE_SIZE_MAX = 120;
-                    const raw =
-                      Number.isFinite(Number(draft.containerSize))
-                        ? Number(draft.containerSize)
-                        : Number.isFinite(Number(items[0]?.containerSize))
-                          ? Number(items[0].containerSize)
-                          : LIST_IMAGE_DEFAULT_CONTAINER_SIZE;
-                    const imageSizeVal = Math.max(
-                      LIST_IMAGE_SIZE_MIN,
-                      Math.min(LIST_IMAGE_SIZE_MAX, raw)
-                    );
-                    const fillPct =
-                      ((imageSizeVal - LIST_IMAGE_SIZE_MIN) /
-                        (LIST_IMAGE_SIZE_MAX - LIST_IMAGE_SIZE_MIN)) *
-                      100;
-                    return (
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="range"
-                          min={LIST_IMAGE_SIZE_MIN}
-                          max={LIST_IMAGE_SIZE_MAX}
-                          step={2}
-                          value={imageSizeVal}
-                          className={THEME_RANGE_INPUT_CLASS}
-                          style={{
-                            "--fill": textColor || "#0d9488",
-                            "--pos": `${fillPct}%`,
-                          }}
-                          aria-label="ขนาดรูปภาพ"
-                          onChange={(e) => {
-                            const nextSize = Math.max(
-                              LIST_IMAGE_SIZE_MIN,
-                              Math.min(LIST_IMAGE_SIZE_MAX, Number(e.target.value))
-                            );
-                            const nextItems = items.map((it) => ({
-                              ...it,
-                              containerSize: nextSize,
-                            }));
-                            const m = mergeListElement({
-                              ...draft,
-                              containerSize: nextSize,
-                              listItems: nextItems,
-                            });
-                            setDraft(m);
-                            commit(m);
-                          }}
-                        />
-                        <span className="w-11 shrink-0 text-right text-[11px] tabular-nums text-slate-600 dark:text-white/70">
-                          {imageSizeVal}px
+              {draft.listImageElement === true &&
+                (() => {
+                  const LIST_IMAGE_SIZE_MIN = 28;
+                  const LIST_IMAGE_SIZE_MAX = 120;
+                  const raw = Number.isFinite(Number(draft.containerSize))
+                    ? Number(draft.containerSize)
+                    : Number.isFinite(Number(items[0]?.containerSize))
+                      ? Number(items[0].containerSize)
+                      : LIST_IMAGE_DEFAULT_CONTAINER_SIZE;
+                  const imageSizeVal = Math.max(
+                    LIST_IMAGE_SIZE_MIN,
+                    Math.min(LIST_IMAGE_SIZE_MAX, raw)
+                  );
+                  const fillPct =
+                    ((imageSizeVal - LIST_IMAGE_SIZE_MIN) /
+                      (LIST_IMAGE_SIZE_MAX - LIST_IMAGE_SIZE_MIN)) *
+                    100;
+                  return (
+                    <div>
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="dash-panel-label shrink-0 text-[12px] font-semibold tabular-nums">
+                          ขนาดรูปภาพ{" "}
+                          <span className="text-slate-400 dark:text-slate-400">
+                            {Math.round(imageSizeVal)}
+                          </span>
                         </span>
+                        <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                       </div>
-                    );
-                  })()}
-                </div>
-              )}
+                      <input
+                        type="range"
+                        min={LIST_IMAGE_SIZE_MIN}
+                        max={LIST_IMAGE_SIZE_MAX}
+                        step={2}
+                        value={imageSizeVal}
+                        className={THEME_RANGE_INPUT_CLASS}
+                        style={{
+                          "--fill": textColor || "#0d9488",
+                          "--pos": `${fillPct}%`,
+                        }}
+                        aria-label="ขนาดรูปภาพ"
+                        onChange={(e) => {
+                          const nextSize = Math.max(
+                            LIST_IMAGE_SIZE_MIN,
+                            Math.min(LIST_IMAGE_SIZE_MAX, Number(e.target.value))
+                          );
+                          const nextItems = items.map((it) => ({
+                            ...it,
+                            containerSize: nextSize,
+                          }));
+                          const m = mergeListElement({
+                            ...draft,
+                            containerSize: nextSize,
+                            listItems: nextItems,
+                          });
+                          setDraft(m);
+                          commit(m);
+                        }}
+                      />
+                    </div>
+                  );
+                })()}
 
               {/* จำนวนรายการ | ระยะห่างนอกไอเทม (per-item vertical gap) | ระยะห่างในไอเทม */}
               <div className="grid grid-cols-3 gap-x-2 gap-y-3">
                 <div className="min-w-0">
-                  <div className="mb-2 flex items-center gap-1">
-                    <span className="shrink-0 text-[11px] font-semibold text-slate-700 dark:text-white/80">
+                  <div className="mb-[13px] flex items-center gap-1">
+                    <span className="dash-panel-label shrink-0 text-[11px] font-semibold">
                       จำนวนรายการ
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <NumericStepper
                     value={items.length}
@@ -876,11 +1007,11 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                   />
                 </div>
                 <div className="min-w-0">
-                  <div className="mb-2 flex items-center gap-1">
-                    <span className="shrink-0 text-[11px] font-semibold text-slate-700 dark:text-white/80">
+                  <div className="mb-[13px] flex items-center gap-1">
+                    <span className="dash-panel-label shrink-0 text-[11px] font-semibold">
                       ระยะห่างนอกไอเทม
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <NumericStepper
                     value={(() => {
@@ -901,11 +1032,11 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                   />
                 </div>
                 <div className="min-w-0">
-                  <div className="mb-2 flex items-center gap-1">
-                    <span className="shrink-0 text-[11px] font-semibold text-slate-700 dark:text-white/80">
+                  <div className="mb-[13px] flex items-center gap-1">
+                    <span className="dash-panel-label shrink-0 text-[11px] font-semibold">
                       ระยะห่างในไอเทม
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <NumericStepper
                     value={
@@ -1014,13 +1145,13 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                             flexShrink: 0,
                             fontSize: 13,
                             fontWeight: 600,
-                            color: "rgb(51 65 85)",
-                            ".dark &": { color: "rgba(255,255,255,0.78)" },
+                            color: "var(--dash-panel-heading, #0f172a)",
+                            ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                           }}
                         >
                           สีกรอบ
                         </Typography>
-                        <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                        <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                         <ListImagePanelSwitch
                           className="shrink-0"
                           accentColor={textColor || "#0d9488"}
@@ -1112,8 +1243,8 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                                 flexShrink: 0,
                                 fontSize: 13,
                                 fontWeight: 600,
-                                color: "rgb(51 65 85)",
-                                ".dark &": { color: "rgba(255,255,255,0.78)" },
+                                color: "var(--dash-panel-heading, #0f172a)",
+                                ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                               }}
                             >
                               ความโค้งมน
@@ -1121,7 +1252,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                             <span className="text-[12px] text-slate-400 dark:text-slate-400 tabular-nums">
                               {listImgFrameRadius}
                             </span>
-                            <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                            <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                           </div>
                           <div className="w-full px-[2px] pt-[2px] pb-[2px]">
                             <input
@@ -1156,8 +1287,8 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                                 flexShrink: 0,
                                 fontSize: 13,
                                 fontWeight: 600,
-                                color: "rgb(51 65 85)",
-                                ".dark &": { color: "rgba(255,255,255,0.78)" },
+                                color: "var(--dash-panel-heading, #0f172a)",
+                                ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                               }}
                             >
                               กรอบเบลอ
@@ -1165,7 +1296,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                             <span className="text-[12px] text-slate-400 dark:text-slate-400 tabular-nums">
                               {listImgFrameGlass}
                             </span>
-                            <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                            <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                           </div>
                           <div className="w-full px-[2px] pt-[2px] pb-[2px]">
                             <input
@@ -1351,13 +1482,13 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                                   flexShrink: 0,
                                   fontSize: 13,
                                   fontWeight: 600,
-                                  color: "rgb(51 65 85)",
-                                  ".dark &": { color: "rgba(255,255,255,0.78)" },
+                                  color: "var(--dash-panel-heading, #0f172a)",
+                                  ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                                 }}
                               >
                                 สีกรอบ
                               </Typography>
-                              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                               <ListImagePanelSwitch
                                 className="shrink-0"
                                 accentColor={textColor || "#0d9488"}
@@ -1449,8 +1580,8 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                                       flexShrink: 0,
                                       fontSize: 13,
                                       fontWeight: 600,
-                                      color: "rgb(51 65 85)",
-                                      ".dark &": { color: "rgba(255,255,255,0.78)" },
+                                      color: "var(--dash-panel-heading, #0f172a)",
+                                      ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                                     }}
                                   >
                                     ความโค้งมน
@@ -1458,7 +1589,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                                   <span className="text-[12px] text-slate-400 dark:text-slate-400 tabular-nums">
                                     {listItemFrameRadius}
                                   </span>
-                                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                                 </div>
                                 <div className="w-full px-[2px] pt-[2px] pb-[2px]">
                                   <input
@@ -1493,8 +1624,8 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                                       flexShrink: 0,
                                       fontSize: 13,
                                       fontWeight: 600,
-                                      color: "rgb(51 65 85)",
-                                      ".dark &": { color: "rgba(255,255,255,0.78)" },
+                                      color: "var(--dash-panel-heading, #0f172a)",
+                                      ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                                     }}
                                   >
                                     กรอบเบลอ
@@ -1502,7 +1633,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                                   <span className="text-[12px] text-slate-400 dark:text-slate-400 tabular-nums">
                                     {listItemIconGlass}
                                   </span>
-                                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                                 </div>
                                 <div className="w-full px-[2px] pt-[2px] pb-[2px]">
                                   <input
@@ -1593,11 +1724,11 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
               {/* ตำแหน่งการจัดวาง — List iTems + List iMage (ไม่ใช่ iCons) */}
               {draft.listIconsElement !== true && (
                 <Box sx={{ mt: "14px !important" }}>
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <div className="mb-[13px] flex items-center gap-2">
+                    <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                       ตำแหน่งการจัดวาง
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <ButtonGroup variant="outlined" fullWidth sx={dividerGroupRootSx}>
                     {LIST_ITEMS_ICON_ALIGN_OPTIONS.map(({ value, label }) => {
@@ -1637,10 +1768,10 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                     })() && (
                     <Box sx={{ mt: 2 }}>
                       <div className="mb-2 flex items-center gap-2">
-                        <span className="shrink-0 text-[12px] font-semibold text-slate-700 dark:text-white/80">
+                        <span className="dash-panel-label shrink-0 text-[12px] font-semibold">
                           สลับด้าน
                         </span>
-                        <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                        <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                       </div>
                       <ButtonGroup variant="outlined" fullWidth sx={dividerGroupRootSx}>
                         {LIST_IMAGE_SPLIT_ARRANGEMENT_OPTIONS.map(({ value, label }) => {
@@ -1676,16 +1807,39 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
               {/* Divider style */}
               <Box>
                 <div className="mb-3 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     เส้นคั่น
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                  {/* List iCons — Switch สีกรอบ (ปิดเป็นค่าเริ่มต้น) */}
+                  {draft.listIconsElement === true && (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span className="text-[11px] font-medium text-slate-600 dark:text-white/70">
+                        สีกรอบ
+                      </span>
+                      <ListImagePanelSwitch
+                        accentColor={textColor || "#0d9488"}
+                        checked={draft.listItemRowFrameEnabled === true}
+                        onChange={(e) => {
+                          const on = e.target.checked;
+                          const m = mergeListElement({
+                            ...draft,
+                            listItemRowFrameEnabled: on,
+                          });
+                          setDraft(m);
+                          commit(m);
+                          if (on) setListIconsColorEditMode("frame");
+                          else if (Boolean(m.listDividerEnabled)) {
+                            setListIconsColorEditMode("divider");
+                          }
+                        }}
+                        inputProps={{ "aria-label": "เปิดสีกรอบรายการ" }}
+                      />
+                    </div>
+                  )}
                   {/* Switch แนวนอน ↔ แนวตั้ง — List iTems และ List iMage */}
                   {draft.listIconsElement !== true && (
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <span className={`text-[11px] font-medium tabular-nums transition-colors ${Boolean(draft.listVerticalTimelineDivider) ? "text-slate-400 dark:text-white/30" : "text-slate-600 dark:text-white/70"}`}>
-                        แนวนอน
-                      </span>
                       <ListImagePanelSwitch
                         accentColor={textColor || "#0d9488"}
                         checked={Boolean(draft.listVerticalTimelineDivider)}
@@ -1721,13 +1875,20 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                         color="inherit"
                         sx={dividerBtnSx(isSelected, textColor)}
                         onClick={() => {
+                          const enabled = opt.value !== "none";
                           const m = mergeListElement({
                             ...draft,
-                            listDividerEnabled: opt.value !== "none",
-                            ...(opt.value !== "none" ? { listDividerStyle: opt.value } : {}),
+                            listDividerEnabled: enabled,
+                            ...(enabled ? { listDividerStyle: opt.value } : {}),
                           });
                           setDraft(m);
                           commit(m);
+                          if (draft.listIconsElement === true) {
+                            if (enabled) setListIconsColorEditMode("divider");
+                            else if (m.listItemRowFrameEnabled === true) {
+                              setListIconsColorEditMode("frame");
+                            }
+                          }
                         }}
                       >
                         {opt.label}
@@ -1736,9 +1897,127 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                   })}
                 </ButtonGroup>
 
-                {/* Color + opacity — แสดงเมื่อเส้นคั่นเปิดอยู่ */}
-                {Boolean(draft.listDividerEnabled) && allColors.length > 0 && (
-                  <div className="mt-2.5 rounded-md bg-white px-1 pb-1.5 pt-1 dark:bg-zinc-800">
+                {/* List iCons — รวมชุดสี เส้นคั่น + สีกรอบ ด้วยปุ่มเลื่อนซ้ายขวา */}
+                {draft.listIconsElement === true &&
+                  (() => {
+                    const dividerOn = Boolean(draft.listDividerEnabled);
+                    const frameOn = draft.listItemRowFrameEnabled === true;
+                    const modes = LIST_ICONS_COLOR_EDIT_MODES.filter((m) =>
+                      m.id === "divider" ? dividerOn : frameOn
+                    );
+                    if (!modes.length || allColors.length === 0) return null;
+                    const modeIds = modes.map((m) => m.id);
+                    const activeMode = modeIds.includes(listIconsColorEditMode)
+                      ? listIconsColorEditMode
+                      : modeIds[0];
+                    const activeModeLabel =
+                      modes.find((m) => m.id === activeMode)?.label || modes[0].label;
+                    const cycleMode = (dir) => {
+                      const i = Math.max(0, modeIds.indexOf(activeMode));
+                      const next =
+                        modeIds[(i + dir + modeIds.length) % modeIds.length];
+                      setListIconsColorEditMode(next);
+                    };
+                    const isFrameMode = activeMode === "frame";
+                    const opacityVal = isFrameMode
+                      ? Number.isFinite(Number(draft.listItemRowFrameOpacity))
+                        ? Math.max(0, Math.min(255, Number(draft.listItemRowFrameOpacity)))
+                        : LIST_ELEMENT_DEFAULTS.listItemRowFrameOpacity
+                      : Number.isFinite(Number(draft.listDividerOpacity))
+                        ? Math.max(0, Math.min(255, Number(draft.listDividerOpacity)))
+                        : LIST_ELEMENT_DEFAULTS.listDividerOpacity;
+                    const activeSwatch = isFrameMode
+                      ? draft.listItemRowFrameColor ??
+                        LIST_ELEMENT_DEFAULTS.listItemRowFrameColor
+                      : draft.listDividerColor ?? LIST_ELEMENT_DEFAULTS.listDividerColor;
+                    return (
+                      <div className="mt-2.5 space-y-2">
+                        <ListIconsColorSelectLine
+                          prev={() => cycleMode(-1)}
+                          next={() => cycleMode(1)}
+                          value={activeModeLabel}
+                          prevAria="โหมดสีก่อนหน้า"
+                          nextAria="โหมดสีถัดไป"
+                          groupAria="สลับแก้สีเส้นคั่นหรือสีกรอบ"
+                        />
+                        <div className="dash-card rounded-md bg-white px-1 pb-1.5 pt-1 dark:bg-zinc-800">
+                          <div className="px-1 pb-2 pt-1">
+                            <input
+                              type="range"
+                              min={0}
+                              max={255}
+                              step={1}
+                              value={opacityVal}
+                              className={THEME_RANGE_INPUT_CLASS}
+                              style={{
+                                "--fill": textColor || "#0d9488",
+                                "--pos": `${(opacityVal / 255) * 100}%`,
+                              }}
+                              aria-label={
+                                isFrameMode
+                                  ? "ความโปร่งแสงสีกรอบ"
+                                  : "ความโปร่งแสงสีเส้นคั่น"
+                              }
+                              onChange={(e) => {
+                                const v = Number(e.target.value) || 0;
+                                const m = mergeListElement(
+                                  isFrameMode
+                                    ? { ...draft, listItemRowFrameOpacity: v }
+                                    : { ...draft, listDividerOpacity: v }
+                                );
+                                setDraft(m);
+                                commit(m);
+                              }}
+                            />
+                          </div>
+                          <div className="grid grid-cols-10 place-items-center gap-y-[6px]">
+                            {allColors.map((color, i) => {
+                              const bgColor =
+                                typeof color === "string"
+                                  ? color
+                                  : theme?.[color.type]?.[color.index];
+                              if (!bgColor) return null;
+                              const selected =
+                                chipSelected(activeSwatch, color) ||
+                                activeSwatch === color;
+                              return (
+                                <button
+                                  key={`list-icons-color-${activeMode}-${i}`}
+                                  type="button"
+                                  className="flex size-[25px] items-center justify-center rounded-full border border-slate-200 dark:border-white/10"
+                                  style={{ backgroundColor: bgColor }}
+                                  aria-label={`${activeModeLabel} ${bgColor}`}
+                                  onClick={() => {
+                                    const m = mergeListElement(
+                                      isFrameMode
+                                        ? { ...draft, listItemRowFrameColor: color }
+                                        : { ...draft, listDividerColor: color }
+                                    );
+                                    setDraft(m);
+                                    commit(m);
+                                  }}
+                                >
+                                  {selected && (
+                                    <Check
+                                      className={swatchSelectedCheckClassName(bgColor)}
+                                      strokeWidth={4}
+                                      size={11}
+                                    />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                {/* Color + opacity — List iTems / List iMage เมื่อเส้นคั่นเปิดอยู่ */}
+                {draft.listIconsElement !== true &&
+                  Boolean(draft.listDividerEnabled) &&
+                  allColors.length > 0 && (
+                  <div className="mt-2.5 dash-card rounded-md bg-white px-1 pb-1.5 pt-1 dark:bg-zinc-800">
                     <div className="px-1 pb-2 pt-1">
                       <input
                         type="range"
@@ -1798,20 +2077,20 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
               {/* ข้อความประกอบ — เฉพาะ List iMage (เหนือรายการทั้งหมด) */}
               {draft.listImageElement === true && (
                 <Box sx={{ width: "100%" }}>
-                  <div className="mb-2 flex w-full items-center gap-2 pr-0.5">
+                  <div className="mb-[13px] flex w-full items-center gap-2 pr-0.5">
                     <Typography
                       component="div"
                       sx={{
                         flexShrink: 0,
                         fontSize: 13,
                         fontWeight: 600,
-                        color: "rgb(51 65 85)",
-                        ".dark &": { color: "rgba(255,255,255,0.78)" },
+                        color: "var(--dash-panel-heading, #0f172a)",
+                        ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                       }}
                     >
                       ข้อความประกอบ
                     </Typography>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     <ListImagePanelSwitch
                       className="shrink-0"
                       accentColor={textColor || "#0d9488"}
@@ -1845,69 +2124,77 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                   </div>
                   {draft.listImageCaptionEnabled ? (
                     <>
-                      {(() => {
-                        const fs = Math.min(
-                          28,
-                          Math.max(
-                            10,
-                            Number.isFinite(Number(draft.listImageCaptionFontSize))
-                              ? Number(draft.listImageCaptionFontSize)
-                              : LIST_IMAGE_DEFAULT_CAPTION_FONT_SIZE
-                          )
-                        );
-                        return (
-                          <ListImagePanelRangeRow
-                            label="ขนาดข้อความ"
-                            value={fs}
-                            min={10}
-                            max={28}
-                            step={1}
-                            textColor={textColor}
-                            onChange={(v) => {
-                              const m = mergeListElement({
-                                ...draft,
-                                listImageCaptionFontSize: v,
-                              });
-                              setDraft(m);
-                              commit(m);
-                            }}
-                          />
-                        );
-                      })()}
-                      {(() => {
-                        const oy = Math.min(
-                          32,
-                          Math.max(
-                            -32,
-                            Number.isFinite(Number(draft.listImageCaptionOffsetY))
-                              ? Number(draft.listImageCaptionOffsetY)
-                              : 0
-                          )
-                        );
-                        return (
-                          <ListImagePanelRangeRow
-                            label="ขยับบน - ล่าง"
-                            value={oy}
-                            min={-32}
-                            max={32}
-                            step={1}
-                            textColor={textColor}
-                            formatLabelValue={(v) => {
-                              const n = Math.round(v);
-                              if (n === 0) return "0";
-                              return `${n > 0 ? "+" : ""}${n}`;
-                            }}
-                            onChange={(v) => {
-                              const m = mergeListElement({
-                                ...draft,
-                                listImageCaptionOffsetY: v,
-                              });
-                              setDraft(m);
-                              commit(m);
-                            }}
-                          />
-                        );
-                      })()}
+                      <div className="mt-2 grid grid-cols-2 gap-x-3">
+                        <div className="min-w-0">
+                          {(() => {
+                            const fs = Math.min(
+                              28,
+                              Math.max(
+                                10,
+                                Number.isFinite(Number(draft.listImageCaptionFontSize))
+                                  ? Number(draft.listImageCaptionFontSize)
+                                  : LIST_IMAGE_DEFAULT_CAPTION_FONT_SIZE
+                              )
+                            );
+                            return (
+                              <ListImagePanelRangeRow
+                                compact
+                                label="ขนาดข้อความ"
+                                value={fs}
+                                min={10}
+                                max={28}
+                                step={1}
+                                textColor={textColor}
+                                onChange={(v) => {
+                                  const m = mergeListElement({
+                                    ...draft,
+                                    listImageCaptionFontSize: v,
+                                  });
+                                  setDraft(m);
+                                  commit(m);
+                                }}
+                              />
+                            );
+                          })()}
+                        </div>
+                        <div className="min-w-0">
+                          {(() => {
+                            const oy = Math.min(
+                              32,
+                              Math.max(
+                                -32,
+                                Number.isFinite(Number(draft.listImageCaptionOffsetY))
+                                  ? Number(draft.listImageCaptionOffsetY)
+                                  : 0
+                              )
+                            );
+                            return (
+                              <ListImagePanelRangeRow
+                                compact
+                                label="ขยับบน - ล่าง"
+                                value={oy}
+                                min={-32}
+                                max={32}
+                                step={1}
+                                textColor={textColor}
+                                formatLabelValue={(v) => {
+                                  const n = Math.round(v);
+                                  if (n === 0) return "0";
+                                  return `${n > 0 ? "+" : ""}${n}`;
+                                }}
+                                onChange={(v) => {
+                                  const m = mergeListElement({
+                                    ...draft,
+                                    listImageCaptionOffsetY: v,
+                                  });
+                                  setDraft(m);
+                                  commit(m);
+                                }}
+                              />
+                            );
+                          })()}
+                        </div>
+                      </div>
                       {allColors.length > 0 ? (
                         <Box sx={{ width: "100%" }}>
                           <div className="mt-2 flex w-full items-center gap-2 pr-0.5">
@@ -1917,15 +2204,15 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                                 flexShrink: 0,
                                 fontSize: 13,
                                 fontWeight: 600,
-                                color: "rgb(51 65 85)",
-                                ".dark &": { color: "rgba(255,255,255,0.78)" },
+                                color: "var(--dash-panel-heading, #0f172a)",
+                                ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                               }}
                             >
                               สีข้อความ
                             </Typography>
-                            <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                            <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                           </div>
-                          <div className="rounded-md bg-white px-1 pb-1.5 pt-1 dark:bg-zinc-800">
+                          <div className="rounded-md dash-card bg-white px-1 pb-1.5 pt-1 dark:bg-zinc-800">
                           <div className="px-1 pb-2 pt-1">
                             <input
                               type="range"
@@ -2007,19 +2294,15 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                 </Box>
               )}
 
-              {/* สีกรอบ — List iCons (เหมือน Element Between) */}
+              {/* ความโค้งมน / กรอบเบลอ — List iCons เมื่อเปิดสีกรอบ */}
               {(() => {
                 const d = mergeListElement(draft);
                 if (d.listIconsElement !== true) return null;
                 const listIconsFrameEnabled = d.listItemRowFrameEnabled === true;
-                const listIconsFrameOpacity = Number.isFinite(Number(d.listItemRowFrameOpacity))
-                  ? Math.max(0, Math.min(255, Number(d.listItemRowFrameOpacity)))
-                  : LIST_ELEMENT_DEFAULTS.listItemRowFrameOpacity;
+                if (!listIconsFrameEnabled) return null;
                 const listIconsFrameRadius = Number.isFinite(Number(d.listItemRowFrameRadius))
                   ? Math.max(0, Math.min(64, Number(d.listItemRowFrameRadius)))
                   : LIST_ELEMENT_DEFAULTS.listItemRowFrameRadius;
-                const listIconsFrameColor =
-                  d.listItemRowFrameColor ?? LIST_ELEMENT_DEFAULTS.listItemRowFrameColor;
                 const listIconsFrameGlass = Math.max(
                   0,
                   Math.min(
@@ -2033,102 +2316,6 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                 );
                 return (
                   <Stack spacing={1.5} sx={{ mt: "14px !important" }}>
-                    <Box sx={{ width: "100%" }}>
-                      <div className="mb-2 flex w-full items-center gap-2 pr-0.5">
-                        <Typography
-                          component="div"
-                          sx={{
-                            flexShrink: 0,
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: "rgb(51 65 85)",
-                            ".dark &": { color: "rgba(255,255,255,0.78)" },
-                          }}
-                        >
-                          สีกรอบ
-                        </Typography>
-                        <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
-                        <ListImagePanelSwitch
-                          className="shrink-0"
-                          accentColor={textColor || "#0d9488"}
-                          checked={listIconsFrameEnabled}
-                          onChange={(e) => {
-                            const m = mergeListElement({
-                              ...draft,
-                              listItemRowFrameEnabled: e.target.checked,
-                            });
-                            setDraft(m);
-                            commit(m);
-                          }}
-                          inputProps={{ "aria-label": "เปิดสีกรอบรายการ" }}
-                        />
-                      </div>
-                      {listIconsFrameEnabled ? (
-                        <>
-                          <div className="w-full px-[2px] pt-[2px] pb-[2px]">
-                            <input
-                              type="range"
-                              min={0}
-                              max={255}
-                              step={1}
-                              value={listIconsFrameOpacity}
-                              className={THEME_RANGE_INPUT_CLASS}
-                              style={{
-                                "--fill": textColor || "#0d9488",
-                                "--pos": `${(listIconsFrameOpacity / 255) * 100}%`,
-                              }}
-                              aria-label="ความโปร่งแสงสีกรอบ"
-                              onChange={(e) => {
-                                const v = Number(e.target.value) || 0;
-                                const m = mergeListElement({
-                                  ...draft,
-                                  listItemRowFrameOpacity: v,
-                                });
-                                setDraft(m);
-                                commit(m);
-                              }}
-                            />
-                          </div>
-                          <div className="mt-2 grid grid-cols-10 place-items-center gap-y-[6px]">
-                            {allColors.map((color, i) => {
-                              const bgColor =
-                                typeof color === "string"
-                                  ? color
-                                  : theme?.[color.type]?.[color.index];
-                              if (!bgColor) return null;
-                              const selected =
-                                chipSelected(listIconsFrameColor, color) ||
-                                listIconsFrameColor === color;
-                              return (
-                                <button
-                                  key={`list-icons-frame-${i}`}
-                                  type="button"
-                                  className="flex size-[25px] items-center justify-center rounded-full border border-slate-200 dark:border-white/10"
-                                  style={{ backgroundColor: bgColor }}
-                                  aria-label={`สีกรอบ ${bgColor}`}
-                                  onClick={() => {
-                                    const m = mergeListElement({
-                                      ...draft,
-                                      listItemRowFrameColor: color,
-                                    });
-                                    setDraft(m);
-                                    commit(m);
-                                  }}
-                                >
-                                  {selected && (
-                                    <Check
-                                      className={swatchSelectedCheckClassName(bgColor)}
-                                      strokeWidth={4}
-                                      size={11}
-                                    />
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </>
-                      ) : null}
-                    </Box>
                     {listIconsFrameEnabled ? (
                       <div className="grid grid-cols-2 gap-x-3">
                         <Box sx={{ width: "100%", mt: 1 }}>
@@ -2139,8 +2326,8 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                                 flexShrink: 0,
                                 fontSize: 13,
                                 fontWeight: 600,
-                                color: "rgb(51 65 85)",
-                                ".dark &": { color: "rgba(255,255,255,0.78)" },
+                                color: "var(--dash-panel-heading, #0f172a)",
+                                ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                               }}
                             >
                               ความโค้งมน
@@ -2148,7 +2335,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                             <span className="text-[12px] text-slate-400 dark:text-slate-400 tabular-nums">
                               {listIconsFrameRadius}
                             </span>
-                            <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                            <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                           </div>
                           <div className="w-full px-[2px] pt-[2px] pb-[2px]">
                             <input
@@ -2183,8 +2370,8 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                                 flexShrink: 0,
                                 fontSize: 13,
                                 fontWeight: 600,
-                                color: "rgb(51 65 85)",
-                                ".dark &": { color: "rgba(255,255,255,0.78)" },
+                                color: "var(--dash-panel-heading, #0f172a)",
+                                ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                               }}
                             >
                               กรอบเบลอ
@@ -2192,7 +2379,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                             <span className="text-[12px] text-slate-400 dark:text-slate-400 tabular-nums">
                               {listIconsFrameGlass}
                             </span>
-                            <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                            <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                           </div>
                           <div className="w-full px-[2px] pt-[2px] pb-[2px]">
                             <input
@@ -2225,38 +2412,59 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                 );
               })()}
 
-              {/* Item list */}
-              <Box sx={{ pb: 4 }}>
+              {/* Item list — List Images: Stack spacing={3} (24px) ลดเหลือ 6px */}
+              <Box
+                sx={{
+                  pb: 4,
+                  ...(draft.listImageElement === true
+                    ? { mt: "6px !important" }
+                    : null),
+                }}
+              >
                 <div className="mb-3 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     รายการทั้งหมด
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
-                <Stack spacing={1}>
+                <div className="flex flex-col gap-2">
                   {items.map((item, idx) => {
+                    const itemKey =
+                      itemStableKeysRef.current[idx] || `li-fallback-${idx}`;
+                    const isMoving = movingItemKey === itemKey;
                     const text = typeof item?.listText === "string" && item.listText.trim()
                       ? item.listText
                       : `รายการ ${idx + 1}`;
                     return (
                       <Box
-                        key={idx}
-                        className="flex w-full min-w-0 items-center gap-2 rounded-md border border-slate-200 px-2.5 py-1.5 dark:border-white/10"
+                        key={itemKey}
+                        ref={(el) => setItemNodeRef(itemKey, el)}
+                        className={`dash-input flex w-full min-w-0 items-center gap-2 rounded-md border bg-white px-2.5 py-1.5 will-change-transform dark:bg-slate-800/90 ${
+                          isMoving
+                            ? "border-slate-300 shadow-sm dark:border-white/25"
+                            : "border-slate-200 dark:border-white/10"
+                        }`}
                       >
-                        {/* Index badge */}
-                        <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded text-[10px] font-semibold text-white" style={{ backgroundColor: "#333333" }}>
+                        {/* Index badge — พื้นหลัง/ข้อความตามปุ่ม Active */}
+                        <span
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[#333333] text-[10px] font-semibold"
+                          style={{
+                            color: "var(--dash-panel-btn-group-active-text, #ffffff)",
+                          }}
+                        >
                           {idx + 1}
                         </span>
 
                         <div className="flex min-w-0 flex-1 items-center gap-2">
-                          {/* Text preview */}
+                          {/* Text preview — สีข้อความตาม สีข้อความปุ่ม Active */}
                           <Typography
                             sx={{
                               fontSize: 12,
                               lineHeight: 1.4,
-                              opacity: 0.8,
                               minWidth: 0,
                               flex: "1 1 auto",
+                              color:
+                                "var(--dash-panel-btn-group-active-text, #ffffff)",
                             }}
                             className="truncate"
                             component="span"
@@ -2268,7 +2476,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                           Boolean(draft.listImageCaptionEnabled) ? (
                             <input
                               type="text"
-                              className="h-6 w-[4.25rem] shrink-0 rounded-md border border-white/15 bg-[#333333] px-1.5 text-[11px] leading-tight text-white caret-white outline-none placeholder:text-white/45 focus:border-white/35 focus:ring-1 focus:ring-white/20"
+                              className="dash-input h-6 w-[4.25rem] shrink-0 rounded-md border border-slate-200 bg-white px-1.5 text-[11px] leading-tight text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none dark:border-white/10 dark:bg-slate-900/60 dark:text-white/90 dark:placeholder:text-white/40"
                               placeholder="ข้อความขวา"
                               value={
                                 typeof item?.listAsideText === "string"
@@ -2295,7 +2503,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                         <div className="flex shrink-0 items-center gap-0.5">
                           <button
                             type="button"
-                            disabled={idx === 0}
+                            disabled={idx === 0 || Boolean(movingItemKey)}
                             title="เลื่อนขึ้น"
                             aria-label="เลื่อนขึ้น"
                             className={itemRowReorderBtnClass}
@@ -2305,7 +2513,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                           </button>
                           <button
                             type="button"
-                            disabled={idx >= items.length - 1}
+                            disabled={idx >= items.length - 1 || Boolean(movingItemKey)}
                             title="เลื่อนลง"
                             aria-label="เลื่อนลง"
                             className={itemRowReorderBtnClass}
@@ -2315,7 +2523,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                           </button>
                           <button
                             type="button"
-                            disabled={items.length >= 12}
+                            disabled={items.length >= 12 || Boolean(movingItemKey)}
                             title={items.length >= 12 ? "ถึงจำนวนสูงสุดแล้ว (12)" : "คัดลอกรายการนี้"}
                             aria-label="คัดลอกรายการ"
                             className="rounded p-0.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-blue-950/40 dark:hover:text-blue-400"
@@ -2325,7 +2533,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                           </button>
                           <button
                             type="button"
-                            disabled={items.length <= 1}
+                            disabled={items.length <= 1 || Boolean(movingItemKey)}
                             title={items.length <= 1 ? "ต้องมีอย่างน้อย 1 รายการ" : "ลบรายการนี้"}
                             aria-label="ลบรายการ"
                             className="rounded p-0.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-red-950/40 dark:hover:text-red-400"
@@ -2337,7 +2545,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                       </Box>
                     );
                   })}
-                </Stack>
+                </div>
               </Box>
 
             </Stack>

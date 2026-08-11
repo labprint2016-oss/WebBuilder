@@ -169,10 +169,9 @@ const COMMON_FIELD_SX = (
 
   const mb = 0.5*height/40
 
-  const borderColor = darkMode === "dark" ? "#494d54" : "#e2e8f0"
+  const borderColor = "var(--dash-panel-input-border, #e2e8f0)"
   const textColor = darkMode === "dark"?"#ffffff":"#18181b"
-  
-
+  const bgcolor = "var(--dash-panel-btn-group-inactive, #ffffff)"
 
   const inputStyle =  {
     borderColor,height,color:textColor, borderWidth: "1px", borderTopRightRadius: radiusRight, borderBottomRightRadius: radiusRight,borderRightWidth: broderRight, borderTopLeftRadius: radiusLeft, borderBottomLeftRadius: radiusLeft,borderLeftWidth: broderLeft
@@ -195,6 +194,7 @@ const COMMON_FIELD_SX = (
       alignItems: "center",
       overflow: "hidden",
       boxShadow: "none",
+      backgroundColor: bgcolor,
       "&.Mui-focused": {
         boxShadow: "none",
       },
@@ -329,55 +329,64 @@ function Btn({
       onClick={()=>{
         handleClick()
       }}
-        variant="contained"
+        variant={hideBorder ? "text" : "contained"}
+        disableRipple={hideBorder}
         sx={{
-          boxShadow: "none", // 1) เอาเงาออก
-          outline: "none", // เอา outline/focus ring ออก
-          boxSizing: "border-box", // ให้ background อยู่ภายใน border
-          overflow: "hidden", // ป้องกัน background เลยออกจาก border
+          boxShadow: "none",
+          outline: "none",
+          boxSizing: "border-box",
+          overflow: "hidden",
           aspectRatio: "1 / 1",
           height,
-          minHeight:height,
-          width:height,
-          minWidth:height,
+          minHeight: height,
+          width: height,
+          minWidth: height,
+          padding: 0,
           borderTopLeftRadius: radiusLArr[radius], 
           borderBottomLeftRadius:radiusLArr[radius],
           borderTopRightRadius:
           radiusRArr[radius],
           borderBottomRightRadius:
           radiusRArr[radius],
-          // 2) ให้ปุ่มมี "กรอบ" แบบเดียวกับ TextField
           border: "1px solid",
           borderColor: hideBorder ? "transparent" : borderColor,
           borderRightWidth: hideBorder ? 0 : borderRight,
           borderLeftWidth: hideBorder ? 0 : 1,
-
-          // (ตัวเลือก) ถ้าไม่อยากให้มีเส้นหนาตรงรอยต่อกลาง
-          // ให้ตัดเส้นซ้ายของปุ่มออก จะเหลือเส้นของ TextField ฝั่งเดียวพอดี
-          // borderLeftWidth: 0,
-
-          // สีพื้นหลังของปุ่ม = สีที่เลือก
-          bgcolor:bgColor,
+          bgcolor: bgColor,
+          backgroundColor: bgColor,
           "&:hover": {
-            bgcolor:bgColor,
-            borderColor,
-            boxShadow: "none", // กันธีมเพิ่มเงาตอนโฮเวอร์
+            bgcolor: bgColor,
+            backgroundColor: bgColor,
+            borderColor: hideBorder ? "transparent" : borderColor,
+            boxShadow: "none",
             outline: "none",
           },
           "&:focus": {
             outline: "none",
+            borderColor: hideBorder ? "transparent" : borderColor,
           },
           "&:focus-visible": {
             outline: "none",
+            borderColor: hideBorder ? "transparent" : borderColor,
           },
-
-          // สีตัวอักษร - ให้สืบทอดจาก parent; คุณจะเปลี่ยนเป็นขาว/ดำเองก็ได้
           color: "inherit",
-
-          ".dark &": hideBorder ? {} : {
-            borderColor: "#494d55", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
-            "&:hover": { borderColor: "#494d55" },
-          },
+          ".dark &": hideBorder
+            ? {
+                borderColor: "transparent",
+                backgroundColor: "transparent",
+                "&:hover": {
+                  borderColor: "transparent",
+                  backgroundColor: "transparent",
+                  boxShadow: "none",
+                },
+                "&:focus": { borderColor: "transparent" },
+              }
+            : {
+                borderColor: "var(--dash-panel-input-border, #e2e8f0)",
+                "&:hover": {
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
+                },
+              },
         }}
       >
 
@@ -524,7 +533,7 @@ function FieldWithBtn({
             height={iconBoxHeight}
             Icon={Icon}
             bgColor={darkMode === "dark" ? "#494d54" : "#333333"}
-            borderColor={darkMode === "dark" ? "#494d54" : "#e2e8f0"}
+            borderColor="var(--dash-panel-input-border, #e2e8f0)"
             handleClick={handleClick}
           />
         </Box>
@@ -570,8 +579,18 @@ function SelectInput({
   optionHeight = 35,
 }) {
   const textColor = darkMode === "dark"?"#ffffff":"#050505"
-  const borderColor = darkMode === "dark" ? "#494d54" : "#e2e8f0"
-  const bgcolor = darkMode === "dark" ? "#27272a" : "#ffffff"
+  const borderColor = "var(--dash-panel-input-border, #e2e8f0)"
+  const bgcolor = "var(--dash-panel-btn-group-inactive, #ffffff)"
+  const safeOptions = Array.isArray(datas) ? datas : [];
+  const normalizeOptionValue = (input) =>
+    String(input ?? "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+  const matchedValue = safeOptions.find(
+    (option) => normalizeOptionValue(option) === normalizeOptionValue(value)
+  );
+  const safeValue = matchedValue ?? "";
 
   const selectStyle = {
     "& .MuiSvgIcon-root": { color: textColor },
@@ -603,7 +622,7 @@ function SelectInput({
   >
     <Select
       name={name}
-      value={value}
+      value={safeValue}
       displayEmpty
       onChange={handleChange}
       input={<OutlinedInput notched={false} />} // ✅ ปิด notch ให้ขอบไม่แหว่ง
@@ -641,9 +660,9 @@ function SelectInput({
         MenuListProps: { dense: true },
       }}
     >
-      {datas.map((data,i) => {
-        const isSelected = data === value;
-        const isBeforeSelected = datas[i + 1] === value;
+      {safeOptions.map((data,i) => {
+        const isSelected = data === safeValue;
+        const isBeforeSelected = safeOptions[i + 1] === safeValue;
         return (
           <MenuItem
             value={data}
@@ -716,15 +735,10 @@ const MenuList = memo(function MenuList({
   },[pages])
 
 
-  console.log(pageNames);
-
-
-
-
-
-  const bgMenu = darkMode === "dark"?"#27272a":"#fafafa"
-  const bgMenuOption = darkMode === "dark"?"#27272a":"#f8f8f8"
-  const borderColor = darkMode === "dark"?"#494d54":"#e5e5e5"
+  /* พื้นหลัง/กรอบเท่า input ธีม (Settings → สีกรอบ) */
+  const bgMenu = "var(--dash-panel-btn-group-inactive, #ffffff)"
+  const bgMenuOption = "var(--dash-panel-btn-group-inactive, #ffffff)"
+  const borderColor = "var(--dash-panel-input-border, #e2e8f0)"
   const textColor = darkMode === "dark"?"#ffffff":"#202020"
 
   const menuButtons = [
@@ -732,19 +746,28 @@ const MenuList = memo(function MenuList({
     { Icon: {type:"far",name:"faCircleXmark"}, funct: remove },
   ];
 
+  const menuActionIconColor = darkMode === "dark" ? "#a1a1aa" : "#9ca3af";
   const MenuButton = ({ Icon, funct }) => (
-    <Btn
-      handleClick={() => {
+    <button
+      type="button"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
         funct(id);
       }}
-      Icon={Icon}
-      lastChild={true}
-      height={28}
-      bgColor={darkMode === "dark"?"#494D54":"#ececec"}
-      hideBorder
-      color={darkMode === "dark" ? "#a1a1aa" : "#9ca3af"}
-     
-    />
+      className="menu-item-action-btn inline-flex h-7 w-7 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none outline-none ring-0 hover:bg-transparent hover:opacity-80 focus:outline-none focus:ring-0"
+      style={{ border: "none", boxShadow: "none", background: "transparent" }}
+      aria-label="menu-item-action"
+    >
+      {hasVisibleIcon(Icon) ? (
+        <IconAwsome
+          iconType={Icon.type}
+          iconName={Icon.name}
+          style={{ color: menuActionIconColor, fontSize: 14, lineHeight: 1 }}
+        />
+      ) : null}
+    </button>
   );
 
   return (
@@ -755,25 +778,45 @@ const MenuList = memo(function MenuList({
       sx={{
         boxShadow: "none",
         m: 0,
-        borderWidth: 1,
-        borderColor,
-        borderRadius: 1,
-        backgroundColor: bgMenu,
+        border: `1px solid ${borderColor}`,
+        borderRadius: "5px",
+        overflow: "hidden",
+        backgroundColor: `${bgMenu} !important`,
+        backgroundImage: "none !important",
+        "&:before": { display: "none" },
         "&:not(.Mui-expanded):before": { display: "none" },
+        "&.MuiPaper-root": {
+          backgroundColor: `${bgMenu} !important`,
+          backgroundImage: "none !important",
+        },
+        "&.Mui-expanded": {
+          backgroundColor: `${bgMenu} !important`,
+          backgroundImage: "none !important",
+        },
+        "& .MuiCollapse-root": {
+          backgroundColor: bgMenuOption,
+        },
       }}
+      className="menu-item-theme-card"
     >
       <AccordionSummary
         expandIcon={null}   // ✅ ปิด expandIcon ของ MUI ไปเลย
         component="div"  
         sx={{
           cursor: (isDraggable ? "grab" : "pointer") + " !important",
-          height: 45,
-          minHeight: 35,
-          backgroundColor: bgMenu,
+          height: 42,
+          minHeight: 42,
+          backgroundColor: `${bgMenu} !important`,
+          backgroundImage: "none !important",
           border: 0,
-          borderRadius:1,
+          borderRadius: "5px",
           px: 1,
-          "&.Mui-expanded": { minHeight: 45 },
+          "&.Mui-expanded": {
+            minHeight: 42,
+            borderRadius: "5px 5px 0 0",
+            backgroundColor: `${bgMenu} !important`,
+            backgroundImage: "none !important",
+          },
           "& .MuiAccordionSummary-content": {
             m: 0,
             minWidth: 0,
@@ -861,7 +904,15 @@ const MenuList = memo(function MenuList({
         </Box>
       </AccordionSummary>
 
-      <AccordionDetails sx={{ backgroundColor: bgMenuOption,borderRadius:1,borderTopLeftRadius:0,borderTopRightRadius:0 }}>
+      <AccordionDetails
+        sx={{
+          backgroundColor: `${bgMenuOption} !important`,
+          backgroundImage: "none !important",
+          borderRadius: 1,
+          borderTopLeftRadius: 0,
+          borderTopRightRadius: 0,
+        }}
+      >
       <FieldWithBtn
           label="Home"
           Icon={icon}
@@ -921,7 +972,7 @@ const MenuList = memo(function MenuList({
 
 
 
-function MenuPage({menus, setMenus,navOpen,device,menuBar,theme,setNavOpen,navBottom,setFont,darkMode,darkTextColor,menuButtonRef,topBar,setOpenBar}){
+function MenuPage({menus, setMenus,navOpen,device,menuBar,theme,setNavOpen,navBottom,setFont,darkMode,darkTextColor,menuButtonRef,topBar,footerBar,setOpenBar}){
 
 
 
@@ -1223,6 +1274,26 @@ const {
   borderTextSize = 26,
   textGroup = [],
 } = topBar || {};
+const {
+  footerHeight = 46,
+  isGradient: footerIsGradient = false,
+  bgColor: footerBgColor = "#111827",
+  bgOpacity: footerBgOpacity = 255,
+  bgColorGradient: footerBgColorGradient = ["#111827", "#0f172a"],
+  bgOpacityGradient: footerBgOpacityGradient = [255, 255],
+  bgDegree: footerBgDegree = 0,
+  logo: footerLogo = "",
+  logoHeight: footerLogoHeight = 35,
+  logoPosition: footerLogoPositionRaw = "center",
+  textColor: footerTextColor = "#ffffff",
+  textOpacity: footerTextOpacity = 255,
+  textSize: footerTextSize = 13,
+  leftText: footerLeftText = "© 2026 Domain.com",
+  leftIcon: footerLeftIcon = { name: null, type: null },
+  rightText: footerRightText = "All rights reserved.",
+  rightIcon: footerRightIcon = { name: null, type: null },
+  isFluidLayout: footerIsFluidLayout = false,
+} = footerBar || {};
 
 
 
@@ -1271,24 +1342,22 @@ const setColor = (
 
 const [opening,setOpeing] = useState({})
 
-const setDefault = (items=menus)=>{
+const buildClosedOpeningMap = useCallback((items = [], acc = {}) => {
+  for (const m of items) {
+    if (!m?.id) continue;
+    acc[m.id] = false;
+    if (Array.isArray(m.children) && m.children.length) {
+      buildClosedOpeningMap(m.children, acc);
+    }
+  }
+  return acc;
+}, []);
 
-  items.map(m=>{
-    const {id,children} = m
-      setOpeing({...opening,[id]:false})
-      if(children.length){
-        setDefault(children)
-      }
-    
-  })
-}
-
-
-useEffect(()=>{
-
-  setDefault()
-
-},[])
+useEffect(() => {
+  setOpeing(buildClosedOpeningMap(menus));
+  // ตั้งค่าเริ่มต้นครั้งเดียวตอน mount เท่านั้น — กันกระพริบจาก setState ซ้ำ
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
 
 
@@ -1513,6 +1582,22 @@ const topBarBg = setColor(
   topBarIsGradient,
   topBarIsGradient ? topBarBgDegree : null
 );
+const footerBg = setColor(
+  footerIsGradient ? footerBgColorGradient : footerBgColor,
+  footerIsGradient ? footerBgOpacityGradient : footerBgOpacity,
+  footerIsGradient,
+  footerIsGradient ? footerBgDegree : null
+);
+const footerTextColorValue = setColor(footerTextColor, footerTextOpacity);
+const hasFooterLogo = String(footerLogo || "").trim() !== "";
+const footerLogoPosition = ["hidden", "left", "center", "right"].includes(
+  String(footerLogoPositionRaw || "").toLowerCase()
+)
+  ? String(footerLogoPositionRaw || "").toLowerCase()
+  : "center";
+const showFooterLogoLeft = hasFooterLogo && footerLogoPosition === "left";
+const showFooterLogoCenter = hasFooterLogo && footerLogoPosition === "center";
+const showFooterLogoRight = hasFooterLogo && footerLogoPosition === "right";
 
 const SubMenu = ({menus})=>{
 
@@ -1632,11 +1717,8 @@ useEffect(() => {
 
     return( <main className="content-area flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden" area="main">
 
-<div
-  className="min-h-[600px] rounded-xl border border-white/10 bg-white/5"
-  style={["Mobile", "Tablet"].includes(device) ? { borderTopWidth: 0 } : undefined}
->
-<div className={`${["Mobile", "Tablet"].includes(device) ? "relative z-10 w-full" : "container mx-auto relative z-10"}`}>
+<div className="min-h-[600px]">
+<div className={`${["Mobile", "Tablet"].includes(device) ? "relative z-10 w-full" : "relative z-10 mx-auto w-full max-w-[1280px]"}`}>
 {device === "Desktop" && (
 
 
@@ -1652,6 +1734,69 @@ useEffect(() => {
             threshold={30}
             disableDrag={disableDrag}
           />
+<div
+  className="mt-3 cursor-pointer overflow-hidden rounded-lg"
+  style={{ background: footerBg }}
+  onClick={() => setOpenBar?.("Footer")}
+>
+  <div
+    className={`flex items-center justify-between gap-4 px-4 ${footerIsFluidLayout ? "w-full" : "mx-auto w-full max-w-[1280px]"}`}
+    style={{ minHeight: footerHeight, color: footerTextColorValue }}
+  >
+    <span
+      className="min-w-0 flex flex-1 items-center gap-2"
+      style={{ fontSize: `${footerTextSize}px` }}
+    >
+      {showFooterLogoLeft ? (
+        <img
+          src={footerLogo}
+          alt="footer-logo"
+          className="object-contain"
+          style={{ height: footerLogoHeight, maxWidth: 220 }}
+        />
+      ) : null}
+      {hasVisibleIcon(footerLeftIcon) && (
+        <IconAwsome
+          iconName={footerLeftIcon.name}
+          iconType={footerLeftIcon.type}
+          style={{ marginRight: 2 }}
+        />
+      )}
+      <span className="truncate">{footerLeftText}</span>
+    </span>
+    {showFooterLogoCenter ? (
+      <div className="shrink-0 px-2">
+        <img
+          src={footerLogo}
+          alt="footer-logo"
+          className="object-contain"
+          style={{ height: footerLogoHeight, maxWidth: 220 }}
+        />
+      </div>
+    ) : null}
+    <span
+      className="min-w-0 flex flex-1 items-center justify-end gap-2 text-right"
+      style={{ fontSize: `${footerTextSize}px` }}
+    >
+      {showFooterLogoRight ? (
+        <img
+          src={footerLogo}
+          alt="footer-logo"
+          className="object-contain"
+          style={{ height: footerLogoHeight, maxWidth: 220 }}
+        />
+      ) : null}
+      {hasVisibleIcon(footerRightIcon) && (
+        <IconAwsome
+          iconName={footerRightIcon.name}
+          iconType={footerRightIcon.type}
+          style={{ marginRight: 2 }}
+        />
+      )}
+      <span className="truncate">{footerRightText}</span>
+    </span>
+  </div>
+</div>
 </div>
 
 
@@ -2347,6 +2492,45 @@ size={menuFontSize}
   cursor: inherit !important;
 }
 
+/* การ์ดชื่อเมนู — พื้นหลัง/กรอบเท่า input ธีม (Btn Group + สีกรอบ) */
+.menuTree .menu-item-theme-card.MuiAccordion-root,
+.menuTree .menu-item-theme-card.MuiPaper-root {
+  border: 1px solid var(--dash-panel-btn-group-border, var(--dash-panel-input-border, #e2e8f0)) !important;
+  border-radius: 5px !important;
+  background-color: var(--dash-panel-btn-group-inactive, #ffffff) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+.menuTree .menu-item-theme-card .MuiAccordionSummary-root,
+.menuTree .menu-item-theme-card .MuiAccordionDetails-root,
+.menuTree .menu-item-theme-card .MuiCollapse-root {
+  background-color: var(--dash-panel-btn-group-inactive, #ffffff) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+.dark .menuTree .menu-item-theme-card.MuiAccordion-root,
+.dark .menuTree .menu-item-theme-card.MuiPaper-root {
+  border: 1px solid var(--dash-panel-btn-group-border, var(--dash-panel-input-border, rgba(255, 255, 255, 0.1))) !important;
+  background-color: var(--dash-panel-btn-group-inactive, rgba(30, 41, 59, 0.9)) !important;
+}
+.dark .menuTree .menu-item-theme-card .MuiAccordionSummary-root,
+.dark .menuTree .menu-item-theme-card .MuiAccordionDetails-root,
+.dark .menuTree .menu-item-theme-card .MuiCollapse-root {
+  background-color: var(--dash-panel-btn-group-inactive, rgba(30, 41, 59, 0.9)) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+/* ปุ่มคัดลอก/ลบ — ไม่มีกรอบ/พื้นหลังตอน hover */
+.menuTree .menu-item-action-btn,
+.menuTree .menu-item-action-btn:hover,
+.menuTree .menu-item-action-btn:focus,
+.menuTree .menu-item-action-btn:active {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
 /* สีพื้นหลังตอน Drag/Drop */
 .menuTree .nestable-item-copy,
 .menuTree .nestable-item-copy .nestable-item-name,
@@ -2386,10 +2570,15 @@ size={menuFontSize}
   overflow: hidden !important;
 }
 
-/* กรอบแดงเฉพาะไอเทมที่ติดเม้าส์ (drag copy) */
+/* กรอบไอเทมตอนลาก — เท่า input ธีม (Btn Group + สีกรอบ) */
 .nestable-drag-layer .nestable-item-copy .MuiAccordion-root {
-  border: 1px solid #e5e5e5 !important;
-  border-width: 1px !important;
+  border: 1px solid var(--dash-panel-btn-group-border, var(--dash-panel-input-border, #e2e8f0)) !important;
+  background-color: var(--dash-panel-btn-group-inactive, #ffffff) !important;
+  background-image: none !important;
+}
+.dark .nestable-drag-layer .nestable-item-copy .MuiAccordion-root {
+  border: 1px solid var(--dash-panel-btn-group-border, var(--dash-panel-input-border, rgba(255, 255, 255, 0.1))) !important;
+  background-color: var(--dash-panel-btn-group-inactive, rgba(30, 41, 59, 0.9)) !important;
 }
 
 .nestable-drag-layer .nestable-item-copy .MuiAccordionSummary-root,

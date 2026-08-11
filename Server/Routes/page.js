@@ -1,5 +1,13 @@
 const experss = require('express');
-const {createElement,createPage,getPage,listPages,editPage,deletePage} = require("../Controllers/pages")
+const {
+    createElement,
+    createPage,
+    getPage,
+    listPages,
+    editPage,
+    deletePage,
+    setDefaultPage,
+} = require("../Controllers/pages")
 
 
 const router = experss.Router();
@@ -13,6 +21,7 @@ router.get("/getPage/:id",getPage)
 router.delete("/deletePage/:id",deletePage)
 router.get("/listPages",listPages)
 router.put("/editPage/:id",editPage)
+router.put("/setDefaultPage/:id",setDefaultPage)
 
 
 module.exports = router;

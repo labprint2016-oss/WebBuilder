@@ -1,7 +1,7 @@
 # Web-Builder — Project Tree
 
 ไฟล์นี้สรุปโครงสร้างโปรเจกต์เพื่อใช้อ้างอิงขณะพัฒนา  
-อัปเดตล่าสุด: **2026-04-12**
+อัปเดตล่าสุด: **2026-07-29**
 
 ## หมายเหตุ
 
@@ -17,11 +17,9 @@ Web-Builder/
 │
 ├── client/                     # React 19 + Vite 7
 │   ├── Content/                # โมดูลคอนเทนต์ตาม id (ชื่อไฟล์แบบวันที่)
-│   ├── Functions/              # axios → /api (pages, post, theme, hero, cate, menuBar)
+│   ├── Functions/              # axios → /api (pages, theme, hero, menuBar, forms, media)
 │   ├── Main/
 │   ├── Navbar/
-│   ├── Post/
-│   ├── PostData/
 │   ├── public/
 │   ├── src/
 │   │   ├── assets/
@@ -54,7 +52,6 @@ Web-Builder/
 │   │   │   │   └── topBar.jsx
 │   │   │   ├── Services/
 │   │   │   │   └── ServiceLayout.jsx
-│   │   │   ├── category.jsx
 │   │   │   ├── content.jsx
 │   │   │   ├── contentTest.jsx
 │   │   │   ├── header.jsx
@@ -69,13 +66,11 @@ Web-Builder/
 │   │   │   ├── main.jsx              # entry หลักของ Builder UI
 │   │   │   ├── menu.jsx
 │   │   │   ├── navbar.jsx
-│   │   │   ├── post.jsx
-│   │   │   ├── postData.jsx
 │   │   │   ├── Service.jsx
 │   │   │   ├── ServiceIcon.jsx
 │   │   │   ├── ServicePage.jsx
 │   │   │   ├── ServiceSelectPage.jsx
-│   │   │   └── updatePost.jsx
+│   │   │   └── forms.jsx
 │   │   ├── App.jsx
 │   │   ├── App.css
 │   │   ├── builder.jsx
@@ -100,28 +95,26 @@ Web-Builder/
     ├── Config/
     │   └── connect.js
     ├── Controllers/
-    │   ├── cate.js
+    │   ├── forms.js
     │   ├── hero.js
     │   ├── menuBar.js
     │   ├── pages.js
-    │   ├── post.js
     │   └── theme.js
     ├── MiddleWare/
     │   ├── manageImg.js
     │   └── manageImgForBuilder.js
     ├── Models/
-    │   ├── category.js
+    │   ├── forms.js
     │   ├── hero.js
     │   ├── menuBar.js
     │   ├── pages.js
-    │   ├── post.js
     │   └── theme.js
     ├── Routes/                     # auto-mount ภายใต้ /api ใน server.js
-    │   ├── cate.js
+    │   ├── forms.js
     │   ├── hero.js
     │   ├── menuBar.js
     │   ├── page.js
-    │   ├── post.js
+    │   ├── media.js
     │   └── theme.js
     ├── uploadForBuilder/
     ├── uploads/                    # (ไฟล์อัปโหลด — ไม่แสดงรายชื่อ)

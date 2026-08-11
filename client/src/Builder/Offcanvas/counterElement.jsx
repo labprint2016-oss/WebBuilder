@@ -7,55 +7,36 @@ import {
   AlignRight,
   Bold,
   Check,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 import lodash from "lodash";
 import Range from "../HTML/Range";
+import SelectLine from "../HTML/SelectLine";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import {
   COUNTER_ELEMENT_DEFAULTS,
   mergeCounterElement,
 } from "../Layouts/Elements/counterElementConfig";
+import { PANEL_BTN_GROUP, panelGroupButtonSx } from "../panelControlSx";
 
-/** กล่อง input group — ขอบเดียว (ไม่มีเงา / ไม่มี ring / ไม่ใช้สีเขียวตอนโฟกัส) */
+/** กล่อง input group — พื้นหลัง/กรอบตาม Dashboard (dash-input) */
 const INPUT_GROUP_CLASS =
-  [
-    "flex min-h-[2.5rem] min-w-0 flex-1 items-stretch overflow-hidden rounded-lg",
-    "border border-slate-200/90 bg-white text-left",
-    "transition-[border-color,background-color] duration-150",
-    "hover:border-slate-300/95",
-    "dark:border-white/12 dark:bg-slate-950/40",
-    "dark:hover:border-white/18 dark:hover:bg-slate-950/55",
-  ].join(" ");
+  "dash-input flex h-10 min-w-0 flex-1 items-stretch overflow-hidden rounded-md border border-slate-200 bg-white text-left dark:border-white/10 dark:bg-[#27272a]";
 
 /** ครึ่งซ้าย–ขวาในกล่อง */
 const INPUT_GROUP_HALF_CLASS =
-  "flex min-w-0 min-h-0 flex-1 items-stretch border-slate-200/75 first:border-r dark:border-white/10";
+  "flex min-w-0 min-h-0 flex-1 items-stretch border-slate-200 first:border-r dark:border-white/10";
 
 /** ป้าย addon ด้านหน้าช่องตัวเลข */
 const INPUT_GROUP_ADDON_CLASS =
-  [
-    "flex w-[4.85rem] shrink-0 flex-col items-center justify-center gap-0.5",
-    "border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/90 px-2 py-1.5",
-    "text-center text-[11px] font-semibold leading-tight tracking-tight text-slate-600",
-    "dark:border-white/10 dark:from-white/[0.08] dark:to-white/[0.03] dark:text-slate-300",
-  ].join(" ");
+  "flex w-[4.85rem] shrink-0 flex-col items-center justify-center gap-0.5 bg-transparent px-2 py-1.5 text-center text-[11px] font-semibold leading-tight tracking-tight";
 
 /** เส้นแบ่งระหว่างป้ายกับช่องพิมพ์ */
-const INPUT_GROUP_ADDON_DIVIDER = "border-r border-slate-200/80 dark:border-white/10";
+const INPUT_GROUP_ADDON_DIVIDER = "border-r border-slate-200 dark:border-white/10";
 
 /** ตัวเลขในกล่อง */
 const INPUT_GROUP_INPUT_CLASS =
-  [
-    "min-h-0 min-w-0 flex-1 border-0 bg-transparent px-2.5 py-2",
-    "text-[13px] tabular-nums leading-snug text-slate-800 outline-none",
-    "placeholder:text-slate-400",
-    "transition-colors duration-100",
-    "focus:bg-slate-50/40 focus-visible:outline-none dark:text-white/90",
-    "dark:placeholder:text-slate-500 dark:focus:bg-white/[0.04]",
-  ].join(" ");
+  "min-h-0 min-w-0 flex-1 border-0 bg-transparent px-2.5 py-2 text-[13px] tabular-nums leading-snug text-slate-800 outline-none placeholder:text-slate-400 focus-visible:outline-none dark:text-white/90 dark:placeholder:text-slate-500";
 
 /** ข้อความทั่วไปในกล่อง (ความประกอบ) — ไม่บังคับ tabular-nums */
 const INPUT_GROUP_TEXT_INPUT_CLASS = INPUT_GROUP_INPUT_CLASS.replace(
@@ -63,13 +44,27 @@ const INPUT_GROUP_TEXT_INPUT_CLASS = INPUT_GROUP_INPUT_CLASS.replace(
   ""
 );
 
-/** ป้าย addon สำหรับด้านซ้าย/ขวา (ข้อความยาวกว่าเริ่มต้น–สิ้นสุด) */
-const COMPOSITION_ADDON_CLASS = [
-  "flex w-[5.35rem] shrink-0 flex-col items-center justify-center gap-0.5",
-  "border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/90 px-2 py-1.5",
-  "text-center text-[11px] font-semibold leading-tight tracking-tight text-slate-600",
-  "dark:border-white/10 dark:from-white/[0.08] dark:to-white/[0.03] dark:text-slate-300",
-].join(" ");
+/** ป้าย addon สำหรับด้านซ้าย/ขวา */
+const COMPOSITION_ADDON_CLASS =
+  "flex w-[5.35rem] shrink-0 flex-col items-center justify-center gap-0.5 bg-transparent px-2 py-1.5 text-center text-[11px] font-semibold leading-tight tracking-tight";
+
+const ADDON_LABEL_STYLE = {
+  color: "var(--dash-panel-btn-group-inactive-text, #64748b)",
+};
+
+const optionChipStyle = (selected) =>
+  selected
+    ? {
+        backgroundColor: PANEL_BTN_GROUP.active,
+        color: PANEL_BTN_GROUP.activeText,
+        borderColor: PANEL_BTN_GROUP.border,
+        boxShadow: "0 1px 2px rgb(0 0 0 / 0.12)",
+      }
+    : {
+        backgroundColor: PANEL_BTN_GROUP.inactive,
+        color: PANEL_BTN_GROUP.inactiveText,
+        borderColor: PANEL_BTN_GROUP.border,
+      };
 
 const THEME_RANGE_INPUT_CLASS = `
   w-full cursor-pointer appearance-none h-2 rounded-full
@@ -138,54 +133,12 @@ const CounterPanelAntSwitch = styled(Switch, {
   },
 }));
 
-const BOLD_BTN_ACTIVE = "border-transparent text-white shadow-sm";
-const BOLD_BTN_NORMAL =
-  "border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800/90 dark:text-slate-100 dark:hover:bg-slate-800";
 const BOLD_BTN_BASE =
   "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border transition outline-none focus-visible:ring-2 focus-visible:ring-slate-400/60 dark:focus-visible:ring-white/25";
 
-const CHIP_BORDER = "#e2e8f0";
-const CHIP_BORDER_DARK = "rgba(255, 255, 255, 0.1)";
-const CHIP_BG = "#ffffff";
-const CHIP_BG_HOVER = "#f8fafc";
-const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
-const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 const OPTION_CHIP_RADIUS = "0.375rem";
 
-const groupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0.75,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.25,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": { backgroundColor: a, borderColor: "transparent" },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": { borderColor: `${CHIP_BORDER} !important`, backgroundColor: CHIP_BG_HOVER },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": { borderColor: `${CHIP_BORDER_DARK} !important`, backgroundColor: CHIP_BG_DARK_HOVER },
-          },
-        }),
-    "&.Mui-focusVisible": { outline: `2px solid ${a}`, outlineOffset: 1, boxShadow: "none" },
-    "& .MuiTouchRipple-child": { backgroundColor: a },
-  };
-};
+const groupButtonSx = panelGroupButtonSx;
 
 const groupRootSx = {
   width: "100%",
@@ -229,17 +182,17 @@ const MainLabel = ({
       flex: 1,
       fontSize: 13,
       fontWeight: 600,
-      color: "rgb(51 65 85)",
+      color: "var(--dash-panel-heading, #0f172a)",
       mb,
       fontVariantNumeric: "tabular-nums",
-      ".dark &": { color: "rgba(255,255,255,0.78)" },
+      ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
     }}
   >
     {label}{" "}
     {value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) ? (
       <span className="text-slate-400 dark:text-slate-400">{Math.round(Number(value))}</span>
     ) : null}
-    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
     {typeof checked === "boolean" && typeof handleSwitch === "function" ? (
       <span className="inline-flex shrink-0 items-center gap-1.5">
         <CounterPanelAntSwitch
@@ -286,10 +239,10 @@ const FullWidthRangeRow = ({
             flex: 1,
             fontSize: 13,
             fontWeight: 600,
-            color: "rgb(51 65 85)",
+            color: "var(--dash-panel-heading, #0f172a)",
             mb: labelMb,
             fontVariantNumeric: "tabular-nums",
-            ".dark &": { color: "rgba(255,255,255,0.78)" },
+            ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
           }}
         >
           {mainLabel}{" "}
@@ -300,7 +253,7 @@ const FullWidthRangeRow = ({
                 : Math.round(valueForLabel)}
             </span>
           )}
-          <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+          <div className="dash-heading-rule min-w-0 flex-1 border-b" />
         </Typography>
       </div>
     ) : null}
@@ -473,31 +426,33 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
     counterColorMode === COUNTER_COLOR_MODE_DIVIDER.value
       ? counterDividerOpacity
       : opacity;
-  const boldBtnActiveStyle = useMemo(
-    () => ({
-      backgroundColor: textColor || "#0d9488",
-      color: "#fff",
-      boxShadow: "0 1px 2px rgb(0 0 0 / 0.12)",
-    }),
-    [textColor]
-  );
-
   return (
     <aside
-      className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10"
+      className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
       style={{ color: textColor || undefined }}
     >
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-slate-800/60">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             Counter
           </span>
-          <span
-            className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums"
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
             title={String(merged?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(merged?.id ?? "")}`}
+            onClick={() => {
+              const id = String(merged?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
           >
-            <span className="truncate">{merged?.id ?? "-"}</span>
-          </span>
+            {(() => {
+              const id = String(merged?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -539,6 +494,7 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                     <div className={INPUT_GROUP_HALF_CLASS}>
                       <span
                         className={`${INPUT_GROUP_ADDON_CLASS} ${INPUT_GROUP_ADDON_DIVIDER}`}
+                        style={ADDON_LABEL_STYLE}
                       >
                         เริ่มต้น
                       </span>
@@ -559,6 +515,7 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                     <div className={INPUT_GROUP_HALF_CLASS}>
                       <span
                         className={`${INPUT_GROUP_ADDON_CLASS} ${INPUT_GROUP_ADDON_DIVIDER}`}
+                        style={ADDON_LABEL_STYLE}
                       >
                         สิ้นสุด
                       </span>
@@ -584,10 +541,8 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                     onClick={() =>
                       patch({ counterBold: !Boolean(merged.counterBold) })
                     }
-                    className={`${BOLD_BTN_BASE} ${
-                      merged.counterBold ? BOLD_BTN_ACTIVE : BOLD_BTN_NORMAL
-                    }`}
-                    style={merged.counterBold ? boldBtnActiveStyle : undefined}
+                    className={BOLD_BTN_BASE}
+                    style={optionChipStyle(Boolean(merged.counterBold))}
                   >
                     <Bold className="size-4" strokeWidth={2.5} aria-hidden />
                   </button>
@@ -654,10 +609,10 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
               {merged?.counterRowDividerEnabled === true ? (
                 <div className="mt-3">
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                    <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                       รูปแบบเส้นคั่น
                     </span>
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <ButtonGroup
                     fullWidth
@@ -700,33 +655,15 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                 mb={0.5}
               />
               {counterColorModesEffective.length > 1 ? (
-                <div
-                  className="mb-1 mt-3.5 flex items-center justify-between gap-0.5 rounded-lg border border-slate-200 bg-white px-0.5 py-0.5 dark:border-white/10 dark:bg-slate-800/90"
-                  role="group"
-                  aria-label="สลับแก้สีข้อความหรือสีเส้นคั่น"
-                >
-                  <button
-                    type="button"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
-                    onClick={() => cycleCounterColorMode(-1)}
-                    aria-label="โหมดสีก่อนหน้า"
-                  >
-                    <ChevronLeft className="size-4" strokeWidth={2} aria-hidden />
-                  </button>
-                  <span className="min-w-0 flex-1 truncate text-center text-[11px] font-normal text-slate-800 dark:text-white/90">
-                    {counterColorModeLabel}
-                  </span>
-                  <button
-                    type="button"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
-                    onClick={() => cycleCounterColorMode(1)}
-                    aria-label="โหมดสีถัดไป"
-                  >
-                    <ChevronRight className="size-4" strokeWidth={2} aria-hidden />
-                  </button>
+                <div className="mb-1 mt-3.5">
+                  <SelectLine
+                    prev={() => cycleCounterColorMode(-1)}
+                    next={() => cycleCounterColorMode(1)}
+                    value={counterColorModeLabel}
+                  />
                 </div>
               ) : null}
-              <div className="mt-1 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+              <div className="mt-1 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                 <div className="px-[5px] pb-2">
                   <Range
                     min={0}
@@ -796,13 +733,13 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                     flexShrink: 0,
                     fontSize: 13,
                     fontWeight: 600,
-                    color: "rgb(51 65 85)",
-                    ".dark &": { color: "rgba(255,255,255,0.78)" },
+                    color: "var(--dash-panel-heading, #0f172a)",
+                    ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                   }}
                 >
                   ข้อความประกอบ
                 </Typography>
-                <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 <CounterPanelAntSwitch
                   className="shrink-0"
                   accentColor={textColor || "#0d9488"}
@@ -818,6 +755,7 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                   <div className={INPUT_GROUP_HALF_CLASS}>
                     <span
                       className={`${COMPOSITION_ADDON_CLASS} ${INPUT_GROUP_ADDON_DIVIDER}`}
+                      style={ADDON_LABEL_STYLE}
                     >
                       ด้านซ้าย
                     </span>
@@ -845,6 +783,7 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                   <div className={INPUT_GROUP_HALF_CLASS}>
                     <span
                       className={`${COMPOSITION_ADDON_CLASS} ${INPUT_GROUP_ADDON_DIVIDER}`}
+                      style={ADDON_LABEL_STYLE}
                     >
                       ด้านขวา
                     </span>
@@ -908,7 +847,7 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                   />
                   <Box sx={{ width: "100%", mt: 2 }}>
                     <MainLabel label="สีข้อความประกอบ" mb={0.5} />
-                    <div className="mt-1 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                    <div className="mt-1 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                       <div className="px-[5px] pb-2">
                         <Range
                           min={0}
@@ -972,10 +911,10 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
           <li>
             <Box sx={{ width: "100%", px: 0.25, pt: 0.5 }}>
               <div className="mb-3 flex items-center gap-2">
-                <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                   ตำแหน่งการจัดวาง
                 </span>
-                <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <div className="dash-heading-rule min-w-0 flex-1 border-b" />
               </div>
               <ButtonGroup
                 variant="outlined"

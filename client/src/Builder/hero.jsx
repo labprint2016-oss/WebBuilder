@@ -22,6 +22,84 @@ import { swatchSelectedCheckClassName } from "./Layouts/Elements/swatchCheckClas
 const createDefaultHeroSlides = () => [
   { id: "hero-slide-1", name: "Slide 1", displayMode: "fade", durationSec: 5, layerItems: [] },
 ];
+const HERO_SVG_DIVIDER_TYPE_SET = new Set([
+  "none",
+  "wave",
+  "curve",
+  "cloud",
+  "cloudSoft",
+  "tilt",
+  "triangle",
+  "arrowSplit",
+  "zigzag",
+]);
+const HERO_SVG_DIVIDER_HEIGHT_MIN = 24;
+const HERO_SVG_DIVIDER_HEIGHT_MAX = 180;
+const HERO_SVG_DIVIDER_DENSITY_MIN = 0.5;
+const HERO_SVG_DIVIDER_DENSITY_MAX = 10;
+const HERO_SVG_DIVIDER_SIZE_MIN = 0.5;
+const HERO_SVG_DIVIDER_SIZE_MAX = 2.5;
+const HERO_BG_FOCUS_MIN = 0;
+const HERO_BG_FOCUS_MAX = 100;
+const HERO_BG_ZOOM_MIN = 80;
+const HERO_BG_ZOOM_MAX = 100;
+const HERO_PREVIEW_FRAME_WIDTH_BY_DEVICE = {
+  Tablet: 768,
+  Mobile: 375,
+};
+const HERO_SVG_DIVIDER_VIEWBOX_WIDTH = 1200;
+const HERO_SVG_DIVIDER_VIEWBOX_HEIGHT = 120;
+const HERO_SVG_DIVIDER_PATHS = {
+  wave: "M0,48 C40,24 80,24 120,48 C160,72 200,72 240,48 C280,24 320,24 360,48 C400,72 440,72 480,48 C520,24 560,24 600,48 C640,72 680,72 720,48 C760,24 800,24 840,48 C880,72 920,72 960,48 C1000,24 1040,24 1080,48 C1120,72 1160,72 1200,48 L1200,120 L0,120 Z",
+  curve: "M0,8 C40,8 70,72 130,74 C210,78 230,8 310,8 C380,8 420,118 500,112 C560,106 570,44 600,42 C630,40 640,106 700,112 C780,120 820,8 900,8 C980,8 1030,74 1090,74 C1150,74 1160,8 1200,8 L1200,120 L0,120 Z",
+  cloud: "M0,92 C22,92 30,80 46,80 C62,80 70,92 88,92 C108,92 118,74 138,74 C158,74 168,92 190,92 C214,92 228,62 256,62 C284,62 298,92 324,92 C354,92 370,42 410,42 C450,42 466,92 500,92 C526,92 538,68 562,68 C586,68 600,92 626,92 C654,92 670,56 702,56 C734,56 750,92 778,92 C806,92 820,70 844,70 C868,70 882,92 910,92 C942,92 956,48 994,48 C1032,48 1048,92 1080,92 C1110,92 1124,74 1148,74 C1172,74 1184,92 1200,92 L1200,120 L0,120 Z",
+  cloudSoft:
+    "M870.17,713.77a38,38,0,0,0-34.25,21.48,24.73,24.73,0,0,0-3.78-.29,24.38,24.38,0,0,0-12.91,3.69,24.38,24.38,0,0,0-16-6.63,30.51,30.51,0,0,0-49.66-12.1,38.21,38.21,0,0,0-64.11-9.25,19.87,19.87,0,0,0-26.17,2.22,29.56,29.56,0,0,0-19.93,1.42h-2.13a19,19,0,0,0-18-13,18.69,18.69,0,0,0-5.21.74,45,45,0,0,0-84.91-9,19,19,0,0,0-27.52,13,29.62,29.62,0,0,0-24.27,7,29.75,29.75,0,0,0-8.49-1.24,28.16,28.16,0,0,0-3.19.18,35.89,35.89,0,0,0-68.38,10.78,21.69,21.69,0,0,0-26.71,5.53,19.83,19.83,0,0,0-12.12-4.12H362a19.83,19.83,0,0,0-9.06,2.18,20,20,0,0,0-24-10.69,31.59,31.59,0,0,0-61.51-8,19,19,0,0,0-25,18c0,.27,0,.53,0,.79a13.4,13.4,0,0,0-11.59,1.22A30.53,30.53,0,0,0,175.17,732a24.36,24.36,0,0,0-15.95,6.63A24.38,24.38,0,0,0,146.31,735a24.73,24.73,0,0,0-3.78.29,38,38,0,0,0-34.25-21.48c-.45,0-.89,0-1.34,0V770H871.51V713.8C871.06,713.79,870.62,713.77,870.17,713.77Z",
+  triangle: "M0,92 L560,92 L600,54 L640,92 L1200,92 L1200,120 L0,120 Z",
+  zigzag: "M0,120 L100,36 L200,120 L300,36 L400,120 L500,36 L600,120 L700,36 L800,120 L900,36 L1000,120 L1100,36 L1200,120 Z",
+};
+const HERO_SVG_DIVIDER_PATH_META = {
+  cloudSoft: {
+    baseWidth: 764.57,
+    transform: "translate(-106.94 -650)",
+  },
+};
+const buildTriangleDividerPath = (size) => {
+  const safeSize = Number.isFinite(Number(size))
+    ? Math.max(HERO_SVG_DIVIDER_SIZE_MIN, Math.min(HERO_SVG_DIVIDER_SIZE_MAX, Number(size)))
+    : 1;
+  const normalized =
+    (safeSize - HERO_SVG_DIVIDER_SIZE_MIN) /
+    (HERO_SVG_DIVIDER_SIZE_MAX - HERO_SVG_DIVIDER_SIZE_MIN);
+  const baseY = 92;
+  const centerX = 600;
+  const halfWidth = 20 + normalized * 240;
+  const peakRise = 20 + normalized * 72;
+  const peakY = Math.max(8, baseY - peakRise);
+  const leftX = Math.max(0, centerX - halfWidth);
+  const rightX = Math.min(HERO_SVG_DIVIDER_VIEWBOX_WIDTH, centerX + halfWidth);
+  return `M0,${baseY} L${leftX},${baseY} L${centerX},${peakY} L${rightX},${baseY} L1200,${baseY} L1200,120 L0,120 Z`;
+};
+const buildArrowSplitDividerPath = (size) => {
+  const safeSize = Number.isFinite(Number(size))
+    ? Math.max(HERO_SVG_DIVIDER_SIZE_MIN, Math.min(HERO_SVG_DIVIDER_SIZE_MAX, Number(size)))
+    : 1;
+  const baseY = 92;
+  const centerX = 600;
+  const shapeScale = safeSize;
+  const baseWingHalfWidth = 110;
+  const basePeakRise = 84;
+  const baseCuspGap = 6;
+  const shoulderControlFactor = 0.88;
+  const wingHalfWidth = baseWingHalfWidth * shapeScale;
+  const leftWingX = Math.max(0, centerX - wingHalfWidth);
+  const rightWingX = Math.min(HERO_SVG_DIVIDER_VIEWBOX_WIDTH, centerX + wingHalfWidth);
+  const peakY = Math.max(0, baseY - basePeakRise * shapeScale);
+  const cuspHandleY = Math.min(baseY - 1, peakY + baseCuspGap * shapeScale);
+  const leftCurveCtrlX1 = leftWingX + wingHalfWidth * shoulderControlFactor;
+  const rightCurveCtrlX2 = rightWingX - wingHalfWidth * shoulderControlFactor;
+  return `M0,${baseY} L${leftWingX},${baseY} C${leftCurveCtrlX1},${baseY} ${centerX},${cuspHandleY} ${centerX},${peakY} C${centerX},${cuspHandleY} ${rightCurveCtrlX2},${baseY} ${rightWingX},${baseY} L1200,${baseY} L1200,120 L0,120 Z`;
+};
 const HERO_LAYER_ITEM_TYPES = new Set([
   "image",
   "rectangle",
@@ -61,9 +139,10 @@ const HERO_LAYER_ANIMATION_DEFAULTS = {
   animationEasing: "ease-out",
   animationOnce: true,
 };
-const HERO_LAYER_ANIMATION_EASING_VALUES = new Set(["ease", "ease-out", "ease-in-out", "linear"]);
+const HERO_LAYER_ANIMATION_PREVIEW_EVENT = "builder:hero-layer-animation-preview";
 const HERO_LAYER_ANIMATION_TYPES = new Set([
   "fade-in",
+  "slide-in-down",
   "slide-in-left",
   "slide-in-right",
   "slide-in-up",
@@ -73,6 +152,10 @@ const HERO_LAYER_ANIMATION_TYPES = new Set([
 const HERO_LAYER_ANIMATION_KEYFRAMES = `
 @keyframes heroLayerAnimFadeIn {
   from { opacity: 0; transform: translate3d(0, 10px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes heroLayerAnimSlideInDown {
+  from { opacity: 0; transform: translate3d(0, -44px, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes heroLayerAnimSlideInLeft {
@@ -102,6 +185,7 @@ const IMAGE_LAYER_MIN_WIDTH = 60;
 const IMAGE_LAYER_MIN_HEIGHT = 40;
 const IMAGE_LAYER_MAX_WIDTH = 5000;
 const IMAGE_LAYER_MAX_HEIGHT = 5000;
+const IMAGE_LAYER_MAX_OVERFLOW_RATIO = 0.85;
 const ICON_LAYER_DEFAULT_SIZE = 42;
 const ICON_LAYER_MIN_SIZE = 20;
 const ICON_LAYER_MAX_SIZE = 3000;
@@ -239,10 +323,14 @@ const AntSwitch = styled(Switch)(({ theme }) => ({
   },
   "& .MuiSwitch-switchBase": {
     padding: 2,
+    color: "#ffffff",
     "&.Mui-checked": {
       transform: "translateX(12px)",
-      color: "#fff",
-      "& + .MuiSwitch-track": { opacity: 1, backgroundColor: "#333333" },
+      color: "#ffffff",
+      "& + .MuiSwitch-track": {
+        opacity: 1,
+        backgroundColor: "var(--dash-panel-switch-on, #333333)",
+      },
     },
   },
   "& .MuiSwitch-thumb": {
@@ -250,12 +338,14 @@ const AntSwitch = styled(Switch)(({ theme }) => ({
     width: 12,
     height: 12,
     borderRadius: 6,
+    backgroundColor: "#ffffff",
+    color: "#ffffff",
     transition: theme.transitions.create(["width"], { duration: 200 }),
   },
   "& .MuiSwitch-track": {
     borderRadius: 8,
     opacity: 1,
-    backgroundColor: "rgba(0,0,0,.25)",
+    backgroundColor: "var(--dash-panel-switch-off, rgba(0,0,0,.25))",
     boxSizing: "border-box",
   },
 }));
@@ -265,12 +355,43 @@ const getSafeLayerZIndex = (item, fallbackIndex = 0) => {
   if (Number.isFinite(parsed)) return parsed;
   return fallbackIndex + 1;
 };
+const HERO_RESPONSIVE_DEVICES = new Set(["Tablet", "Mobile"]);
+const stripHeroDeviceSections = (section) => {
+  if (!section || typeof section !== "object") return {};
+  const nextSection = { ...section };
+  delete nextSection.deviceSections;
+  return nextSection;
+};
+const resolveHeroSectionByDevice = (section, device) => {
+  const baseSection = stripHeroDeviceSections(section);
+  if (!HERO_RESPONSIVE_DEVICES.has(device)) return baseSection;
+  const overrideSectionRaw = section?.deviceSections?.[device];
+  if (!overrideSectionRaw || typeof overrideSectionRaw !== "object") {
+    return baseSection;
+  }
+  const overrideSection = stripHeroDeviceSections(overrideSectionRaw);
+  return {
+    ...baseSection,
+    ...overrideSection,
+  };
+};
 
-function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
+function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, device = "Desktop", readOnly = false }) {
   const [isHoverSection, setIsHoverSection] = useState(false);
+  const deviceRef = useRef(device);
+  const heroSectionRef = useRef(heroSection);
+  useEffect(() => {
+    deviceRef.current = device;
+  }, [device]);
+  useEffect(() => {
+    heroSectionRef.current = heroSection;
+  }, [heroSection]);
+  const editableHeroSection = useMemo(
+    () => resolveHeroSectionByDevice(heroSection, device),
+    [heroSection, device]
+  );
   const sectionData = useMemo(() => {
     return {
-      id: "HeroSec-1",
       heroHeight: 400,
       latestColID: 3,
       isFluid: false,
@@ -282,9 +403,15 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
       sectionOverlapTopTablet: 0,
       sectionOverlapTopMobile: 0,
       opacityImage: 1,
+      imageBrightness: 100,
       opacityColor: 255,
       opacityColorGradient: [255, 255],
       backgroundImage: "",
+      backgroundVideo: "",
+      backgroundPositionX: 50,
+      backgroundPositionY: 50,
+      backgroundZoom: 100,
+      backgroundFrameOnly: false,
       backgroundColor: "#ffffff",
       backgroundColorGradient: [
         { type: "mainColor", index: 0 },
@@ -295,6 +422,12 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
       gridBorder: false,
       noColumnGap: false,
       parallaxEnabled: false,
+      svgDividerEnabled: false,
+      svgDividerType: "wave",
+      svgDividerHeight: 64,
+      svgDividerDensity: 1,
+      svgDividerSize: 1,
+      svgDividerColor: "#ffffff",
       columnDividerStyle: "dashed",
       columnDividerColor: "#d8d8d8",
       columnDividerOpacity: 255,
@@ -309,18 +442,42 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
       bulletColor: "#454b57",
       bulletBottomOffset: 12,
       activeLayerItemId: null,
-      _sectionIndex: 0,
-      _isSplitSection: false,
-      ...(heroSection || {}),
-      id: String(heroSection?.id || "HeroSec-1"),
+      ...editableHeroSection,
+      id: String(editableHeroSection?.id || "HeroSec-1"),
       _sectionIndex: 0,
       _isSplitSection: false,
     };
-  }, [heroSection]);
+  }, [editableHeroSection]);
 
   const handleUpdateSection = useCallback(
     (nextSection) => {
-      updateHeroSection?.(nextSection);
+      if (!updateHeroSection) return;
+      const currentDevice = deviceRef.current;
+      const currentHeroSection = heroSectionRef.current;
+      const sanitizedNextSection = stripHeroDeviceSections(nextSection);
+      if (!HERO_RESPONSIVE_DEVICES.has(currentDevice)) {
+        const preservedDeviceSections =
+          currentHeroSection?.deviceSections && typeof currentHeroSection.deviceSections === "object"
+            ? { ...currentHeroSection.deviceSections }
+            : undefined;
+        updateHeroSection({
+          ...sanitizedNextSection,
+          ...(preservedDeviceSections ? { deviceSections: preservedDeviceSections } : {}),
+        });
+        return;
+      }
+      const rootSection = stripHeroDeviceSections(currentHeroSection);
+      const prevDeviceSections =
+        currentHeroSection?.deviceSections && typeof currentHeroSection.deviceSections === "object"
+          ? { ...currentHeroSection.deviceSections }
+          : {};
+      updateHeroSection({
+        ...rootSection,
+        deviceSections: {
+          ...prevDeviceSections,
+          [currentDevice]: sanitizedNextSection,
+        },
+      });
     },
     [updateHeroSection]
   );
@@ -345,6 +502,12 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
   }, []);
 
   const heroHeight = Math.max(400, Math.min(800, Number(sectionData.heroHeight ?? 400)));
+  const heroPreviewViewportWidth = useMemo(() => {
+    const deviceWidth = HERO_PREVIEW_FRAME_WIDTH_BY_DEVICE[device];
+    if (Number.isFinite(deviceWidth)) return `${deviceWidth}px`;
+    return "100%";
+  }, [device]);
+  const heroPreviewViewportMaxWidth = device === "Desktop" ? "1280px" : "100%";
   const slides = useMemo(
     () =>
       Array.isArray(sectionData.slides) && sectionData.slides.length > 0
@@ -388,6 +551,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
   const [selectedLayerId, setSelectedLayerId] = useState(null);
   const [editingTextLayerId, setEditingTextLayerId] = useState(null);
   const [editingTextDrafts, setEditingTextDrafts] = useState({});
+  const [layerAnimationPreviewState, setLayerAnimationPreviewState] = useState({});
   const [buttonColorPickTarget, setButtonColorPickTarget] = useState("bg");
   const [isLayerImagePickerOpen, setIsLayerImagePickerOpen] = useState(false);
   const [isLayerIconPickerOpen, setIsLayerIconPickerOpen] = useState(false);
@@ -423,8 +587,46 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
         ? slide.opacityColorGradient
         : sectionData.opacityColorGradient;
       const degrees = Number(slide?.degrees ?? sectionData.degrees ?? 90);
-      const backgroundImage = slide?.backgroundImage ?? sectionData.backgroundImage;
-      const opacityImage = Number(slide?.opacityImage ?? sectionData.opacityImage ?? 1);
+      const selectedBackgroundVideo = slide?.backgroundVideo ?? sectionData.backgroundVideo;
+      const selectedBackgroundImage = slide?.backgroundImage ?? sectionData.backgroundImage;
+      const backgroundVideo = selectedBackgroundVideo || "";
+      const backgroundImage = backgroundVideo ? "" : selectedBackgroundImage;
+      const backgroundPositionX = Math.max(
+        HERO_BG_FOCUS_MIN,
+        Math.min(
+          HERO_BG_FOCUS_MAX,
+          (() => {
+            const parsed = Number(slide?.backgroundPositionX ?? sectionData.backgroundPositionX ?? 50);
+            return Number.isFinite(parsed) ? parsed : 50;
+          })()
+        )
+      );
+      const backgroundPositionY = Math.max(
+        HERO_BG_FOCUS_MIN,
+        Math.min(
+          HERO_BG_FOCUS_MAX,
+          (() => {
+            const parsed = Number(slide?.backgroundPositionY ?? sectionData.backgroundPositionY ?? 50);
+            return Number.isFinite(parsed) ? parsed : 50;
+          })()
+        )
+      );
+      const backgroundZoom = Math.max(
+        HERO_BG_ZOOM_MIN,
+        Math.min(
+          HERO_BG_ZOOM_MAX,
+          (() => {
+            const parsed = Number(slide?.backgroundZoom ?? sectionData.backgroundZoom ?? 100);
+            return Number.isFinite(parsed) ? parsed : 100;
+          })()
+        )
+      );
+      const backgroundFrameOnly =
+        (slide?.backgroundFrameOnly ?? sectionData.backgroundFrameOnly ?? false) === true;
+      const parsedImageBrightness = Number(slide?.imageBrightness ?? sectionData.imageBrightness);
+      const imageBrightness = Number.isFinite(parsedImageBrightness)
+        ? Math.max(0, Math.min(200, parsedImageBrightness))
+        : Math.max(0, Math.min(200, Number(slide?.opacityImage ?? sectionData.opacityImage ?? 1) * 100));
       const blurPx = Math.max(0, Number(slide?.blur ?? sectionData.blur ?? 0));
       const parallaxEnabled = Boolean(slide?.parallaxEnabled ?? sectionData.parallaxEnabled);
       const background = isGradient
@@ -439,7 +641,12 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
       return {
         background,
         backgroundImage,
-        opacityImage,
+        backgroundVideo,
+        backgroundPositionX,
+        backgroundPositionY,
+        backgroundZoom,
+        backgroundFrameOnly,
+        imageBrightness,
         blurPx,
         blurBleedPx: blurPx > 0 ? Math.ceil(blurPx * 2.2) : 0,
         parallaxEnabled,
@@ -453,6 +660,12 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
       sectionData.opacityColorGradient,
       sectionData.degrees,
       sectionData.backgroundImage,
+      sectionData.backgroundVideo,
+      sectionData.backgroundPositionX,
+      sectionData.backgroundPositionY,
+      sectionData.backgroundZoom,
+      sectionData.backgroundFrameOnly,
+      sectionData.imageBrightness,
       sectionData.opacityImage,
       sectionData.blur,
       sectionData.parallaxEnabled,
@@ -489,6 +702,66 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
   })();
   const bulletRadius =
     bulletShape === "circle" ? "9999px" : bulletShape === "rounded" ? "4px" : "0px";
+  const svgDividerEnabled = sectionData.svgDividerEnabled === true;
+  const normalizedSvgDividerType =
+    sectionData.svgDividerType === "tilt"
+      ? "cloud"
+      : sectionData.svgDividerType === "triangleCurve"
+        ? "arrowSplit"
+        : sectionData.svgDividerType;
+  const svgDividerType = HERO_SVG_DIVIDER_TYPE_SET.has(normalizedSvgDividerType)
+    ? normalizedSvgDividerType
+    : "wave";
+  const parsedDividerHeight = Number(sectionData.svgDividerHeight);
+  const svgDividerHeight = Number.isFinite(parsedDividerHeight)
+    ? Math.max(HERO_SVG_DIVIDER_HEIGHT_MIN, Math.min(HERO_SVG_DIVIDER_HEIGHT_MAX, parsedDividerHeight))
+    : 64;
+  const parsedDividerDensity = Number(sectionData.svgDividerDensity);
+  const svgDividerDensity = Number.isFinite(parsedDividerDensity)
+    ? Math.max(
+        HERO_SVG_DIVIDER_DENSITY_MIN,
+        Math.min(HERO_SVG_DIVIDER_DENSITY_MAX, parsedDividerDensity)
+      )
+    : 1;
+  const parsedDividerSize = Number(sectionData.svgDividerSize);
+  const svgDividerSize = Number.isFinite(parsedDividerSize)
+    ? Math.max(HERO_SVG_DIVIDER_SIZE_MIN, Math.min(HERO_SVG_DIVIDER_SIZE_MAX, parsedDividerSize))
+    : 1;
+  const svgDividerColor = (() => {
+    const resolved = resolveColor(sectionData.svgDividerColor ?? "#ffffff");
+    if (typeof resolved === "string" && resolved.trim()) return resolved;
+    return "#ffffff";
+  })();
+  const svgDividerPath = (() => {
+    if (!svgDividerEnabled || svgDividerType === "none") return null;
+    if (svgDividerType === "triangle") return buildTriangleDividerPath(svgDividerSize);
+    if (svgDividerType === "arrowSplit") return buildArrowSplitDividerPath(svgDividerSize);
+    return HERO_SVG_DIVIDER_PATHS[svgDividerType] || null;
+  })();
+  const svgDividerPathMeta = svgDividerPath ? HERO_SVG_DIVIDER_PATH_META[svgDividerType] ?? null : null;
+  const svgDividerPathBaseWidth =
+    svgDividerPathMeta?.baseWidth ?? HERO_SVG_DIVIDER_VIEWBOX_WIDTH;
+  const svgDividerPathTransform = svgDividerPathMeta?.transform ?? null;
+  const isSingleTriangleDivider =
+    svgDividerType === "triangle" || svgDividerType === "arrowSplit";
+  const svgDividerSegmentWidth = isSingleTriangleDivider
+    ? HERO_SVG_DIVIDER_VIEWBOX_WIDTH
+    : HERO_SVG_DIVIDER_VIEWBOX_WIDTH / Math.max(svgDividerDensity, 0.01);
+  const svgDividerSegmentScaleX = svgDividerSegmentWidth / svgDividerPathBaseWidth;
+  const svgDividerSegmentCount = svgDividerPath
+    ? isSingleTriangleDivider
+      ? 1
+      : svgDividerDensity >= 1
+        ? Math.ceil(svgDividerDensity)
+        : 1
+    : 0;
+  const svgDividerSegmentOffsetX = svgDividerPath
+    ? isSingleTriangleDivider
+      ? 0
+      : svgDividerDensity >= 1
+        ? 0
+        : (HERO_SVG_DIVIDER_VIEWBOX_WIDTH - svgDividerSegmentWidth) / 2
+    : 0;
   const themeColorTokens = useMemo(() => {
     const main = Array.isArray(theme?.mainColor)
       ? theme.mainColor.map((_, index) => ({ type: "mainColor", index }))
@@ -868,11 +1141,49 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
   }, []);
 
   useEffect(() => {
+    if (previewSlideIndex === activeSlideIndex) return;
     setPreviewSlideIndex(activeSlideIndex);
-  }, [activeSlideIndex, slides.length]);
+  }, [activeSlideIndex, previewSlideIndex]);
   useEffect(() => {
-    setSelectedLayerId(sectionData?.activeLayerItemId || null);
-  }, [sectionData?.activeLayerItemId]);
+    const nextActiveLayerId = sectionData?.activeLayerItemId || null;
+    if (selectedLayerId === nextActiveLayerId) return;
+    setSelectedLayerId(nextActiveLayerId);
+  }, [sectionData?.activeLayerItemId, selectedLayerId]);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleLayerAnimationPreview = (event) => {
+      const detail = event?.detail || {};
+      const incomingSectionId =
+        typeof detail.sectionId === "string" ? detail.sectionId : "";
+      if (incomingSectionId && incomingSectionId !== String(sectionData?.id || "")) return;
+      const layerId = typeof detail.layerId === "string" ? detail.layerId.trim() : "";
+      if (!layerId) return;
+      const shouldPlay = detail.playing === true;
+      setLayerAnimationPreviewState((prev) => {
+        const prevEntry = prev[layerId];
+        const runKey = shouldPlay
+          ? Number(prevEntry?.runKey || 0) + 1
+          : Number(prevEntry?.runKey || 0);
+        return {
+          ...prev,
+          [layerId]: {
+            playing: shouldPlay,
+            runKey,
+          },
+        };
+      });
+    };
+    window.addEventListener(
+      HERO_LAYER_ANIMATION_PREVIEW_EVENT,
+      handleLayerAnimationPreview
+    );
+    return () => {
+      window.removeEventListener(
+        HERO_LAYER_ANIMATION_PREVIEW_EVENT,
+        handleLayerAnimationPreview
+      );
+    };
+  }, [sectionData?.id]);
   useEffect(() => {
     if (!editingTextLayerId) return;
     if (selectedLayerId !== editingTextLayerId) {
@@ -1541,10 +1852,23 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
     },
     [activeLayerItems, addLayerItemToActiveSlide, buildLayerItemFromType, sectionData?.activeLayerItemId]
   );
-  const buildSafeLayerPoint = useCallback((rawX, rawY, layerType = null) => {
+  const buildSafeLayerPoint = useCallback((rawX, rawY, layerType = null, layerWidth = null, layerHeight = null) => {
     const dropRect = previewDropRef.current?.getBoundingClientRect();
     if (!dropRect) return null;
-    if (layerType === "image" || layerType === "rectangle" || layerType === "circle") {
+    if (layerType === "image") {
+      const safeImageSize = buildSafeImageSize(layerWidth, layerHeight);
+      const maxOverflowWidth =
+        Math.max(safeImageSize.width, safeImageSize.height) * IMAGE_LAYER_MAX_OVERFLOW_RATIO;
+      const maxOverflowHeight = safeImageSize.height * IMAGE_LAYER_MAX_OVERFLOW_RATIO;
+      const minX = safeImageSize.width / 2 - maxOverflowWidth;
+      const maxX = dropRect.width + maxOverflowWidth - safeImageSize.width / 2;
+      const minY = safeImageSize.height / 2 - maxOverflowHeight;
+      const maxY = dropRect.height + maxOverflowHeight - safeImageSize.height / 2;
+      const safeX = Math.max(minX, Math.min(maxX, rawX));
+      const safeY = Math.max(minY, Math.min(maxY, rawY));
+      return { x: safeX, y: safeY };
+    }
+    if (layerType === "rectangle" || layerType === "circle") {
       const extraX = dropRect.width;
       const extraY = dropRect.height;
       const safeX = Math.max(-extraX, Math.min(dropRect.width + extraX, rawX));
@@ -1554,7 +1878,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
     const safeX = Math.max(24, Math.min(dropRect.width - 24, rawX));
     const safeY = Math.max(24, Math.min(dropRect.height - 24, rawY));
     return { x: safeX, y: safeY };
-  }, []);
+  }, [buildSafeImageSize]);
   const endLayerDrag = useCallback(() => {
     const meta = dragLayerMetaRef.current;
     if (!meta) return;
@@ -1613,7 +1937,13 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
       const dropRect = previewDropRef.current.getBoundingClientRect();
       const rawX = event.clientX - dropRect.left - meta.pointerOffsetX;
       const rawY = event.clientY - dropRect.top - meta.pointerOffsetY;
-      const safePoint = buildSafeLayerPoint(rawX, rawY, meta.layerType);
+      const safePoint = buildSafeLayerPoint(
+        rawX,
+        rawY,
+        meta.layerType,
+        meta.layerWidth,
+        meta.layerHeight
+      );
       if (!safePoint) return;
       setLayerDragDraft((prev) => {
         const current = prev[meta.layerId];
@@ -1627,7 +1957,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
     [buildSafeLayerPoint]
   );
   const startLayerDrag = useCallback(
-    (event, layerItem, currentX, currentY) => {
+    (event, layerItem, currentX, currentY, currentWidth = null, currentHeight = null) => {
       if (!layerItem?.id || !previewDropRef.current || resizeLayerMetaRef.current) return;
       event.preventDefault();
       event.stopPropagation();
@@ -1637,6 +1967,8 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
         layerType: layerItem.type || null,
         startX: currentX,
         startY: currentY,
+        layerWidth: Number.isFinite(Number(currentWidth)) ? Number(currentWidth) : null,
+        layerHeight: Number.isFinite(Number(currentHeight)) ? Number(currentHeight) : null,
         pointerOffsetX: event.clientX - (dropRect.left + currentX),
         pointerOffsetY: event.clientY - (dropRect.top + currentY),
       };
@@ -3354,29 +3686,77 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
     themeHeadingFontFamily,
     themeTextFontFamily,
   ]);
-  const renderSceneVisualLayer = (visual, extraStyle = undefined) => {
+  const renderSceneVisualLayer = (visual, extraStyle = undefined, options = undefined) => {
     if (!visual) return null;
+    const includeMedia = options?.includeMedia !== false;
+    const includeBackground = options?.includeBackground !== false;
+    const backgroundZoomScale = Math.max(
+      0.1,
+      (Number.isFinite(Number(visual.backgroundZoom)) ? Number(visual.backgroundZoom) : 100) / 100
+    );
+    const isBackgroundZoomOut = backgroundZoomScale < 1;
+    const backgroundFitMode = isBackgroundZoomOut ? "contain" : "cover";
     return (
       <div
         className="absolute inset-0 overflow-hidden pointer-events-none"
         style={{
-          background: visual.background,
           willChange: "opacity, transform, filter",
           ...(extraStyle || {}),
         }}
       >
-        {visual.backgroundImage ? (
+        {includeMedia && visual.backgroundVideo ? (
+          <video
+            className="absolute"
+            style={{
+              zIndex: 1,
+              top: visual.blurBleedPx > 0 ? -visual.blurBleedPx : 0,
+              left: visual.blurBleedPx > 0 ? -visual.blurBleedPx : 0,
+              width:
+                visual.blurBleedPx > 0
+                  ? `calc(100% + ${visual.blurBleedPx * 2}px)`
+                  : "100%",
+              height:
+                visual.blurBleedPx > 0
+                  ? `calc(100% + ${visual.blurBleedPx * 2}px)`
+                  : "100%",
+              objectFit: backgroundFitMode,
+              objectPosition: `${visual.backgroundPositionX}% ${visual.backgroundPositionY}%`,
+              transform: `scale(${backgroundZoomScale})`,
+              transformOrigin: `${visual.backgroundPositionX}% ${visual.backgroundPositionY}%`,
+              filter: `blur(${visual.blurPx}px) brightness(${visual.imageBrightness}%)`,
+            }}
+            src={visual.backgroundVideo}
+            autoPlay
+            muted
+            loop
+            playsInline
+          />
+        ) : includeMedia && visual.backgroundImage ? (
           <div
             className="absolute bg-cover bg-center bg-no-repeat"
             style={{
+              zIndex: 1,
               top: visual.blurBleedPx > 0 ? -visual.blurBleedPx : 0,
               right: visual.blurBleedPx > 0 ? -visual.blurBleedPx : 0,
               bottom: visual.blurBleedPx > 0 ? -visual.blurBleedPx : 0,
               left: visual.blurBleedPx > 0 ? -visual.blurBleedPx : 0,
+              backgroundRepeat: "no-repeat",
               backgroundImage: `url(${visual.backgroundImage})`,
-              opacity: visual.opacityImage,
-              filter: `blur(${visual.blurPx}px)`,
+              backgroundPosition: `${visual.backgroundPositionX}% ${visual.backgroundPositionY}%`,
+              backgroundSize: backgroundFitMode,
+              transform: `scale(${backgroundZoomScale})`,
+              transformOrigin: `${visual.backgroundPositionX}% ${visual.backgroundPositionY}%`,
+              filter: `blur(${visual.blurPx}px) brightness(${visual.imageBrightness}%)`,
               backgroundAttachment: visual.parallaxEnabled ? "fixed" : "scroll",
+            }}
+          />
+        ) : null}
+        {includeBackground && visual.background ? (
+          <div
+            className="absolute inset-0"
+            style={{
+              zIndex: 2,
+              background: visual.background,
             }}
           />
         ) : null}
@@ -3390,6 +3770,108 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
     (isSlideLeftMode || isSlideRightMode) && slideTransition && fromSlideVisual && activeSlideVisual;
   const shouldRenderFadeTrack =
     isFadeMode && slideTransition && fromSlideVisual && activeSlideVisual;
+  const shouldClipBackgroundToPreviewFrame =
+    Boolean(activeSlideVisual?.backgroundFrameOnly) || Boolean(fromSlideVisual?.backgroundFrameOnly);
+  const shouldUseDeviceColorBleedMode = device === "Tablet" || device === "Mobile";
+  const shouldClipSceneMediaToPreviewFrame =
+    shouldClipBackgroundToPreviewFrame || shouldUseDeviceColorBleedMode;
+  const previewFrameDeviceWidth = HERO_PREVIEW_FRAME_WIDTH_BY_DEVICE[device];
+  const desktopFrameInsetX =
+    typeof heroPreviewViewportMaxWidth === "string" &&
+    heroPreviewViewportMaxWidth.trim().endsWith("px")
+      ? `max(0px, calc((100% - ${heroPreviewViewportMaxWidth}) / 2))`
+      : "6%";
+  const previewFrameClipInsetX = Number.isFinite(previewFrameDeviceWidth)
+    ? `max(0px, calc((100% - ${previewFrameDeviceWidth}px) / 2))`
+    : desktopFrameInsetX;
+  const previewFrameGuideInsetX = Number.isFinite(previewFrameDeviceWidth)
+    ? `max(0px, calc((100% - ${previewFrameDeviceWidth}px) / 2))`
+    : desktopFrameInsetX;
+  const previewFrameMediaClipStyle = shouldClipSceneMediaToPreviewFrame
+    ? {
+        clipPath: `inset(0 ${previewFrameClipInsetX} 0 ${previewFrameClipInsetX})`,
+      }
+    : undefined;
+  const previewFrameBoundsStyle = {
+    width: heroPreviewViewportWidth,
+    maxWidth: heroPreviewViewportMaxWidth,
+    height: heroHeight,
+  };
+  const renderPreviewFrameSideGuides = () => {
+    if (shouldClipBackgroundToPreviewFrame) return null;
+    return (
+      <>
+        <div
+          className="pointer-events-none absolute inset-y-0 z-[6] border-l border-dashed border-white/50"
+          style={{ left: previewFrameGuideInsetX }}
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-y-0 z-[6] border-r border-dashed border-white/50"
+          style={{ right: previewFrameGuideInsetX }}
+          aria-hidden
+        />
+      </>
+    );
+  };
+  const renderSceneVisualTrack = (layerOptions = undefined) => {
+    if (shouldRenderSlideTransition) {
+      return (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {renderSceneVisualLayer(
+            fromSlideVisual,
+            {
+              zIndex: 2,
+              animation: isSlideRightMode
+                ? `heroSceneSlideOutRight ${slideDurationMs}ms cubic-bezier(0.22,1,0.36,1) both`
+                : `heroSceneSlideOutLeft ${slideDurationMs}ms cubic-bezier(0.22,1,0.36,1) both`,
+            },
+            layerOptions
+          )}
+          {renderSceneVisualLayer(
+            activeSlideVisual,
+            {
+              zIndex: 1,
+              animation: isSlideRightMode
+                ? `heroSceneSlideInRight ${slideDurationMs}ms cubic-bezier(0.22,1,0.36,1) both`
+                : `heroSceneSlideInLeft ${slideDurationMs}ms cubic-bezier(0.22,1,0.36,1) both`,
+            },
+            layerOptions
+          )}
+        </div>
+      );
+    }
+    if (shouldRenderFadeTrack) {
+      return (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {renderSceneVisualLayer(
+            fromSlideVisual,
+            {
+              zIndex: 1,
+              animation: `heroSceneFadeOut ${fadeDurationMs}ms cubic-bezier(0.16, 1, 0.3, 1) both`,
+            },
+            layerOptions
+          )}
+          {renderSceneVisualLayer(
+            activeSlideVisual,
+            {
+              zIndex: 2,
+              animation: `heroSceneFadeIn ${fadeDurationMs}ms cubic-bezier(0.16, 1, 0.3, 1) both`,
+            },
+            layerOptions
+          )}
+        </div>
+      );
+    }
+    return renderSceneVisualLayer(activeSlideVisual, undefined, layerOptions);
+  };
+  const sceneVisualContent = renderSceneVisualTrack();
+  const sceneVisualMediaContent = shouldUseDeviceColorBleedMode
+    ? renderSceneVisualTrack({ includeMedia: true, includeBackground: false })
+    : sceneVisualContent;
+  const sceneVisualColorContent = shouldUseDeviceColorBleedMode
+    ? renderSceneVisualTrack({ includeMedia: false, includeBackground: true })
+    : null;
   const selectedTopControlMode = selectedShapeLayer
     ? "shape"
     : selectedImageLayer
@@ -3401,11 +3883,144 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
       : selectedIconLayer
         ? "icon"
         : null;
-  const hasTopStyleControls = Boolean(selectedTopControlMode);
+  const hasTopStyleControls = Boolean(selectedTopControlMode) && !readOnly;
+
+  if (readOnly) {
+    return (
+      <div className="w-full">
+        <div
+          className="relative overflow-hidden"
+          style={{
+            paddingTop: sectionData.paddingTop,
+            paddingBottom: sectionData.paddingBottom,
+          }}
+        >
+          {shouldUseDeviceColorBleedMode ? (
+            <>
+              <div className="pointer-events-none absolute inset-0 z-0" style={previewFrameMediaClipStyle}>
+                {sceneVisualMediaContent}
+              </div>
+              <div className="pointer-events-none absolute inset-0 z-[1]">
+                {sceneVisualColorContent}
+              </div>
+            </>
+          ) : shouldClipBackgroundToPreviewFrame ? (
+            <div className="pointer-events-none absolute inset-0 z-0" style={previewFrameMediaClipStyle}>
+              {sceneVisualMediaContent}
+            </div>
+          ) : (
+            sceneVisualMediaContent
+          )}
+          {svgDividerPath ? (
+            <div
+              className="pointer-events-none absolute inset-x-0 z-[3]"
+              style={{
+                bottom: 0,
+                height: `${svgDividerHeight}px`,
+                ...(previewFrameMediaClipStyle || {}),
+              }}
+              aria-hidden
+            >
+              <svg
+                viewBox={`0 0 ${HERO_SVG_DIVIDER_VIEWBOX_WIDTH} ${HERO_SVG_DIVIDER_VIEWBOX_HEIGHT}`}
+                preserveAspectRatio="none"
+                className="h-full w-full"
+              >
+                {Array.from({ length: svgDividerSegmentCount }).map((_, index) => (
+                  <g
+                    key={`hero-divider-segment-${index}`}
+                    transform={`translate(${svgDividerSegmentOffsetX + index * svgDividerSegmentWidth} 0) scale(${svgDividerSegmentScaleX} 1)`}
+                  >
+                    <path
+                      d={svgDividerPath}
+                      fill={svgDividerColor}
+                      transform={svgDividerPathTransform || undefined}
+                    />
+                  </g>
+                ))}
+              </svg>
+            </div>
+          ) : null}
+          <div
+            className={`relative z-10 mx-auto flex items-center justify-center bg-transparent ${
+              shouldClipBackgroundToPreviewFrame ? "overflow-hidden" : ""
+            }`}
+            style={{
+              ...previewFrameBoundsStyle,
+            }}
+          >
+            <div className="pointer-events-none absolute inset-0 z-10">
+              {sortedLayerItems.map((item, index) => {
+                const fallbackIndex = Number.isFinite(Number(item?.__originalIndex))
+                  ? Number(item.__originalIndex)
+                  : index;
+                const canOverflowSection =
+                  item?.type === "image" || item?.type === "rectangle" || item?.type === "circle";
+                const x = Number.isFinite(Number(item?.x))
+                  ? canOverflowSection
+                    ? Math.max(-4000, Math.min(4000, Number(item.x)))
+                    : Math.max(24, Math.min(4000, Number(item.x)))
+                  : 96 + fallbackIndex * 24;
+                const y = Number.isFinite(Number(item?.y))
+                  ? canOverflowSection
+                    ? Math.max(-4000, Math.min(4000, Number(item.y)))
+                    : Math.max(24, Math.min(4000, Number(item.y)))
+                  : 96 + fallbackIndex * 24;
+                const width = Number(item?.width);
+                const height = Number(item?.height);
+                return (
+                  <div
+                    key={item?.id || `layer-${index}`}
+                    className="absolute -translate-x-1/2 -translate-y-1/2"
+                    style={{
+                      left: `${x}px`,
+                      top: `${y}px`,
+                      zIndex: Number(item?.__safeZIndex || 1),
+                      ...(Number.isFinite(width) ? { width: `${width}px` } : {}),
+                      ...(Number.isFinite(height) ? { height: `${height}px` } : {}),
+                    }}
+                  >
+                    {renderLayerPreviewItem(item)}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <style>{`
+          @keyframes heroSceneFadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+          }
+          @keyframes heroSceneFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          @keyframes heroSceneSlideOutLeft {
+            from { transform: translateX(0); }
+            to { transform: translateX(-100%); }
+          }
+          @keyframes heroSceneSlideInLeft {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+          }
+          @keyframes heroSceneSlideOutRight {
+            from { transform: translateX(0); }
+            to { transform: translateX(100%); }
+          }
+          @keyframes heroSceneSlideInRight {
+            from { transform: translateX(-100%); }
+            to { transform: translateX(0); }
+          }
+          ${HERO_LAYER_ANIMATION_KEYFRAMES}
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <main className="flex-1 overflow-y-auto px-4 pb-4 pt-0 sm:px-6 sm:pb-6 sm:pt-0">
-      <div className="min-h-[600px] rounded-xl border border-white/10 bg-white/5 px-4 pb-4 pt-0">
+      <div className="min-h-[600px] px-4 pb-4 pt-0">
         <div
           className="mx-auto w-full overflow-x-auto overflow-y-hidden transition-all duration-300 ease-out"
           style={{
@@ -3423,7 +4038,10 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
             }`}
           >
             {!hasTopStyleControls ? (
-              <span className="text-[13px] font-medium text-slate-500">
+              <span
+                className="text-[13px] font-medium"
+                style={{ color: "var(--dash-panel-heading, #0f172a)" }}
+              >
                 คลิกเลือก Element เพื่อปรับแต่งค่าต่างๆ
               </span>
             ) : null}
@@ -3436,14 +4054,10 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
               >
                 {selectedTopControlMode === "button" ? (
                   <div className="mr-1 flex shrink-0 items-center gap-1">
-                    <div className="inline-flex h-6 items-center rounded-md border border-slate-300 bg-white">
+                    <div className="inline-flex h-[28px] items-center gap-1">
                       <button
                         type="button"
-                        className={`flex h-full w-6 items-center justify-center text-[11px] font-semibold ${
-                          buttonColorPickTarget === "bg"
-                            ? "cursor-not-allowed text-slate-300"
-                            : "text-slate-700 hover:bg-slate-100"
-                        }`}
+                        className="dash-select-line-field flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md"
                         onClick={() => setButtonColorPickTarget("bg")}
                         disabled={buttonColorPickTarget === "bg"}
                         aria-label="เลือกสีปุ่ม"
@@ -3451,16 +4065,14 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                       >
                         <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2.5} />
                       </button>
-                      <span className="whitespace-nowrap border-x border-slate-300 px-2 text-center text-[11px] font-medium text-slate-700">
-                        {buttonColorPickTarget === "bg" ? "สีปุ่ม" : "สีข้อความ"}
-                      </span>
+                      <div className="dash-select-line-field flex h-[28px] min-w-0 items-center justify-center rounded-md px-2">
+                        <span className="dash-select-line-value whitespace-nowrap text-center text-[11px] font-medium">
+                          {buttonColorPickTarget === "bg" ? "สีปุ่ม" : "สีข้อความ"}
+                        </span>
+                      </div>
                       <button
                         type="button"
-                        className={`flex h-full w-6 items-center justify-center text-[11px] font-semibold ${
-                          buttonColorPickTarget === "text"
-                            ? "cursor-not-allowed text-slate-300"
-                            : "text-slate-700 hover:bg-slate-100"
-                        }`}
+                        className="dash-select-line-field flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md"
                         onClick={() => setButtonColorPickTarget("text")}
                         disabled={buttonColorPickTarget === "text"}
                         aria-label="เลือกสีข้อความปุ่ม"
@@ -3610,7 +4222,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                       updateSelectedImageStyle({ imageBrightness: Number(event.target.value) })
                     }
                     pos={(selectedImageBrightness / 200) * 100}
-                    color="#333333"
                   />
                 </div>
               </div>
@@ -3632,7 +4243,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                       })
                     }
                     pos={selectedShapeRadius}
-                    color="#333333"
                   />
                 </div>
               </div>
@@ -3695,7 +4305,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                             ? selectedIconOpacityPercent
                             : selectedTextOpacityPercent
                     }
-                    color="#333333"
                   />
                 </div>
               </div>
@@ -3725,7 +4334,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                         (TEXT_LAYER_MAX_LINE_HEIGHT - TEXT_LAYER_MIN_LINE_HEIGHT)) *
                       100
                     }
-                    color="#333333"
                   />
                 </div>
               </div>
@@ -3755,7 +4363,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                         (HEADING_LAYER_MAX_LETTER_SPACING - HEADING_LAYER_MIN_LETTER_SPACING)) *
                       100
                     }
-                    color="#333333"
                   />
                 </div>
               </div>
@@ -3787,7 +4394,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                         (BUTTON_LAYER_MAX_FONT_SIZE - BUTTON_LAYER_MIN_FONT_SIZE)) *
                       100
                     }
-                    color="#333333"
                   />
                 </div>
               </div>
@@ -3812,7 +4418,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                       })
                     }
                     pos={selectedButtonRadius}
-                    color="#333333"
                   />
                 </div>
               </div>
@@ -3891,7 +4496,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                         : updateSelectedImageStyle({ imageBlur: Number(event.target.value) })
                     }
                     pos={selectedTopControlMode === "shape" ? selectedShapeFillBlur : selectedImageBlur}
-                    color="#333333"
                   />
                 </div>
               </div>
@@ -3918,7 +4522,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
           </div>
         </div>
         <div
-          className="relative overflow-hidden border border-dashed border-gray-500 p-10"
+          className="relative overflow-hidden p-10"
           style={{
             paddingTop: sectionData.paddingTop,
             paddingBottom: sectionData.paddingBottom,
@@ -3927,35 +4531,53 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
           onMouseEnter={() => setIsHoverSection(true)}
           onMouseLeave={() => setIsHoverSection(false)}
         >
-          {shouldRenderSlideTransition ? (
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              {renderSceneVisualLayer(fromSlideVisual, {
-                zIndex: 2,
-                animation: isSlideRightMode
-                  ? `heroSceneSlideOutRight ${slideDurationMs}ms cubic-bezier(0.22,1,0.36,1) both`
-                  : `heroSceneSlideOutLeft ${slideDurationMs}ms cubic-bezier(0.22,1,0.36,1) both`,
-              })}
-              {renderSceneVisualLayer(activeSlideVisual, {
-                zIndex: 1,
-                animation: isSlideRightMode
-                  ? `heroSceneSlideInRight ${slideDurationMs}ms cubic-bezier(0.22,1,0.36,1) both`
-                  : `heroSceneSlideInLeft ${slideDurationMs}ms cubic-bezier(0.22,1,0.36,1) both`,
-              })}
-            </div>
-          ) : shouldRenderFadeTrack ? (
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              {renderSceneVisualLayer(fromSlideVisual, {
-                zIndex: 1,
-                animation: `heroSceneFadeOut ${fadeDurationMs}ms cubic-bezier(0.16, 1, 0.3, 1) both`,
-              })}
-              {renderSceneVisualLayer(activeSlideVisual, {
-                zIndex: 2,
-                animation: `heroSceneFadeIn ${fadeDurationMs}ms cubic-bezier(0.16, 1, 0.3, 1) both`,
-              })}
+          {shouldUseDeviceColorBleedMode ? (
+            <>
+              <div className="pointer-events-none absolute inset-0 z-0" style={previewFrameMediaClipStyle}>
+                {sceneVisualMediaContent}
+              </div>
+              <div className="pointer-events-none absolute inset-0 z-[1]">
+                {sceneVisualColorContent}
+              </div>
+            </>
+          ) : shouldClipBackgroundToPreviewFrame ? (
+            <div className="pointer-events-none absolute inset-0 z-0" style={previewFrameMediaClipStyle}>
+              {sceneVisualMediaContent}
             </div>
           ) : (
-            renderSceneVisualLayer(activeSlideVisual)
+            sceneVisualMediaContent
           )}
+          {renderPreviewFrameSideGuides()}
+          {svgDividerPath ? (
+            <div
+              className="pointer-events-none absolute inset-x-0 z-[3]"
+              style={{
+                bottom: 0,
+                height: `${svgDividerHeight}px`,
+                ...(previewFrameMediaClipStyle || {}),
+              }}
+              aria-hidden
+            >
+              <svg
+                viewBox={`0 0 ${HERO_SVG_DIVIDER_VIEWBOX_WIDTH} ${HERO_SVG_DIVIDER_VIEWBOX_HEIGHT}`}
+                preserveAspectRatio="none"
+                className="h-full w-full"
+              >
+                {Array.from({ length: svgDividerSegmentCount }).map((_, index) => (
+                  <g
+                    key={`hero-divider-segment-${index}`}
+                    transform={`translate(${svgDividerSegmentOffsetX + index * svgDividerSegmentWidth} 0) scale(${svgDividerSegmentScaleX} 1)`}
+                  >
+                    <path
+                      d={svgDividerPath}
+                      fill={svgDividerColor}
+                      transform={svgDividerPathTransform || undefined}
+                    />
+                  </g>
+                ))}
+              </svg>
+            </div>
+          ) : null}
           {isHoverSection && (
             <div className="absolute -left-px -top-px z-20">
               <button
@@ -3973,8 +4595,12 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
             </div>
           )}
           <div
-            className="relative z-10 mx-auto flex max-w-[88%] items-center justify-center border border-dashed border-gray-500 bg-transparent text-[13px] text-slate-500"
-            style={{ height: heroHeight }}
+            className={`relative z-10 mx-auto flex items-center justify-center bg-transparent text-[13px] text-slate-500 ${
+              shouldClipBackgroundToPreviewFrame ? "overflow-hidden" : ""
+            }`}
+            style={{
+              ...previewFrameBoundsStyle,
+            }}
             ref={previewDropRef}
             onMouseDown={(event) => {
               const target = event.target;
@@ -4180,13 +4806,18 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                 const layerAnimationDelayMs = Number.isFinite(Number(item?.animationDelayMs))
                   ? Math.max(0, Math.min(3000, Number(item.animationDelayMs)))
                   : HERO_LAYER_ANIMATION_DEFAULTS.animationDelayMs;
-                const layerAnimationEasing = HERO_LAYER_ANIMATION_EASING_VALUES.has(item?.animationEasing)
-                  ? item.animationEasing
-                  : HERO_LAYER_ANIMATION_DEFAULTS.animationEasing;
-                const layerAnimationOnce = item?.animationOnce !== false;
-                const shouldApplyLayerAnimation = layerAnimationEnabled && !isSelected;
+                const layerAnimationEasing = HERO_LAYER_ANIMATION_DEFAULTS.animationEasing;
+                const layerAnimationOnce = true;
+                const previewState = layerAnimationPreviewState[item?.id];
+                const isLayerPreviewPlaying = previewState?.playing === true;
+                const layerPreviewRunKey = Number(previewState?.runKey || 0);
+                const showSelectionFrame = isSelected && !isLayerPreviewPlaying;
+                const shouldApplyLayerAnimation =
+                  (layerAnimationEnabled && !isSelected) || isLayerPreviewPlaying;
                 const layerAnimationName = shouldApplyLayerAnimation
-                  ? layerAnimationType === "slide-in-left"
+                  ? layerAnimationType === "slide-in-down"
+                    ? "heroLayerAnimSlideInDown"
+                    : layerAnimationType === "slide-in-left"
                     ? "heroLayerAnimSlideInLeft"
                     : layerAnimationType === "slide-in-right"
                       ? "heroLayerAnimSlideInRight"
@@ -4204,14 +4835,23 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                       animationDuration: `${layerAnimationDurationMs}ms`,
                       animationDelay: `${layerAnimationDelayMs}ms`,
                       animationTimingFunction: layerAnimationEasing,
-                      animationIterationCount: layerAnimationOnce ? 1 : "infinite",
-                      animationFillMode: "both",
+                      animationIterationCount: isLayerPreviewPlaying
+                        ? 1
+                        : layerAnimationOnce
+                          ? 1
+                          : "infinite",
+                      animationFillMode: isLayerPreviewPlaying ? "none" : "both",
                       willChange: "transform, opacity",
                     }
                   : null;
+                const layerRenderKeyBase = item?.id || `hero-layer-item-${index}`;
+                const layerRenderKey =
+                  layerPreviewRunKey > 0
+                    ? `${layerRenderKeyBase}-${layerPreviewRunKey}`
+                    : layerRenderKeyBase;
                 return (
                   <div
-                    key={item?.id || `hero-layer-item-${index}`}
+                    key={layerRenderKey}
                     data-hero-layer-item="true"
                     className={`pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 select-none ${
                       isTextElement
@@ -4278,7 +4918,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                         setSelectedLayerWithSync(item?.id || null);
                       }
                       if ((isTextElement || isButtonElement) && editingTextLayerId === item?.id) return;
-                      startLayerDrag(event, item, x, y);
+                      startLayerDrag(event, item, x, y, width, height);
                     }}
                     onClick={(event) => {
                       event.preventDefault();
@@ -4305,36 +4945,36 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                       <div
                         className={`relative h-full w-full ${
                           isCircleElement
-                            ? isSelected
+                            ? showSelectionFrame
                               ? "rounded-md border border-white/80 bg-transparent shadow-[0_0_0_1px_rgba(0,0,0,0.2)]"
                               : "rounded-md border border-transparent bg-transparent"
                             : isRectangleElement
-                              ? isSelected
+                              ? showSelectionFrame
                                 ? "rounded-md border border-white/80 bg-transparent shadow-[0_0_0_1px_rgba(0,0,0,0.15)]"
                                 : "rounded-md border border-transparent bg-transparent"
                             : isImageElement
-                              ? isSelected
+                              ? showSelectionFrame
                                 ? "rounded-md border border-white/80 bg-transparent shadow-[0_0_0_1px_rgba(0,0,0,0.15)]"
                                 : "rounded-md border border-transparent bg-transparent"
                             : isIconElement
-                              ? isSelected
+                              ? showSelectionFrame
                                 ? "rounded-md border border-white/80 bg-transparent shadow-[0_0_0_1px_rgba(0,0,0,0.15)]"
                                 : "rounded-md border border-transparent bg-transparent"
                             : isButtonElement
-                              ? isSelected
+                              ? showSelectionFrame
                                 ? "rounded-md border border-white/80 bg-transparent shadow-[0_0_0_1px_rgba(0,0,0,0.15)]"
                                 : "rounded-md border border-transparent bg-transparent"
                             : isTextElement
-                              ? isSelected
+                              ? showSelectionFrame
                                 ? "rounded-md border border-white/80 bg-transparent shadow-[0_0_0_1px_rgba(0,0,0,0.15)]"
                                 : "rounded-md border border-transparent bg-transparent"
-                            : isSelected
+                            : showSelectionFrame
                               ? "rounded-md border border-white/80 bg-black/20 shadow-[0_0_0_1px_rgba(0,0,0,0.15)]"
                               : "rounded-md border border-transparent bg-black/10"
                         }`}
                         style={layerAnimationStyle || undefined}
                       >
-                        {isImageElement && isSelected && (
+                        {isImageElement && showSelectionFrame && (
                           <button
                             type="button"
                             className="absolute -top-8 right-0 z-10 rounded bg-black/80 px-2 py-1 text-[10px] font-medium text-white"
@@ -4361,7 +5001,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                             ? { buttonFontSizeBase: Number(draftSize.buttonFontSizeBase) }
                             : {}),
                         })}
-                        {isSelected &&
+                        {showSelectionFrame &&
                           [
                             { key: "nw", className: "-left-[5px] -top-[5px] cursor-nwse-resize" },
                             { key: "ne", className: "-right-[5px] -top-[5px] cursor-nesw-resize" },
@@ -4404,7 +5044,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                             />
                           ))}
                         {(isButtonElement || isImageElement || isRectangleElement || isCircleElement || isIconElement) &&
-                          isSelected &&
+                          showSelectionFrame &&
                           [
                             { key: "w", className: "-left-[5px] top-1/2 -translate-y-1/2 cursor-ew-resize" },
                             { key: "e", className: "-right-[5px] top-1/2 -translate-y-1/2 cursor-ew-resize" },
@@ -4441,7 +5081,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                             />
                           ))}
                         {isTextElement &&
-                          isSelected &&
+                          showSelectionFrame &&
                           [
                             { key: "w", className: "-left-[5px] top-1/2 -translate-y-1/2 cursor-ew-resize" },
                             { key: "e", className: "-right-[5px] top-1/2 -translate-y-1/2 cursor-ew-resize" },
@@ -4473,7 +5113,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                           isRectangleElement ||
                           isCircleElement ||
                           isIconElement) &&
-                          isSelected &&
+                          showSelectionFrame &&
                           resizeLayerId === item?.id && (
                           <div className="pointer-events-none absolute left-1/2 top-full mt-[10px] min-w-[80px] -translate-x-1/2 rounded bg-white px-2 py-1 text-center text-[10px] font-medium tracking-wide text-black shadow-sm">
                             {isTextElement
@@ -4492,13 +5132,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection }) {
                 );
               })}
             </div>
-            <div className="relative z-20 text-center">
-              <div className="text-[12px] text-slate-400">{`Slide ${safePreviewSlideIndex + 1} / ${slides.length}`}</div>
-              <div className="mt-1 text-[12.5px] text-slate-500">
-                {activeSlide?.name || "Slide"}
-              </div>
-            </div>
-
             <div
               className="absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-2"
               style={{ bottom: bulletBottomOffset }}

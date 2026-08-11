@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, ButtonGroup, Stack } from "@mui/material";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Box, Button, ButtonGroup, Stack, Switch } from "@mui/material";
+import { styled } from "@mui/material/styles";
+import { panelGroupButtonSx } from "../panelControlSx";
 import {
   ArrowDown,
   ArrowUp,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Copy,
   Monitor,
@@ -21,18 +25,96 @@ import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckCla
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { mergeDataSliderElement } from "../Layouts/Elements/dataSliderElementConfig";
 
+const DataSliderPanelSwitch = styled(Switch, {
+  shouldForwardProp: (prop) => prop !== "accentColor",
+})(({ theme, accentColor = "#0d9488" }) => ({
+  width: 28,
+  height: 16,
+  padding: 0,
+  display: "flex",
+  "&:active": {
+    "& .MuiSwitch-thumb": { width: 15 },
+    "& .MuiSwitch-switchBase.Mui-checked": { transform: "translateX(9px)" },
+  },
+  "& .MuiSwitch-switchBase": {
+    padding: 2,
+    "&.Mui-checked": {
+      transform: "translateX(12px)",
+      color: "#fff",
+      "& + .MuiSwitch-track": { opacity: 1, backgroundColor: accentColor },
+    },
+  },
+  "& .MuiSwitch-thumb": {
+    boxShadow: "0 2px 4px 0 rgb(0 35 11 / 20%)",
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    transition: theme.transitions.create(["width"], { duration: 200 }),
+  },
+  "& .MuiSwitch-track": {
+    borderRadius: 8,
+    opacity: 1,
+    backgroundColor: "rgba(0,0,0,.25)",
+    boxSizing: "border-box",
+    ".dark &": { backgroundColor: "rgba(255,255,255,.25)" },
+  },
+}));
+
 const ITEM_LIST_MAX = 12;
 const ITEM_LIST_MIN = 1;
+
+/** สลับชุดสีปุ่มนำทาง — หน้าแสดงผล / หน้าอื่นๆ */
+const DataSliderNavColorSelectLine = ({
+  prev,
+  next,
+  value,
+  prevAria,
+  nextAria,
+  groupAria,
+}) => (
+  <div
+    className="flex dash-input items-center justify-between gap-0.5 rounded-lg border border-slate-200 bg-white px-0.5 py-0.5 dark:border-white/10 dark:bg-slate-800/90"
+    role="group"
+    aria-label={groupAria}
+  >
+    <button
+      type="button"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+      onClick={prev}
+      aria-label={prevAria}
+    >
+      <ChevronLeft className="size-4" strokeWidth={2} aria-hidden />
+    </button>
+    <span className="min-w-0 flex-1 truncate text-center text-[11px] font-normal text-slate-800 dark:text-white/90">
+      {value}
+    </span>
+    <button
+      type="button"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+      onClick={next}
+      aria-label={nextAria}
+    >
+      <ChevronRight className="size-4" strokeWidth={2} aria-hidden />
+    </button>
+  </div>
+);
+
+const DATA_SLIDER_NAV_COLOR_MODES = [
+  { id: "active", label: "สีปุ่มหน้าแสดงผล" },
+  { id: "inactive", label: "สีปุ่มหน้าอื่นๆ" },
+];
+
+/** stepper / per-view — พื้นหลัง/กรอบตาม Dashboard (dash-input) */
 const stepperBtnClass =
-  "flex h-[34px] w-9 shrink-0 items-center justify-center border-0 bg-white text-[12px] font-normal text-slate-700 transition hover:bg-slate-50 dark:bg-slate-900/80 dark:text-white/90 dark:hover:bg-white/10";
+  "flex h-[34px] w-9 shrink-0 items-center justify-center border-0 bg-transparent text-[12px] font-normal text-slate-700 transition hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/10";
 const stepperMidNumericClass =
-  "flex h-[34px] min-w-[2.25rem] flex-1 items-stretch justify-center border-x border-slate-200 bg-white px-0.5 dark:border-white/10 dark:bg-slate-900/80";
+  "flex h-[34px] min-w-[2.25rem] flex-1 items-stretch justify-center border-x border-slate-200 bg-transparent px-0.5 dark:border-white/10";
 const perViewIconAddonClass =
-  "flex h-[34px] w-9 shrink-0 items-center justify-center border-r border-slate-200 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-slate-800/70 dark:text-white/75";
+  "flex h-[34px] w-9 shrink-0 items-center justify-center border-r border-slate-200 bg-transparent text-slate-600 dark:border-white/10 dark:text-white/75";
 const perViewTextInputClass =
-  "h-[34px] min-w-0 w-0 flex-1 border-0 bg-white px-2 pr-1 text-[12px] font-normal tabular-nums text-slate-800 outline-none ring-0 placeholder:text-slate-400 focus:outline-none dark:bg-slate-900/80 dark:text-white/90 dark:placeholder:text-white/40";
+  "h-[34px] min-w-0 w-0 flex-1 border-0 bg-transparent px-2 pr-1 text-[12px] font-normal tabular-nums text-slate-800 outline-none ring-0 placeholder:text-slate-400 focus:outline-none dark:text-white/90 dark:placeholder:text-white/40";
 const perViewSpinnerBtnClass =
-  "flex flex-1 min-h-0 w-full items-center justify-center border-0 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 disabled:pointer-events-none disabled:opacity-35 dark:bg-slate-900/80 dark:text-white/60 dark:hover:bg-white/10 dark:hover:text-white/90";
+  "flex flex-1 min-h-0 w-full items-center justify-center border-0 bg-transparent text-slate-500 transition hover:bg-black/5 hover:text-slate-800 disabled:pointer-events-none disabled:opacity-35 dark:text-white/60 dark:hover:bg-white/10 dark:hover:text-white/90";
 const CAROUSEL_PERVIEW_INPUTS = [
   {
     id: "data-slider-pv-d",
@@ -99,7 +181,7 @@ function NumericStepper({ value, min, max, onChange, decLabel, incLabel }) {
   const inc = () => onChange(Math.min(max, value + 1));
 
   return (
-    <div className="flex w-full overflow-hidden rounded-md border border-slate-200 dark:border-white/10">
+    <div className="dash-input flex h-[34px] w-full overflow-hidden rounded-md border border-slate-200 dark:border-white/10">
       <button
         type="button"
         className={stepperBtnClass}
@@ -147,58 +229,7 @@ const CHIP_BG_HOVER = "#f8fafc";
 const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
 const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 
-const sectionLayoutGroupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 11,
-    minHeight: 34,
-    py: 0,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.2,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": {
-            backgroundColor: a,
-            borderColor: "transparent",
-          },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": {
-            borderColor: `${CHIP_BORDER} !important`,
-            backgroundColor: CHIP_BG_HOVER,
-          },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": {
-              borderColor: `${CHIP_BORDER_DARK} !important`,
-              backgroundColor: CHIP_BG_DARK_HOVER,
-            },
-          },
-        }),
-    "&.Mui-focusVisible": {
-      outline: `2px solid ${a}`,
-      outlineOffset: 1,
-      boxShadow: "none",
-    },
-    "& .MuiTouchRipple-child": {
-      backgroundColor: a,
-    },
-  };
-};
+const sectionLayoutGroupButtonSx = panelGroupButtonSx;
 
 const sectionLayoutGroupRootSx = {
   width: "100%",
@@ -218,16 +249,16 @@ const sectionLayoutGroupRootSx = {
     borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER_DARK} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
@@ -252,6 +283,23 @@ const DataSliderElementOffcanvas = ({
   const pendingRef = useRef(null);
   const elementRef = useRef(element);
   elementRef.current = element;
+  const itemNodeRefs = useRef(new Map());
+  const flipRectsRef = useRef(null);
+  const [movingItemId, setMovingItemId] = useState(null);
+  const moveLockRef = useRef(false);
+
+  const captureItemRects = useCallback(() => {
+    const rects = new Map();
+    itemNodeRefs.current.forEach((el, id) => {
+      if (el) rects.set(id, el.getBoundingClientRect());
+    });
+    flipRectsRef.current = rects;
+  }, []);
+
+  const setItemNodeRef = useCallback((id, el) => {
+    if (el) itemNodeRefs.current.set(id, el);
+    else itemNodeRefs.current.delete(id);
+  }, []);
 
   const scheduleLayoutSync = useCallback(
     (next) => {
@@ -275,10 +323,15 @@ const DataSliderElementOffcanvas = ({
   );
 
   const [data, setData] = useState(() => mergeDataSliderElement(element));
+  const [navColorEditMode, setNavColorEditMode] = useState("active");
 
   useEffect(() => {
     setData(mergeDataSliderElement(element));
   }, [element]);
+
+  useEffect(() => {
+    setNavColorEditMode("active");
+  }, [element?.id]);
 
   useEffect(
     () => () => {
@@ -324,11 +377,113 @@ const DataSliderElementOffcanvas = ({
   };
 
   const removeItem = (itemId) => {
-    patchItems((current) => {
-      if (current.length <= ITEM_LIST_MIN) return current;
-      return current.filter((it) => it.id !== itemId);
+    setData((prev) => {
+      const mergedPrev = mergeDataSliderElement(prev);
+      const current = Array.isArray(mergedPrev.dataSliderItems)
+        ? mergedPrev.dataSliderItems
+        : [];
+      if (current.length <= ITEM_LIST_MIN) return mergedPrev;
+      const nextItems = current.filter((it) => it.id !== itemId);
+      const nextActiveId = nextItems.some((it) => it.id === mergedPrev.dataSliderActiveId)
+        ? mergedPrev.dataSliderActiveId
+        : nextItems[Math.min(
+            Math.max(
+              0,
+              current.findIndex((it) => it.id === itemId)
+            ),
+            nextItems.length - 1
+          )]?.id;
+      const merged = mergeDataSliderElement({
+        ...mergedPrev,
+        dataSliderItems: nextItems,
+        dataSliderItemCount: nextItems.length,
+        dataSliderActiveId: nextActiveId,
+      });
+      scheduleLayoutSync(merged);
+      return merged;
     });
   };
+
+  const moveItem = (fromIdx, toIdx) => {
+    if (moveLockRef.current) return;
+    const mergedPrev = mergeDataSliderElement(data);
+    const current = Array.isArray(mergedPrev.dataSliderItems)
+      ? [...mergedPrev.dataSliderItems]
+      : [];
+    if (
+      fromIdx < 0 ||
+      toIdx < 0 ||
+      fromIdx >= current.length ||
+      toIdx >= current.length ||
+      fromIdx === toIdx
+    ) {
+      return;
+    }
+    captureItemRects();
+    moveLockRef.current = true;
+    const prevActiveId = mergedPrev.dataSliderActiveId;
+    const [moved] = current.splice(fromIdx, 1);
+    current.splice(toIdx, 0, moved);
+    setMovingItemId(moved?.id || null);
+    const merged = mergeDataSliderElement({
+      ...mergedPrev,
+      dataSliderItems: current,
+      dataSliderItemCount: current.length,
+      // คงรายการที่เลือก — หน้าบนแคนวาสจัดตามหน้าของรายการนั้น (ไม่ wrap แปลกๆ)
+      dataSliderActiveId: current.some((it) => it.id === prevActiveId)
+        ? prevActiveId
+        : current[0]?.id,
+    });
+    setData(merged);
+    scheduleLayoutSync(merged);
+  };
+
+  const items = data.dataSliderItems || [];
+  const itemOrderKey = items.map((it) => it.id).join("|");
+
+  useLayoutEffect(() => {
+    const prevRects = flipRectsRef.current;
+    if (!prevRects) return;
+    flipRectsRef.current = null;
+
+    const animations = [];
+    itemNodeRefs.current.forEach((el, id) => {
+      const first = prevRects.get(id);
+      if (!el || !first) return;
+      const last = el.getBoundingClientRect();
+      const dy = first.top - last.top;
+      if (Math.abs(dy) < 0.5) return;
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+      animations.push(el);
+    });
+
+    if (!animations.length) {
+      moveLockRef.current = false;
+      setMovingItemId(null);
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      animations.forEach((el) => {
+        el.style.transition = "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)";
+        el.style.transform = "";
+      });
+    });
+
+    const unlockTimer = window.setTimeout(() => {
+      animations.forEach((el) => {
+        el.style.transition = "";
+        el.style.transform = "";
+      });
+      moveLockRef.current = false;
+      setMovingItemId(null);
+    }, 260);
+
+    return () => {
+      window.clearTimeout(unlockTimer);
+    };
+  }, [itemOrderKey]);
 
   const duplicateItem = (itemId) => {
     patchItems((current) => {
@@ -349,7 +504,6 @@ const DataSliderElementOffcanvas = ({
     });
   };
 
-  const items = data.dataSliderItems || [];
   const activeId = items.some((it) => it.id === data.dataSliderActiveId)
     ? data.dataSliderActiveId
     : items[0]?.id;
@@ -380,23 +534,38 @@ const DataSliderElementOffcanvas = ({
   }, [theme]);
 
   return (
-    <aside className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10">
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-gray-900/50">
+    <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             Data Slider
           </span>
-          <span className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums">
-            <span className="truncate">{data?.id}</span>
-          </span>
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
+            title={String(data?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(data?.id ?? "")}`}
+            onClick={() => {
+              const id = String(data?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
+          >
+            {(() => {
+              const id = String(data?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
+          className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
           onClick={() => close(null, null, null)}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-            <path fillRule="evenodd" d="M15.78 4.22a.75.75 0 010 1.06L10.06 11l5.72 5.72a.75.75 0 11-1.06 1.06l-6.25-6.25a.75.75 0 010-1.06l6.25-6.25a.75.75 0 011.06 0z" clipRule="evenodd" />
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         </button>
       </div>
@@ -407,10 +576,10 @@ const DataSliderElementOffcanvas = ({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="mb-3 mt-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     จำนวนรายการ
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <NumericStepper
                   value={data.dataSliderItemCount}
@@ -423,10 +592,10 @@ const DataSliderElementOffcanvas = ({
               </div>
               <div>
                 <div className="mb-3 mt-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ระยะห่าง
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <NumericStepper
                   value={Math.max(0, Number(data.dataSliderGap) || 0)}
@@ -442,17 +611,17 @@ const DataSliderElementOffcanvas = ({
 
           <li>
             <div className="mb-3 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 จำนวนไอเทมที่แสดง
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <Stack direction="row" spacing={1} className="w-full">
               {CAROUSEL_PERVIEW_INPUTS.map(
                 ({ id, field, min, max, Icon, deviceLabel }) => (
                   <div
                     key={id}
-                    className="flex min-w-0 flex-1 overflow-hidden rounded-md border border-slate-200 dark:border-white/10"
+                    className="dash-input flex h-[34px] min-w-0 flex-1 overflow-hidden rounded-md border border-slate-200 dark:border-white/10"
                   >
                     <span
                       className={perViewIconAddonClass}
@@ -529,11 +698,22 @@ const DataSliderElementOffcanvas = ({
           </li>
 
           <li>
-            <div className="mb-2 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+            <div className="mb-[13px] mt-1 flex items-center gap-2">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 ปุ่มเลื่อน
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+              <span className="dash-panel-label shrink-0 text-[11px] font-medium text-slate-500 dark:text-white/55">
+                แสดงหน้าเวบ
+              </span>
+              <DataSliderPanelSwitch
+                checked={data?.dataSliderNavShowOnWebsite !== false}
+                onChange={(e) =>
+                  patch({ dataSliderNavShowOnWebsite: Boolean(e.target.checked) })
+                }
+                accentColor={textColor || "#0d9488"}
+                inputProps={{ "aria-label": "แสดงปุ่มเลื่อนบนหน้าเวบ" }}
+              />
             </div>
             <ButtonGroup
               fullWidth
@@ -560,95 +740,102 @@ const DataSliderElementOffcanvas = ({
           </li>
 
           <li>
-            <MainLabel label="สีปุ่มหน้าแสดงผล" mb={0.5} />
-            <Range
-              min={0}
-              max={255}
-              step={1}
-              value={navActiveColorOpacity}
-              handleChange={(e) =>
-                patch({
-                  dataSliderNavActiveColorOpacity: Number(e.target.value) || 255,
-                })
-              }
-              pos={(navActiveColorOpacity / 255) * 100}
-              color={textColor}
-            />
-            <div className="mt-2 grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]">
-              {allColors.map((color, i) => {
-                const bgColor =
-                  typeof color === "string" ? color : theme?.[color.type]?.[color.index];
-                if (bgColor == null) return null;
-                const selected = chipSelected(data?.dataSliderNavActiveColor, color);
+            <Box sx={{ width: "100%", px: 0.25 }}>
+              {(() => {
+                const modes = DATA_SLIDER_NAV_COLOR_MODES;
+                const modeIds = modes.map((m) => m.id);
+                const activeMode = modeIds.includes(navColorEditMode)
+                  ? navColorEditMode
+                  : "active";
+                const activeModeLabel =
+                  modes.find((m) => m.id === activeMode)?.label || modes[0].label;
+                const cycleMode = (dir) => {
+                  const i = Math.max(0, modeIds.indexOf(activeMode));
+                  setNavColorEditMode(
+                    modeIds[(i + dir + modeIds.length) % modeIds.length]
+                  );
+                };
+                const isActiveMode = activeMode === "active";
+                const opacityVal = isActiveMode
+                  ? navActiveColorOpacity
+                  : navColorOpacity;
+                const activeSwatch = isActiveMode
+                  ? data?.dataSliderNavActiveColor
+                  : data?.dataSliderNavColor;
                 return (
-                  <button
-                    key={`active-${i}`}
-                    type="button"
-                    className="flex size-[25px] items-center justify-center rounded-full border border-slate-200 dark:border-white/15"
-                    style={{ backgroundColor: bgColor }}
-                    onClick={() => patch({ dataSliderNavActiveColor: color })}
-                    aria-label={`เลือกสี ${bgColor}`}
-                  >
-                    {selected ? (
-                      <Check
-                        className={swatchSelectedCheckClassName(bgColor)}
-                        strokeWidth={4}
-                        aria-hidden
-                      />
-                    ) : null}
-                  </button>
+                  <>
+                    <DataSliderNavColorSelectLine
+                      prev={() => cycleMode(-1)}
+                      next={() => cycleMode(1)}
+                      value={activeModeLabel}
+                      prevAria="โหมดสีก่อนหน้า"
+                      nextAria="โหมดสีถัดไป"
+                      groupAria="สลับแก้สีปุ่มหน้าแสดงผลหรือสีปุ่มหน้าอื่นๆ"
+                    />
+                    <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                      <div className="px-[5px] pb-2">
+                        <Range
+                          min={0}
+                          max={255}
+                          step={1}
+                          value={opacityVal}
+                          handleChange={(e) => {
+                            const v = Number(e.target.value) || 255;
+                            if (isActiveMode) {
+                              patch({ dataSliderNavActiveColorOpacity: v });
+                            } else {
+                              patch({ dataSliderNavColorOpacity: v });
+                            }
+                          }}
+                          pos={(opacityVal / 255) * 100}
+                          color={textColor}
+                        />
+                      </div>
+                      <div className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px] px-[5px] pb-0">
+                        {allColors.map((color, i) => {
+                          const bgColor =
+                            typeof color === "string"
+                              ? color
+                              : theme?.[color.type]?.[color.index];
+                          if (bgColor == null) return null;
+                          const selected = chipSelected(activeSwatch, color);
+                          return (
+                            <button
+                              key={`nav-color-${activeMode}-${i}`}
+                              type="button"
+                              className="flex size-[25px] items-center justify-center rounded-full border border-slate-200 dark:border-white/15"
+                              style={{ backgroundColor: bgColor }}
+                              onClick={() => {
+                                if (isActiveMode) {
+                                  patch({ dataSliderNavActiveColor: color });
+                                } else {
+                                  patch({ dataSliderNavColor: color });
+                                }
+                              }}
+                              aria-label={`${activeModeLabel} ${bgColor}`}
+                            >
+                              {selected ? (
+                                <Check
+                                  className={swatchSelectedCheckClassName(bgColor)}
+                                  strokeWidth={4}
+                                  aria-hidden
+                                />
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
                 );
-              })}
-            </div>
-          </li>
-
-          <li>
-            <MainLabel label="สีปุ่มหน้าอื่นๆ" mb={0.5} />
-            <Range
-              min={0}
-              max={255}
-              step={1}
-              value={navColorOpacity}
-              handleChange={(e) =>
-                patch({
-                  dataSliderNavColorOpacity: Number(e.target.value) || 255,
-                })
-              }
-              pos={(navColorOpacity / 255) * 100}
-              color={textColor}
-            />
-            <div className="mt-2 grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]">
-              {allColors.map((color, i) => {
-                const bgColor =
-                  typeof color === "string" ? color : theme?.[color.type]?.[color.index];
-                if (bgColor == null) return null;
-                const selected = chipSelected(data?.dataSliderNavColor, color);
-                return (
-                  <button
-                    key={`inactive-${i}`}
-                    type="button"
-                    className="flex size-[25px] items-center justify-center rounded-full border border-slate-200 dark:border-white/15"
-                    style={{ backgroundColor: bgColor }}
-                    onClick={() => patch({ dataSliderNavColor: color })}
-                    aria-label={`เลือกสี ${bgColor}`}
-                  >
-                    {selected ? (
-                      <Check
-                        className={swatchSelectedCheckClassName(bgColor)}
-                        strokeWidth={4}
-                        aria-hidden
-                      />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
+              })()}
+            </Box>
           </li>
 
           <li>
             <div className="grid w-full grid-cols-2 gap-x-3 gap-y-4 px-0.5">
               <div className="min-w-0">
-                <MainLabel label={`ระยะด้านบน ${marginTop}`} mb={0.4} />
+                <MainLabel label={`ระยะด้านบน ${marginTop}`} mb="9px" />
                 <Range
                   min={0}
                   max={80}
@@ -662,7 +849,7 @@ const DataSliderElementOffcanvas = ({
                 />
               </div>
               <div className="min-w-0">
-                <MainLabel label={`ระยะด้านล่าง ${marginBottom}`} mb={0.4} />
+                <MainLabel label={`ระยะด้านล่าง ${marginBottom}`} mb="9px" />
                 <Range
                   min={0}
                   max={80}
@@ -680,10 +867,10 @@ const DataSliderElementOffcanvas = ({
 
           <li>
             <div className="mb-3 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 รายการทั้งหมด
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
               <button
                 type="button"
                 disabled={items.length >= ITEM_LIST_MAX}
@@ -695,13 +882,19 @@ const DataSliderElementOffcanvas = ({
                 เพิ่มสไลด์
               </button>
             </div>
-            <Stack spacing={1}>
+            <div className="flex flex-col gap-2">
               {items.map((item, idx) => {
                 const isActive = item.id === activeId;
+                const isMoving = movingItemId === item.id;
                 return (
                   <div
                     key={item.id}
-                    className="min-w-0 rounded-md border border-slate-200 dark:border-white/10"
+                    ref={(el) => setItemNodeRef(item.id, el)}
+                    className={`min-w-0 rounded-md border will-change-transform ${
+                      isMoving
+                        ? "border-slate-300 bg-slate-50 shadow-sm dark:border-white/25 dark:bg-white/5"
+                        : "border-slate-200 dark:border-white/10"
+                    }`}
                   >
                     <div className="flex min-h-[36px] min-w-0 items-center gap-2 px-2 py-1">
                       <button
@@ -710,8 +903,8 @@ const DataSliderElementOffcanvas = ({
                         style={{ backgroundColor: "#333333" }}
                         title={
                           isActive
-                            ? "สไลด์นี้กำลังแสดงผลบนแคนวาส"
-                            : "เลือกสไลด์นี้เป็นสไลด์แสดงผลบนแคนวาส"
+                            ? "กำลังแสดงหน้ารายการนี้บนแคนวาส"
+                            : "แสดงหน้ารายการนี้บนแคนวาส"
                         }
                         aria-pressed={isActive}
                         onClick={() => patch({ dataSliderActiveId: item.id })}
@@ -724,34 +917,26 @@ const DataSliderElementOffcanvas = ({
                       <div className="ml-auto flex shrink-0 items-center gap-0.5">
                         <button
                           type="button"
-                          disabled={idx === 0}
+                          disabled={idx === 0 || Boolean(movingItemId)}
                           title="เลื่อนลำดับขึ้น"
                           aria-label="เลื่อนลำดับขึ้น"
                           className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-white/10 dark:hover:text-white/80"
                           onClick={() => {
                             if (idx === 0) return;
-                            patchItems((current) => {
-                              const next = [...current];
-                              [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                              return next;
-                            });
+                            moveItem(idx, idx - 1);
                           }}
                         >
                           <ArrowUp className="h-3 w-3" strokeWidth={2.25} />
                         </button>
                         <button
                           type="button"
-                          disabled={idx >= items.length - 1}
+                          disabled={idx >= items.length - 1 || Boolean(movingItemId)}
                           title="เลื่อนลำดับลง"
                           aria-label="เลื่อนลำดับลง"
                           className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-white/10 dark:hover:text-white/80"
                           onClick={() => {
                             if (idx >= items.length - 1) return;
-                            patchItems((current) => {
-                              const next = [...current];
-                              [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                              return next;
-                            });
+                            moveItem(idx, idx + 1);
                           }}
                         >
                           <ArrowDown className="h-3 w-3" strokeWidth={2.25} />
@@ -765,7 +950,7 @@ const DataSliderElementOffcanvas = ({
                               : "คัดลอกหน้า"
                           }
                           aria-label="คัดลอกหน้า"
-                          className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-white/10 dark:hover:text-white/80"
+                          className="mx-1.5 rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-white/10 dark:hover:text-white/80"
                           onClick={() => duplicateItem(item.id)}
                         >
                           <Copy className="h-3.5 w-3.5" strokeWidth={2} />
@@ -784,7 +969,7 @@ const DataSliderElementOffcanvas = ({
                   </div>
                 );
               })}
-            </Stack>
+            </div>
           </li>
         </ul>
       </nav>

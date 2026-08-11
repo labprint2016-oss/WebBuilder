@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, ButtonGroup, Stack } from "@mui/material";
+import { panelGroupButtonSx } from "../panelControlSx";
 import {
   Check,
   ChevronLeft,
@@ -26,7 +27,7 @@ const TabsActiveColorSelectLine = ({
   groupAria,
 }) => (
   <div
-    className="flex items-center justify-between gap-0.5 rounded-lg border border-slate-200 bg-white px-0.5 py-0.5 dark:border-white/10 dark:bg-slate-800/90"
+    className="flex dash-input items-center justify-between gap-0.5 rounded-lg border border-slate-200 bg-white px-0.5 py-0.5 dark:border-white/10 dark:bg-slate-800/90"
     role="group"
     aria-label={groupAria}
   >
@@ -98,58 +99,7 @@ const CHIP_BG_HOVER = "#f8fafc";
 const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
 const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 
-const sectionLayoutGroupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 11,
-    minHeight: 32,
-    py: 0,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.2,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": {
-            backgroundColor: a,
-            borderColor: "transparent",
-          },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": {
-            borderColor: `${CHIP_BORDER} !important`,
-            backgroundColor: CHIP_BG_HOVER,
-          },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": {
-              borderColor: `${CHIP_BORDER_DARK} !important`,
-              backgroundColor: CHIP_BG_DARK_HOVER,
-            },
-          },
-        }),
-    "&.Mui-focusVisible": {
-      outline: `2px solid ${a}`,
-      outlineOffset: 1,
-      boxShadow: "none",
-    },
-    "& .MuiTouchRipple-child": {
-      backgroundColor: a,
-    },
-  };
-};
+const sectionLayoutGroupButtonSx = panelGroupButtonSx;
 
 const sectionLayoutGroupRootSx = {
   width: "100%",
@@ -169,16 +119,16 @@ const sectionLayoutGroupRootSx = {
     borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER_DARK} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
@@ -276,7 +226,11 @@ const TabsElementOffcanvas = ({
     if (!element?.id) return;
     setData((prev) => {
       if (!prev || prev.id !== element.id) return element;
-      return prev;
+      // sync แท็บที่เลือกจากแคนวาส → Check ในรายการทั้งหมดต้องตรงกัน
+      if (String(prev.tabsActiveId || "") === String(element.tabsActiveId || "")) {
+        return prev;
+      }
+      return { ...prev, tabsActiveId: element.tabsActiveId };
     });
   }, [element]);
 
@@ -499,15 +453,29 @@ const TabsElementOffcanvas = ({
   }, [theme]);
 
   return (
-    <aside className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10">
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-gray-900/50">
+    <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-gray-900/50">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             Tabs
           </span>
-          <span className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums">
-            <span className="truncate">{data?.id}</span>
-          </span>
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
+            title={String(data?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(data?.id ?? "")}`}
+            onClick={() => {
+              const id = String(data?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
+          >
+            {(() => {
+              const id = String(data?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -523,11 +491,11 @@ const TabsElementOffcanvas = ({
       <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-14 scroll-pb-10 w-full">
         <ul className="mt-4 pl-1 space-y-5">
           <li>
-            <div className="mb-2 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+            <div className="mb-[13px] mt-1 flex items-center gap-2">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 ตำแหน่งการจัดวาง
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <ButtonGroup
               fullWidth
@@ -568,11 +536,11 @@ const TabsElementOffcanvas = ({
           </li>
 
           <li>
-            <div className="mb-2 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+            <div className="mb-[13px] mt-1 flex items-center gap-2">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 ประเภท
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <ButtonGroup
               fullWidth
@@ -616,13 +584,13 @@ const TabsElementOffcanvas = ({
             <div className="grid grid-cols-2 gap-x-3">
               <div className="min-w-0">
                 <div className="mb-2 mt-1 flex items-center gap-1.5">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ขนาดตัวอักษร
                   </span>
                   <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
                     {labelFontSize}
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <div className="px-0.5">
                   <Range
@@ -640,13 +608,13 @@ const TabsElementOffcanvas = ({
               </div>
               <div className="min-w-0">
                 <div className="mb-2 mt-1 flex items-center gap-1.5">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ช่องระหว่างแท็บ
                   </span>
                   <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
                     {tabGap}
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <div className="px-0.5">
                   <Range
@@ -668,10 +636,10 @@ const TabsElementOffcanvas = ({
 
           <li>
             <div className="mb-2 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 รูปแบบ
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <ButtonGroup
               fullWidth
@@ -793,7 +761,7 @@ const TabsElementOffcanvas = ({
 
           <li>
             <Box sx={{ width: "100%", px: 0.25 }}>
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-[13px] flex items-center gap-2">
                 <MainLabel label="แท็บที่ทำงานอยู่" mb={0} />
               </div>
               <TabsActiveColorSelectLine
@@ -808,7 +776,7 @@ const TabsElementOffcanvas = ({
                 }
                 value={activeColorModeLabel}
               />
-              <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+              <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                 <div className="px-[5px] pb-2">
                   <Range
                     min={0}
@@ -873,7 +841,7 @@ const TabsElementOffcanvas = ({
 
           <li>
             <Box sx={{ width: "100%", px: 0.25 }}>
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-[13px] flex items-center gap-2">
                 <MainLabel label="แท็บที่ไม่ทำงาน" mb={0} />
               </div>
               <TabsActiveColorSelectLine
@@ -888,7 +856,7 @@ const TabsElementOffcanvas = ({
                 }
                 value={inactiveColorModeLabel}
               />
-              <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+              <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                 <div className="px-[5px] pb-2">
                   <Range
                     min={0}
@@ -952,11 +920,11 @@ const TabsElementOffcanvas = ({
           </li>
 
           <li>
-            <div className="mb-2 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+            <div className="mb-[13px] mt-1 flex items-center gap-2">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 จัดแนวแท็บ
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <ButtonGroup
               fullWidth
@@ -1000,13 +968,13 @@ const TabsElementOffcanvas = ({
             <div className="grid w-full grid-cols-2 gap-x-3 gap-y-4 px-0.5">
               <div className="min-w-0">
                 <div className="mb-2 mt-1 flex items-center gap-1.5">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ระยะด้านบน
                   </span>
                   <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
                     {marginTop}
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <div className="px-0.5">
                   <Range
@@ -1022,13 +990,13 @@ const TabsElementOffcanvas = ({
               </div>
               <div className="min-w-0">
                 <div className="mb-2 mt-1 flex items-center gap-1.5">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ระยะด้านล่าง
                   </span>
                   <span className="shrink-0 text-[12px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
                     {marginBottom}
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <div className="px-0.5">
                   <Range
@@ -1046,10 +1014,10 @@ const TabsElementOffcanvas = ({
 
             <Box sx={{ pb: 4 }}>
               <div className="mb-3 mt-4 flex items-center gap-2">
-                <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                   รายการทั้งหมด
                 </span>
-                <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 <button
                   type="button"
                   disabled={tabsItems.length >= TABS_ITEM_LIST_MAX}
@@ -1096,7 +1064,7 @@ const TabsElementOffcanvas = ({
                         )}
                       </button>
                       <Box
-                        className={`flex min-w-0 flex-1 items-center gap-2 rounded-md border border-slate-200 py-0 dark:border-white/10 ${
+                        className={`dash-input flex min-w-0 flex-1 items-center gap-2 rounded-md border border-slate-200 bg-white py-0 dark:border-white/10 dark:bg-slate-800/90 ${
                           tabsTabLabelStyle === "iconText" ? "pl-0 pr-2.5" : "px-2.5"
                         }`}
                       >
@@ -1104,7 +1072,7 @@ const TabsElementOffcanvas = ({
                           {tabsTabLabelStyle === "iconText" ? (
                             <button
                               type="button"
-                              className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-l-md rounded-r-none bg-slate-100 text-[#333333] transition hover:bg-slate-200 dark:bg-slate-700/80 dark:text-[#333333] dark:hover:bg-slate-700"
+                              className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-l-md rounded-r-none border-r border-slate-200 bg-transparent text-slate-600 transition hover:opacity-80 dark:border-white/10 dark:text-slate-300"
                               aria-label="เลือกไอคอนแท็บ"
                               onClick={() => {
                                 const ae = document.activeElement;
@@ -1118,15 +1086,10 @@ const TabsElementOffcanvas = ({
                                   <IconAwsome
                                     iconName={fa.name}
                                     iconType={fa.type}
-                                    style={{ fontSize: 14, color: "#333333" }}
+                                    style={{ fontSize: 14 }}
                                   />
                                 ) : (
-                                  <span
-                                    className="inline-flex"
-                                    style={{ color: "#333333" }}
-                                  >
-                                    <Sparkles className="size-3.5 shrink-0" strokeWidth={2} />
-                                  </span>
+                                  <Sparkles className="size-3.5 shrink-0" strokeWidth={2} />
                                 );
                               })()}
                             </button>
@@ -1157,7 +1120,7 @@ const TabsElementOffcanvas = ({
                             : "ลบแท็บนี้"
                         }
                         aria-label="ลบแท็บ"
-                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-red-500/40 disabled:pointer-events-none disabled:opacity-35 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 dark:hover:border-red-500/40 dark:hover:bg-red-950/45 dark:hover:text-red-400"
+                        className="inline-flex dash-input h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-red-500/40 disabled:pointer-events-none disabled:opacity-35 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 dark:hover:border-red-500/40 dark:hover:bg-red-950/45 dark:hover:text-red-400"
                         onClick={() => removeTab(tab.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />

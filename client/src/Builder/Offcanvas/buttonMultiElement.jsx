@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, ButtonGroup, Stack, Switch, Typography } from "@mui/material";
 import { ArrowDown, ArrowUp, Check, Copy, Minus, Plus, Trash2 } from "lucide-react";
 import lodash from "lodash";
@@ -8,6 +8,7 @@ import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckCla
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { mergeListElement } from "../Layouts/Elements/listElementConfig";
 import { BUTTON_STYLE_DEFAULTS } from "../Layouts/Elements/buttonElementConfig";
+import { panelGroupButtonSx } from "../panelControlSx";
 
 const THEME_RANGE_INPUT_CLASS = `
   w-full cursor-pointer appearance-none h-2 rounded-full
@@ -42,41 +43,14 @@ const groupRootSx = {
     borderBottomRightRadius: "0.375rem !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "#e2e8f0 !important",
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "rgba(255,255,255,0.1) !important",
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
-const buttonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.15,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    color: selected ? "#ffffff" : "#334155",
-    borderColor: selected ? `${a} !important` : undefined,
-    backgroundColor: selected ? a : "#ffffff",
-    "&:hover": {
-      backgroundColor: selected ? a : "#f8fafc",
-      borderColor: selected ? `${a} !important` : undefined,
-    },
-    ".dark &": {
-      color: selected ? "#ffffff" : "rgba(255,255,255,0.88)",
-      backgroundColor: selected ? a : "rgba(15,23,42,0.6)",
-      "&:hover": {
-        backgroundColor: selected ? a : "rgba(255,255,255,0.08)",
-      },
-    },
-  };
-};
+const buttonSx = panelGroupButtonSx;
 
 const itemRowReorderBtnClass =
   "rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-white/10 dark:hover:text-slate-200";
@@ -123,6 +97,9 @@ function normalizeButtonMultiLabels(items) {
   }));
 }
 
+/** ค่าเริ่มต้นระยะห่างไอเทมของ Button Group */
+const BUTTON_GROUP_DEFAULT_ITEM_GAP = 16;
+
 function mergeButtonGroupElement(raw) {
   const mergedList = mergeListElement(raw || {});
   const base = {
@@ -146,6 +123,13 @@ function mergeButtonGroupElement(raw) {
     normalizeButtonMultiLabels(items.slice(0, desiredCount)),
     base?.id
   );
+  const hasExplicitGap =
+    raw != null &&
+    Object.prototype.hasOwnProperty.call(raw, "listItemRowGap") &&
+    Number.isFinite(Number(raw.listItemRowGap));
+  const listItemRowGap = hasExplicitGap
+    ? Math.max(0, Math.min(40, Math.round(Number(raw.listItemRowGap))))
+    : BUTTON_GROUP_DEFAULT_ITEM_GAP;
   return {
     ...base,
     type: "list",
@@ -153,8 +137,15 @@ function mergeButtonGroupElement(raw) {
     buttonMultiElement: true,
     listItemCount: desiredCount,
     listItems: itemsWithId,
+    listItemRowGap,
   };
 }
+
+/** stepper — พื้นหลัง/กรอบตาม Dashboard (dash-input) */
+const stepperBtnClass =
+  "flex h-[34px] w-9 shrink-0 items-center justify-center border-0 bg-transparent text-[12px] font-normal text-slate-700 transition hover:bg-black/5 dark:text-white/90 dark:hover:bg-white/10";
+const stepperMidClass =
+  "flex h-[34px] min-w-[2.25rem] flex-1 items-center justify-center border-x border-slate-200 bg-transparent px-0.5 text-[12px] font-normal tabular-nums text-slate-800 dark:border-white/10 dark:text-white/90";
 
 function clamp(v, min, max, fallback) {
   const n = Number(v);
@@ -172,10 +163,21 @@ const ButtonGroupElementOffcanvas = ({
 }) => {
   const accent = textColor || "#0d9488";
   const [draft, setDraft] = useState(() => mergeButtonGroupElement(element));
+  const itemNodeRefs = useRef(new Map());
+  const flipRectsRef = useRef(null);
+  const moveLockRef = useRef(false);
+  const [movingItemId, setMovingItemId] = useState(null);
 
   useEffect(() => {
     setDraft(mergeButtonGroupElement(element));
   }, [element]);
+
+  useEffect(() => {
+    itemNodeRefs.current = new Map();
+    flipRectsRef.current = null;
+    moveLockRef.current = false;
+    setMovingItemId(null);
+  }, [element?.id]);
 
   const patch = useCallback(
     (partial) => {
@@ -186,6 +188,19 @@ const ButtonGroupElementOffcanvas = ({
     [draft, onUpdate]
   );
 
+  const captureItemRects = useCallback(() => {
+    const rects = new Map();
+    itemNodeRefs.current.forEach((el, id) => {
+      if (el) rects.set(id, el.getBoundingClientRect());
+    });
+    flipRectsRef.current = rects;
+  }, []);
+
+  const setItemNodeRef = useCallback((id, el) => {
+    if (el) itemNodeRefs.current.set(id, el);
+    else itemNodeRefs.current.delete(id);
+  }, []);
+
   const allColors = useMemo(() => {
     if (!theme?.mainColor?.length) return [];
     const mc = theme.mainColor.map((_, i) => ({ type: "mainColor", index: i }));
@@ -195,6 +210,51 @@ const ButtonGroupElementOffcanvas = ({
   }, [theme]);
 
   const items = draft.listItems || [];
+  const itemOrderKey = items.map((it, i) => String(it?.id || `bm-${i}`)).join("|");
+
+  useLayoutEffect(() => {
+    const prevRects = flipRectsRef.current;
+    if (!prevRects) return;
+    flipRectsRef.current = null;
+
+    const animations = [];
+    itemNodeRefs.current.forEach((el, id) => {
+      const first = prevRects.get(id);
+      if (!el || !first) return;
+      const last = el.getBoundingClientRect();
+      const dy = first.top - last.top;
+      if (Math.abs(dy) < 0.5) return;
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+      animations.push(el);
+    });
+
+    if (!animations.length) {
+      moveLockRef.current = false;
+      setMovingItemId(null);
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      animations.forEach((el) => {
+        el.style.transition = "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)";
+        el.style.transform = "";
+      });
+    });
+
+    const unlockTimer = window.setTimeout(() => {
+      animations.forEach((el) => {
+        el.style.transition = "";
+        el.style.transform = "";
+      });
+      moveLockRef.current = false;
+      setMovingItemId(null);
+    }, 260);
+
+    return () => {
+      window.clearTimeout(unlockTimer);
+    };
+  }, [itemOrderKey]);
 
   const handleCountChange = (newCount) => {
     const clamped = Math.min(12, Math.max(1, Number(newCount) || 1));
@@ -203,7 +263,7 @@ const ButtonGroupElementOffcanvas = ({
       const idx = current.length + 1;
       current.push({
         id: `${String(draft?.id || "list")}__bm_new_${idx}`,
-      listText: `Button ${idx}`,
+        listText: `Button ${idx}`,
         faIcon: { name: "faShieldHalved", type: "fas" },
       });
     }
@@ -214,9 +274,22 @@ const ButtonGroupElementOffcanvas = ({
   };
 
   const moveItem = (fromIdx, toIdx) => {
-    if (toIdx < 0 || toIdx >= items.length) return;
+    if (moveLockRef.current) return;
+    if (
+      fromIdx < 0 ||
+      toIdx < 0 ||
+      fromIdx >= items.length ||
+      toIdx >= items.length ||
+      fromIdx === toIdx
+    ) {
+      return;
+    }
+    captureItemRects();
+    moveLockRef.current = true;
     const next = [...items];
-    [next[fromIdx], next[toIdx]] = [next[toIdx], next[fromIdx]];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    setMovingItemId(String(moved?.id || `bm-${toIdx}`));
     patch({
       listItems: normalizeButtonMultiLabels(next),
       listItemCount: next.length,
@@ -224,7 +297,7 @@ const ButtonGroupElementOffcanvas = ({
   };
 
   const cloneItem = (idx) => {
-    if (items.length >= 12) return;
+    if (items.length >= 12 || Boolean(movingItemId)) return;
     const next = [...items];
     const cloned = lodash.cloneDeep(items[idx] || {});
     delete cloned.id;
@@ -236,7 +309,7 @@ const ButtonGroupElementOffcanvas = ({
   };
 
   const deleteItem = (idx) => {
-    if (items.length <= 1) return;
+    if (items.length <= 1 || Boolean(movingItemId)) return;
     const next = items.filter((_, i) => i !== idx);
     patch({
       listItems: normalizeButtonMultiLabels(next),
@@ -260,18 +333,29 @@ const ButtonGroupElementOffcanvas = ({
   };
 
   return (
-    <aside className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10">
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-slate-800/60">
+    <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             Button Group
           </span>
-          <span
-            className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums"
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
             title={String(draft?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(draft?.id ?? "")}`}
+            onClick={() => {
+              const id = String(draft?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
           >
-            <span className="truncate">{draft?.id ?? "-"}</span>
-          </span>
+            {(() => {
+              const id = String(draft?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -290,74 +374,93 @@ const ButtonGroupElementOffcanvas = ({
           <li>
             <div className="grid w-full grid-cols-2 gap-x-3 gap-y-4">
               <div className="min-w-0">
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                <div className="mb-[9px] flex items-center gap-2">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     จำนวนรายการ
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
-                <div className="mt-1 inline-flex w-full overflow-hidden rounded-md border border-slate-200 dark:border-white/15">
+                <div className="dash-input mt-1 flex h-[34px] w-full overflow-hidden rounded-md border border-slate-200 dark:border-white/10">
                   <button
                     type="button"
-                    className="grid h-9 w-10 place-items-center bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800/70 dark:text-white/80 dark:hover:bg-slate-700/70"
+                    className={stepperBtnClass}
                     onClick={() => handleCountChange(items.length - 1)}
                     aria-label="ลดจำนวนรายการ"
                   >
-                    <Minus className="h-3 w-3" strokeWidth={2.5} />
+                    <Minus className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
                   </button>
-                  <div className="grid h-9 min-w-[40px] flex-1 place-items-center border-x border-slate-200 bg-white px-2 text-[12px] font-semibold tabular-nums text-slate-800 dark:border-white/15 dark:bg-slate-900/50 dark:text-white/85">
-                    {items.length}
-                  </div>
+                  <div className={stepperMidClass}>{items.length}</div>
                   <button
                     type="button"
-                    className="grid h-9 w-10 place-items-center bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800/70 dark:text-white/80 dark:hover:bg-slate-700/70"
+                    className={stepperBtnClass}
                     onClick={() => handleCountChange(items.length + 1)}
                     aria-label="เพิ่มจำนวนรายการ"
                   >
-                    <Plus className="h-3 w-3" strokeWidth={2.5} />
+                    <Plus className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
                   </button>
                 </div>
               </div>
               <div className="min-w-0">
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                <div className="mb-[9px] flex items-center gap-2">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ระยะห่างไอเทม
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
-                <div className="mt-1 inline-flex w-full overflow-hidden rounded-md border border-slate-200 dark:border-white/15">
+                <div className="dash-input mt-1 flex h-[34px] w-full overflow-hidden rounded-md border border-slate-200 dark:border-white/10">
                   <button
                     type="button"
-                    className="grid h-9 w-10 place-items-center bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800/70 dark:text-white/80 dark:hover:bg-slate-700/70"
+                    className={stepperBtnClass}
                     onClick={() =>
                       patch({
                         listItemRowGap: Math.max(
                           0,
-                          Math.round(clamp(draft.listItemRowGap, 0, 40, 8)) - 1
+                          Math.round(
+                            clamp(
+                              draft.listItemRowGap,
+                              0,
+                              40,
+                              BUTTON_GROUP_DEFAULT_ITEM_GAP
+                            )
+                          ) - 1
                         ),
                       })
                     }
                     aria-label="ลดระยะห่างไอเทม"
                   >
-                    <Minus className="h-3 w-3" strokeWidth={2.5} />
+                    <Minus className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
                   </button>
-                  <div className="grid h-9 min-w-[40px] flex-1 place-items-center border-x border-slate-200 bg-white px-2 text-[12px] font-semibold tabular-nums text-slate-800 dark:border-white/15 dark:bg-slate-900/50 dark:text-white/85">
-                    {Math.round(clamp(draft.listItemRowGap, 0, 40, 8))}
+                  <div className={stepperMidClass}>
+                    {Math.round(
+                      clamp(
+                        draft.listItemRowGap,
+                        0,
+                        40,
+                        BUTTON_GROUP_DEFAULT_ITEM_GAP
+                      )
+                    )}
                   </div>
                   <button
                     type="button"
-                    className="grid h-9 w-10 place-items-center bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800/70 dark:text-white/80 dark:hover:bg-slate-700/70"
+                    className={stepperBtnClass}
                     onClick={() =>
                       patch({
                         listItemRowGap: Math.min(
                           40,
-                          Math.round(clamp(draft.listItemRowGap, 0, 40, 8)) + 1
+                          Math.round(
+                            clamp(
+                              draft.listItemRowGap,
+                              0,
+                              40,
+                              BUTTON_GROUP_DEFAULT_ITEM_GAP
+                            )
+                          ) + 1
                         ),
                       })
                     }
                     aria-label="เพิ่มระยะห่างไอเทม"
                   >
-                    <Plus className="h-3 w-3" strokeWidth={2.5} />
+                    <Plus className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
                   </button>
                 </div>
               </div>
@@ -365,7 +468,7 @@ const ButtonGroupElementOffcanvas = ({
           </li>
 
           <li>
-            <MainLabel label="ตำแหน่ง" />
+            <MainLabel label="ตำแหน่ง" mb="11px" />
             <ButtonGroup fullWidth variant="outlined" disableElevation color="inherit" sx={groupRootSx}>
               {ALIGN_OPTIONS.map((opt) => (
                 <Button
@@ -406,13 +509,13 @@ const ButtonGroupElementOffcanvas = ({
                       gap: 1,
                       fontSize: 13,
                       fontWeight: 700,
-                      color: "rgb(51 65 85)",
+                      color: "var(--dash-panel-heading, #0f172a)",
                       mb: 0,
-                      ".dark &": { color: "rgba(255,255,255,0.82)" },
+                      ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
                     }}
                   >
                     สีเส้นคั่น
-                    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </Typography>
                   <div className="px-[2px] pb-[2px] pt-[5px]">
                     <Range
@@ -426,7 +529,7 @@ const ButtonGroupElementOffcanvas = ({
                       className={THEME_RANGE_INPUT_CLASS}
                     />
                   </div>
-                  <div className="mt-[5px] rounded-md bg-white px-1 pb-1.5 pt-0 dark:bg-zinc-800">
+                  <div className="mt-[5px] dash-card rounded-md bg-white px-1 pb-1.5 pt-0 dark:bg-zinc-800">
                     <div className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px] px-[5px] pb-0 pt-2">
                       {allColors.map((color, i) => {
                         const bgColor =
@@ -505,86 +608,94 @@ const ButtonGroupElementOffcanvas = ({
                 gap: 1,
                 fontSize: 13,
                 fontWeight: 700,
-                color: "rgb(51 65 85)",
-                mb: 1,
-                ".dark &": { color: "rgba(255,255,255,0.82)" },
+                color: "var(--dash-panel-heading, #0f172a)",
+                mb: "13px",
+                ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
               }}
             >
               รายการทั้งหมด
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </Typography>
-            <Stack spacing={1}>
-              {items.map((item, idx) => (
-                <Box
-                  key={`${idx}-${item?.listText ?? ""}`}
-                  className="flex w-full min-w-0 items-center gap-2 rounded-md border border-slate-200 px-2.5 py-1.5 dark:border-white/10"
-                >
-                  <span
-                    className="shrink-0 flex h-5 w-5 items-center justify-center rounded text-[10px] font-semibold text-white"
-                    style={{ backgroundColor: "#333333" }}
+            <div className="flex flex-col gap-2">
+              {items.map((item, idx) => {
+                const itemId = String(item?.id || `bm-${idx}`);
+                const isMoving = movingItemId === itemId;
+                return (
+                  <Box
+                    key={itemId}
+                    ref={(el) => setItemNodeRef(itemId, el)}
+                    className={`flex w-full min-w-0 items-center gap-2 rounded-md border px-2.5 py-1.5 will-change-transform ${
+                      isMoving
+                        ? "border-slate-300 bg-slate-50 shadow-sm dark:border-white/25 dark:bg-white/5"
+                        : "border-slate-200 dark:border-white/10"
+                    }`}
                   >
-                    {idx + 1}
-                  </span>
-                  <Typography
-                    sx={{
-                      fontSize: 12,
-                      lineHeight: 1.4,
-                      opacity: 0.8,
-                      minWidth: 0,
-                      flex: "1 1 auto",
-                    }}
-                    className="truncate"
-                    component="span"
-                  >
-                    {typeof item?.listText === "string" && item.listText.trim()
-                      ? item.listText
-                      : `Button ${idx + 1}`}
-                  </Typography>
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    <button
-                      type="button"
-                      disabled={idx === 0}
-                      title="เลื่อนขึ้น"
-                      aria-label="เลื่อนขึ้น"
-                      className={itemRowReorderBtnClass}
-                      onClick={() => moveItem(idx, idx - 1)}
+                    <span
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[#333333] text-[10px] font-semibold text-white"
                     >
-                      <ArrowUp className="h-3 w-3" strokeWidth={2.25} />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={idx >= items.length - 1}
-                      title="เลื่อนลง"
-                      aria-label="เลื่อนลง"
-                      className={itemRowReorderBtnClass}
-                      onClick={() => moveItem(idx, idx + 1)}
+                      {idx + 1}
+                    </span>
+                    <Typography
+                      sx={{
+                        fontSize: 12,
+                        lineHeight: 1.4,
+                        opacity: 0.8,
+                        minWidth: 0,
+                        flex: "1 1 auto",
+                      }}
+                      className="truncate"
+                      component="span"
                     >
-                      <ArrowDown className="h-3 w-3" strokeWidth={2.25} />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={items.length >= 12}
-                      title={items.length >= 12 ? "ถึงจำนวนสูงสุดแล้ว (12)" : "คัดลอกรายการนี้"}
-                      aria-label="คัดลอกรายการ"
-                      className="rounded p-0.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-blue-950/40 dark:hover:text-blue-400"
-                      onClick={() => cloneItem(idx)}
-                    >
-                      <Copy className="h-3 w-3" strokeWidth={2} />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={items.length <= 1}
-                      title={items.length <= 1 ? "ต้องมีอย่างน้อย 1 รายการ" : "ลบรายการนี้"}
-                      aria-label="ลบรายการ"
-                      className="rounded p-0.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                      onClick={() => deleteItem(idx)}
-                    >
-                      <Trash2 className="h-3 w-3" strokeWidth={2} />
-                    </button>
-                  </div>
-                </Box>
-              ))}
-            </Stack>
+                      {typeof item?.listText === "string" && item.listText.trim()
+                        ? item.listText
+                        : `Button ${idx + 1}`}
+                    </Typography>
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button
+                        type="button"
+                        disabled={idx === 0 || Boolean(movingItemId)}
+                        title="เลื่อนขึ้น"
+                        aria-label="เลื่อนขึ้น"
+                        className={itemRowReorderBtnClass}
+                        onClick={() => moveItem(idx, idx - 1)}
+                      >
+                        <ArrowUp className="h-3 w-3" strokeWidth={2.25} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx >= items.length - 1 || Boolean(movingItemId)}
+                        title="เลื่อนลง"
+                        aria-label="เลื่อนลง"
+                        className={itemRowReorderBtnClass}
+                        onClick={() => moveItem(idx, idx + 1)}
+                      >
+                        <ArrowDown className="h-3 w-3" strokeWidth={2.25} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={items.length >= 12 || Boolean(movingItemId)}
+                        title={items.length >= 12 ? "ถึงจำนวนสูงสุดแล้ว (12)" : "คัดลอกรายการนี้"}
+                        aria-label="คัดลอกรายการ"
+                        className="rounded p-0.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-blue-950/40 dark:hover:text-blue-400"
+                        onClick={() => cloneItem(idx)}
+                      >
+                        <Copy className="h-3 w-3" strokeWidth={2} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={items.length <= 1 || Boolean(movingItemId)}
+                        title={items.length <= 1 ? "ต้องมีอย่างน้อย 1 รายการ" : "ลบรายการนี้"}
+                        aria-label="ลบรายการ"
+                        className="rounded p-0.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                        onClick={() => deleteItem(idx)}
+                      >
+                        <Trash2 className="h-3 w-3" strokeWidth={2} />
+                      </button>
+                    </div>
+                  </Box>
+                );
+              })}
+            </div>
           </li>
         </ul>
       </nav>

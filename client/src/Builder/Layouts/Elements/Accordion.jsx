@@ -303,6 +303,7 @@ const AccordionElement = ({
   onTabElementsReorder,
   tabGhostData,
   tabSelectedElId,
+  onUpdate,
   theme,
 }) => {
   const sensors = useSensors(
@@ -506,6 +507,7 @@ const AccordionElement = ({
     }
   };
   const useLayoutSelectionFrame = builderMode === "Layout Mode" && selected;
+  const showAreaGuides = builderMode === "Layout Mode";
 
   return (
     <div
@@ -535,9 +537,23 @@ const AccordionElement = ({
               <div data-accordion-tab-trigger="true">
                 <button
                   type="button"
-                  aria-disabled="true"
                   data-accordion-tab-trigger="true"
                   className="flex w-full cursor-pointer items-center gap-2 px-4"
+                  onMouseDown={(e) => {
+                    if (builderMode === "Layout Mode" || builderMode === "Editor Mode") {
+                      e.stopPropagation();
+                    }
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (item.disabled) return;
+                    if (String(item.id) === String(activeId)) return;
+                    onUpdate?.({
+                      ...elementData,
+                      accordionActiveId: item.id,
+                    });
+                  }}
                   style={{
                     backgroundColor: rowBg || "#ffffff",
                     color: titleColor || "#111827",
@@ -591,11 +607,13 @@ const AccordionElement = ({
               {isActive ? (
                 <div
                   className={`${hasElements ? "mt-0" : "mt-3"} px-4 ${hasElements ? "py-0" : "py-3"} text-[13px] text-slate-500 transition-colors dark:text-slate-300 ${
-                    isThisItemHovered
-                      ? "border border-dashed border-blue-400 bg-blue-50 dark:border-blue-400/70 dark:bg-blue-900/10"
-                      : hasElements
-                        ? "border-0 bg-transparent"
-                        : "rounded-md border border-dashed border-slate-300 bg-slate-50 dark:border-white/20 dark:bg-white/5"
+                    !showAreaGuides
+                      ? "border border-transparent bg-transparent"
+                      : isThisItemHovered
+                        ? "border border-dashed border-slate-300/40 bg-slate-50/40 dark:border-slate-400/40 dark:bg-white/5"
+                        : hasElements
+                          ? "border border-dashed border-slate-300/40 bg-transparent dark:border-slate-400/40"
+                          : "rounded-md border border-dashed border-slate-300/40 bg-slate-50/30 dark:border-slate-400/40 dark:bg-white/5"
                   }`}
                   data-drop="TAB-CONTENT"
                   data-tab-element-id={String(elementData?.id || "")}

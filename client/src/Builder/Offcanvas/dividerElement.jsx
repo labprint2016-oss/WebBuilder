@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import Range from "../HTML/Range";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
+import { panelGroupButtonSx } from "../panelControlSx";
 import {
   DIVIDER_STYLE_OPTIONS,
   mergeDividerElement,
@@ -44,41 +45,14 @@ const dividerGroupRootSx = {
     borderBottomRightRadius: "0.375rem !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "#e2e8f0 !important",
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "rgba(255,255,255,0.1) !important",
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
-const dividerBtnSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.15,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    color: selected ? "#ffffff" : "#334155",
-    borderColor: selected ? `${a} !important` : undefined,
-    backgroundColor: selected ? a : "#ffffff",
-    "&:hover": {
-      backgroundColor: selected ? a : "#f8fafc",
-      borderColor: selected ? `${a} !important` : undefined,
-    },
-    ".dark &": {
-      color: selected ? "#ffffff" : "rgba(255,255,255,0.88)",
-      backgroundColor: selected ? a : "rgba(15,23,42,0.6)",
-      "&:hover": {
-        backgroundColor: selected ? a : "rgba(255,255,255,0.08)",
-      },
-    },
-  };
-};
+const dividerBtnSx = panelGroupButtonSx;
 
 const MainLabel = ({ label, value }) => (
   <Typography
@@ -90,17 +64,17 @@ const MainLabel = ({ label, value }) => (
       flex: 1,
       fontSize: 13,
       fontWeight: 600,
-      color: "rgb(51 65 85)",
+      color: "var(--dash-panel-heading, #0f172a)",
       mb: 0.5,
       fontVariantNumeric: "tabular-nums",
-      ".dark &": { color: "rgba(255,255,255,0.78)" },
+      ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
     }}
   >
     {label}
     {Number.isFinite(Number(value)) ? (
       <span className="text-slate-400 dark:text-slate-400">{value}</span>
     ) : null}
-    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
   </Typography>
 );
 
@@ -145,18 +119,29 @@ const DividerElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
   const dividerWeightLabel = dividerWeight.toFixed(1);
 
   return (
-    <aside className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10">
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-slate-800/60">
+    <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             Divider
           </span>
-          <span
-            className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums"
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
             title={String(merged?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(merged?.id ?? "")}`}
+            onClick={() => {
+              const id = String(merged?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
           >
-            <span className="truncate">{merged?.id ?? "-"}</span>
-          </span>
+            {(() => {
+              const id = String(merged?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -216,7 +201,7 @@ const DividerElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
 
           <li>
             <MainLabel label="สีเส้นคั่น" />
-            <div className="mt-1 rounded-md bg-white px-1 pb-1.5 pt-0 dark:bg-zinc-800">
+            <div className="mt-1 dash-card rounded-md bg-white px-1 pb-1.5 pt-0 dark:bg-zinc-800">
               <div className="px-1 pb-2 pt-0">
                 <input
                   type="range"

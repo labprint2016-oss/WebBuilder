@@ -314,10 +314,10 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
     <aside
       className={`
      
-     sm:block 0 overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10`}
+     dash-panel sm:block 0 overflow-hidden border-r border-slate-200 dark:border-white/10`}
     >
-      <div className="px-6 mt-5 flex items-center justify-between">
-        <div className="font-semibold tracking-wide">Header <span className="text-gray-400">{data.id}</span></div>
+      <div className="dash-panel-header shrink-0 flex items-center justify-between border-b border-slate-200 bg-gray-100 px-6 pt-3 pb-2 dark:border-white/10 dark:bg-slate-800/70">
+        <div className="font-semibold tracking-wide">Header {data.id}</div>
         <button
           className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
           onClick={() => close(null, null, null)}
@@ -344,7 +344,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
               {paddings.map((item, i) => (
                 <div className="col col-span-1 ml-[5px] mr-[5px]" key={i}>
                   <MainLabel label={item.label} />
-                  <div className="relative w-auto rounded-md border border-zinc-400 dark:border-gray-500/50 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 focus-within:border-zinc-500 flex items-center justify-center w-[160px] mb-[5px] h-[35px]">
+                  <div className="relative dash-card w-auto rounded-md border border-zinc-400 dark:border-gray-500/50 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 focus-within:border-zinc-500 flex items-center justify-center w-[160px] mb-[5px] h-[35px]">
                     <div className="absolute pr-2 -left-px">
                       <button
                         className="bg-transparent flex items-center justify-center rounded-md"
@@ -376,7 +376,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
               {heights.map((item, i) => (
                 <div className="col col-span-1 ml-[5px] mr-[5px]" key={i}>
                   <MainLabel label={item.label} />
-                  <div className="relative w-auto rounded-md border border-zinc-400 dark:border-gray-500/50 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 focus-within:border-zinc-500 flex items-center justify-center w-[160px] mb-[5px] h-[35px]">
+                  <div className="relative dash-card w-auto rounded-md border border-zinc-400 dark:border-gray-500/50 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 focus-within:border-zinc-500 flex items-center justify-center w-[160px] mb-[5px] h-[35px]">
                     <div className="absolute pr-2 -left-px">
                       <button
                         className="bg-transparent flex items-center justify-center rounded-md"
@@ -408,7 +408,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
               {size.map((item, i) => (
                 <div className="col col-span-1 ml-[5px] mr-[5px]" key={i}>
                   <MainLabel label={item.label} />
-                  <div className="relative w-auto rounded-md border border-zinc-400 dark:border-gray-500/50 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 focus-within:border-zinc-500 flex items-center justify-center w-[160px] mb-[5px] h-[35px]">
+                  <div className="relative dash-card w-auto rounded-md border border-zinc-400 dark:border-gray-500/50 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 focus-within:border-zinc-500 flex items-center justify-center w-[160px] mb-[5px] h-[35px]">
                     <div className="absolute pr-2 -left-px">
                       <button
                         className="bg-transparent flex items-center justify-center rounded-md"
@@ -463,16 +463,16 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                   fontSize:13,
                 },
                 "& .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderTopLeftRadius: 5,
                   borderBottomLeftRadius: 5,
                   borderRightWidth: 0
                 },
                 "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                 },
                 "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderWidth: 1,
                   borderRightWidth: 0
                 },
@@ -487,17 +487,17 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 },
 
                 ".dark & .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#494d55",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderTopLeftRadius: 5,
                   borderBottomLeftRadius: 5,
                   borderRightWidth: 0
                 },
                 ".dark & .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#494d55",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderRightWidth: 0
                 },
                 ".dark & .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#494d55",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderWidth: 1,
                   borderRightWidth: 0
                 },
@@ -527,7 +527,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
       
                 // 2) ให้ปุ่มมี "กรอบ" แบบเดียวกับ TextField
                 border: "1px solid",
-                borderColor: "#A1A1AA",
+                borderColor: "var(--dash-panel-input-border, #e2e8f0)",
       
                 // (ตัวเลือก) ถ้าไม่อยากให้มีเส้นหนาตรงรอยต่อกลาง
                 // ให้ตัดเส้นซ้ายของปุ่มออก จะเหลือเส้นของ TextField ฝั่งเดียวพอดี
@@ -537,7 +537,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 backgroundColor: bg || "transparent",
                 "&:hover": {
                   backgroundColor: bg || "transparent",
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   boxShadow: "none", // กันธีมเพิ่มเงาตอนโฮเวอร์
                 },
       
@@ -545,8 +545,8 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 color: "inherit",
 
                 ".dark &": {
-                  borderColor: "#494d55", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
-                  "&:hover": { borderColor: "#494d55" },
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
+                  "&:hover": { borderColor: "var(--dash-panel-input-border, #e2e8f0)" },
                   borderTopRightRadius: 5,
                   borderBottomRightRadius: 5,
                 },
@@ -577,7 +577,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
             >
         
               
-               <div className="w-[363px] rounded-md bg-white dark:bg-zinc-800 border border-zinc-400/35 dark:border-gray-500/50 px-[5px] pt-[8px] pb-[15px]  flex flex-col gap-2 ">
+               <div className="w-[363px] dash-card rounded-md bg-white dark:bg-zinc-800 border border-zinc-400/35 dark:border-gray-500/50 px-[5px] pt-[8px] pb-[15px]  flex flex-col gap-2 ">
                   
                <div className="pt-[2px] pb-[2px] px-[8px]">
                     {/* <input type="range" className="w-full accent-slate-900 dark:accent-emerald-300 border border-0"/> */}
@@ -682,16 +682,16 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                   fontSize:13,
                 },
                 "& .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderTopLeftRadius: 5,
                   borderBottomLeftRadius: 5,
                   borderRightWidth: 0
                 },
                 "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                 },
                 "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderWidth: 1,
                   borderRightWidth: 0
                 },
@@ -706,17 +706,17 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 },
 
                 ".dark & .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#494d55",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderTopLeftRadius: 5,
                   borderBottomLeftRadius: 5,
                   borderRightWidth: 0
                 },
                 ".dark & .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#494d55",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderRightWidth: 0
                 },
                 ".dark & .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#494d55",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderWidth: 1,
                   borderRightWidth: 0
                 },
@@ -746,7 +746,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
       
                 // 2) ให้ปุ่มมี "กรอบ" แบบเดียวกับ TextField
                 border: "1px solid",
-                borderColor: "#A1A1AA",
+                borderColor: "var(--dash-panel-input-border, #e2e8f0)",
       
                 // (ตัวเลือก) ถ้าไม่อยากให้มีเส้นหนาตรงรอยต่อกลาง
                 // ให้ตัดเส้นซ้ายของปุ่มออก จะเหลือเส้นของ TextField ฝั่งเดียวพอดี
@@ -756,7 +756,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 backgroundColor: bg || "transparent",
                 "&:hover": {
                   backgroundColor: bg || "transparent",
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   boxShadow: "none", // กันธีมเพิ่มเงาตอนโฮเวอร์
                 },
       
@@ -764,8 +764,8 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 color: "inherit",
 
                 ".dark &": {
-                  borderColor: "#494d55", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
-                  "&:hover": { borderColor: "#494d55" },
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
+                  "&:hover": { borderColor: "var(--dash-panel-input-border, #e2e8f0)" },
                   borderTopRightRadius: 5,
                   borderBottomRightRadius: 5,
                 },
@@ -796,7 +796,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
             >
         
               
-               <div className="w-[363px] rounded-md bg-white dark:bg-zinc-800 border border-zinc-400/35 dark:border-gray-500/50 px-[5px] pt-[8px] pb-[15px]  flex flex-col gap-2 ">
+               <div className="w-[363px] dash-card rounded-md bg-white dark:bg-zinc-800 border border-zinc-400/35 dark:border-gray-500/50 px-[5px] pt-[8px] pb-[15px]  flex flex-col gap-2 ">
                   
                <div className="pt-[2px] pb-[2px] px-[8px]">
                     {/* <input type="range" className="w-full accent-slate-900 dark:accent-emerald-300 border border-0"/> */}
@@ -907,16 +907,16 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                   fontSize:13,
                 },
                 "& .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderTopLeftRadius: 5,
                   borderBottomLeftRadius: 5,
                   borderRightWidth: 0
                 },
                 "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                 },
                 "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderWidth: 1,
                   borderRightWidth: 0
                 },
@@ -931,17 +931,17 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 },
 
                 ".dark & .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#494d55",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderTopLeftRadius: 5,
                   borderBottomLeftRadius: 5,
                   borderRightWidth: 0
                 },
                 ".dark & .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#494d55",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderRightWidth: 0
                 },
                 ".dark & .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#494d55",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   borderWidth: 1,
                   borderRightWidth: 0
                 },
@@ -971,7 +971,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
       
                 // 2) ให้ปุ่มมี "กรอบ" แบบเดียวกับ TextField
                 border: "1px solid",
-                borderColor: "#A1A1AA",
+                borderColor: "var(--dash-panel-input-border, #e2e8f0)",
       
                 // (ตัวเลือก) ถ้าไม่อยากให้มีเส้นหนาตรงรอยต่อกลาง
                 // ให้ตัดเส้นซ้ายของปุ่มออก จะเหลือเส้นของ TextField ฝั่งเดียวพอดี
@@ -981,7 +981,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 backgroundColor: bg || "transparent",
                 "&:hover": {
                   backgroundColor: bg || "transparent",
-                  borderColor: "#A1A1AA",
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)",
                   boxShadow: "none", // กันธีมเพิ่มเงาตอนโฮเวอร์
                 },
       
@@ -989,8 +989,8 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 color: "inherit",
 
                 ".dark &": {
-                  borderColor: "#494d55", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
-                  "&:hover": { borderColor: "#494d55" },
+                  borderColor: "var(--dash-panel-input-border, #e2e8f0)", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
+                  "&:hover": { borderColor: "var(--dash-panel-input-border, #e2e8f0)" },
                   borderTopRightRadius: 5,
                   borderBottomRightRadius: 5,
                 },
@@ -1021,7 +1021,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
             >
         
               
-               <div className="w-[363px] rounded-md bg-white dark:bg-zinc-800 border border-zinc-400/35 dark:border-gray-500/50 px-[5px] pt-[8px] pb-[15px]  flex flex-col gap-2 ">
+               <div className="w-[363px] dash-card rounded-md bg-white dark:bg-zinc-800 border border-zinc-400/35 dark:border-gray-500/50 px-[5px] pt-[8px] pb-[15px]  flex flex-col gap-2 ">
 
                       
                     <div className="grid grid-cols-10 place-items-center gap-[6px_0px]">
@@ -1163,10 +1163,10 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
     const typography = label === "สีพื้นหลังแบบสีพื้น" ? "สีไล่โทน" : "สีพื้น"
     return (
       <div className="flex items-center gap-2 mt-5 mb-2">
-        <span className="text-dark dark:text-white/80 text-[13px] font-bold">
+        <span className="dash-panel-label text-[13px] font-bold">
           {label}
         </span>
-        <div className={`border-b border-gray-500/50 ${w}`}></div>
+        <div className={`dash-heading-rule border-b ${w}`}></div>
         {colorSwitch && (
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
              <AntSwitch  inputProps={{ 'aria-label': 'ant design' }} checked={data.isGradient} onChange={()=>{

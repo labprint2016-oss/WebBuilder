@@ -1,32 +1,36 @@
-import {ChevronLeft,ChevronRight} from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
-const SelectLine = ({prev,next,value})=>{
+const FIELD_SURFACE =
+  "dash-select-line-field box-border flex h-[35px] shrink-0 items-center justify-center rounded-md border bg-white text-slate-600";
 
-    return(     
-      <div
-      className="flex items-center justify-between gap-0.5 rounded-lg border border-slate-200 bg-white px-0.5 py-0.5 dark:border-white/10 dark:bg-slate-800/90"
-    >
+const SelectLine = ({ prev, next, value }) => {
+  return (
+    <div className="flex w-full items-center gap-1">
       <button
         type="button"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+        className={`${FIELD_SURFACE} w-[35px] hover:bg-slate-50`}
         onClick={prev}
+        aria-label="ก่อนหน้า"
       >
         <ChevronLeft className="size-4" strokeWidth={2} aria-hidden />
       </button>
-  
-      <span className="min-w-0 flex-1 truncate text-center text-[11px] font-normal text-slate-800 dark:text-white/90">
-        {value}
-      </span>
-  
+
+      <div className={`${FIELD_SURFACE} min-w-0 flex-1 px-2`}>
+        <span className="dash-select-line-value min-w-0 truncate text-center text-[11px] font-normal text-slate-800">
+          {value}
+        </span>
+      </div>
+
       <button
         type="button"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+        className={`${FIELD_SURFACE} w-[35px] hover:bg-slate-50`}
         onClick={next}
+        aria-label="ถัดไป"
       >
         <ChevronRight className="size-4" strokeWidth={2} aria-hidden />
       </button>
-    </div>)
-  
-  }
+    </div>
+  );
+};
 
-export default SelectLine
+export default SelectLine;

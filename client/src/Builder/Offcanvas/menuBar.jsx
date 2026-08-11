@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { getTheme } from "../../../Functions/theme";
 import TextField from "@mui/material/TextField";
+import { panelGroupButtonSx } from "../panelControlSx";
 import {
   Dialog,
   DialogTitle,
@@ -22,11 +23,10 @@ import {
   OutlinedInput,
   Grow,
   Slide,
-  ButtonGroup,
-  Tab
+  ButtonGroup
 } from "@mui/material";
 import ImageModal from "../imageModal";
-import { TabContext, TabList, TabPanel } from "@mui/lab";
+import { TabContext, TabPanel } from "@mui/lab";
 import lodash, { isNull, set } from "lodash";
 import { Minus, Plus, Check, Palette, ImageOff, Trash2,Image, Home} from "lucide-react";
 import { use } from "react";
@@ -57,7 +57,7 @@ const COMMON_FIELD_SX = (hasChildren, hasBtn, darkMode, height = 35, fontSize = 
 
   const borderColor = darkMode === "dark" ? "#494d54" : "rgba(0,0,0,0.23)";
   const textColor   = darkMode === "dark" ? "#ffffff" : "#18181b";
-  const bgcolor     = darkMode === "dark" ? "#27272a" : "#ffffff";
+  const bgcolor     = "var(--dash-panel-btn-group-inactive, #ffffff)";
 
   // ✅ อย่าใส่ height ใน notchedOutline
   const outlineStyle = {
@@ -109,55 +109,7 @@ const CHIP_BG_HOVER = "#f8fafc";
 const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
 const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 
-const layoutGroupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0.75,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.25,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: "#374151",
-          color: "#ffffff",
-          borderColor: "transparent",
-          "&:hover": {
-            backgroundColor: "#374151",
-            borderColor: "transparent",
-          },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": {
-            borderColor: `${CHIP_BORDER} !important`,
-            backgroundColor: CHIP_BG_HOVER,
-          },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": {
-              borderColor: `${CHIP_BORDER_DARK} !important`,
-              backgroundColor: CHIP_BG_DARK_HOVER,
-            },
-          },
-        }),
-    "&.Mui-focusVisible": {
-      outline: `2px solid ${a}`,
-      outlineOffset: 1,
-      boxShadow: "none",
-    },
-    "& .MuiTouchRipple-child": {
-      backgroundColor: a,
-    },
-  };
-};
+const layoutGroupButtonSx = panelGroupButtonSx;
 
 const layoutGroupRootSx = {
   width: "100%",
@@ -177,16 +129,16 @@ const layoutGroupRootSx = {
     borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER_DARK} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
@@ -209,7 +161,7 @@ const toBoolean = (value) => {
 const SelectInput = ({ name, value, handChange, array,darkMode,fontSize=13 }) => {
   const textColor = darkMode === "dark"?"#ffffff":"#050505"
   const borderColor = darkMode === "dark" ? CHIP_BORDER_DARK : CHIP_BORDER
-  const bgcolor = darkMode === "dark" ? "#27272a" : "#ffffff"
+  const bgcolor = "var(--dash-panel-btn-group-inactive, #ffffff)"
   const selectStyle = {
     "& .MuiTypography-root": { fontSize, color: textColor },
     "& .MuiSvgIcon-root": { color: textColor },
@@ -470,8 +422,8 @@ function Btn({
           color: "inherit",
 
           ".dark &": {
-            borderColor: "#494d55", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
-            "&:hover": { borderColor: "#494d55" },
+            borderColor: "var(--dash-panel-input-border, #e2e8f0)", // สีกรอบใน dark (เทาเข้มที่คุณใช้กับ TextField)
+            "&:hover": { borderColor: "var(--dash-panel-input-border, #e2e8f0)" },
           },
         }}
       >
@@ -693,6 +645,8 @@ const MenuBarOffcanvas = ({
     bgMenuOpacity:bgo_D,
     bgMenuOpacityGradient:bgoGD_D,
     bgMenuDegree:bgd_D,
+    floatingMenuBgColor:floatBg_D = bg_D,
+    floatingMenuBgOpacity:floatBgo_D = bgo_D,
   
     display:dp_D,
     menuHeight:mh_D,
@@ -706,6 +660,7 @@ const MenuBarOffcanvas = ({
     dividerColor:dvc_D,
     dividerOpacity:dvo_D,
     dividerWeight:dvw_D,
+    isOverlay:isOverlay_D = false,
   
     // Sub
     subMenuFontSize:s_fs_D,
@@ -877,6 +832,18 @@ const MenuBarOffcanvas = ({
       anchorEl: anchorEl,
       anchorRef: anchorRef,
       setAnchorEl,
+    },
+    {
+      label: "สีพื้นหลังเมนูแบบลอย",
+      data: floatBg_D,
+      field: "floatingMenuBgColor",
+      opacity: floatBgo_D,
+      opacityField: "floatingMenuBgOpacity",
+      open: openColorTable2,
+      click: () => {},
+      anchorEl: anchorElGradient,
+      anchorRef: anchorRefGradient,
+      setAnchorEl: setAnchorElGradient,
     },
   ];
 
@@ -1337,7 +1304,7 @@ const MenuBarOffcanvas = ({
     { value: "Main", lable: "เมนูหลัก" },
     { value: "Sub", lable: "เมนูย่อย" },
     ...(["Tablet", "Mobile"].includes(device) ? [{ value: "Top", lable: "Top Bar" }] : []),
-    ...(device === "Mobile" ? [{ value: "Nav", lable: "เมนูล่าง" }] : []),
+    ...(device === "Mobile" ? [{ value: "Nav", lable: "Footer" }] : []),
   ];
 
   const tabletTopBarMode = topBar?.tabletTopBarMode || "social";
@@ -1416,6 +1383,11 @@ const MenuBarOffcanvas = ({
 
   const changeMenuBarDisplayLayout = (value) => {
     setData((prev) => ({ ...prev, isFluidLayout: toBoolean(value) }));
+    setUpdated(true);
+  };
+
+  const changeDesktopOverlay = () => {
+    setDataDesktop((prev) => ({ ...prev, isOverlay: !toBoolean(prev?.isOverlay) }));
     setUpdated(true);
   };
 
@@ -1670,14 +1642,14 @@ const MenuBarOffcanvas = ({
 
   return (
     <div
-      className="sm:block h-full min-h-0 w-full overflow-hidden bg-white dark:bg-gray-900/80"
+      className="dash-panel sm:block h-full min-h-0 w-full overflow-hidden"
     >
 
     <TabContext value={menu}>
 
-    <div className="px-6 mt-5 flex items-center justify-between">
+    <div className="shrink-0 flex items-center justify-between border-b border-slate-200 dash-panel-header bg-gray-100 px-6 pt-3 pb-2 dark:border-white/10 dark:bg-slate-800/70">
         <div className="font-semibold tracking-wide">
-          ตั้งค่า <span className="text-gray-400">Menu Bar</span>
+          ตั้งค่า Menu Bar
         </div>
         <button
           className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
@@ -1701,65 +1673,44 @@ const MenuBarOffcanvas = ({
         
         <ul >
           <li>
-            <div className="w-full mt-[12px]">
-            <TabList
-            variant="fullWidth"
-                onChange={(e, newValue) => {
-                  setMenu(newValue);
-                  if(newValue === "Nav"){
-                    close("Nav")
-                  }else{
-                    close("Menu")
-                  }
-                  closePopper()
-                }}
-                sx={{
-                  px: "25px",
-                  "& .MuiTabs-flexContainer": {
-                    width: "100%",
-                  },
-                }}
-                TabIndicatorProps={{
-                  sx: {
-                    backgroundColor: "#676767", // สีเส้นใต้แท็บอันที่เลือก
-                    height: 3, // ความหนาเส้น
-                    borderRadius: 999, // ให้เส้นมน ๆ
-                    width:"full",
-                  },
-                }}
+            <div className="w-full mt-[12px] px-[25px]">
+              <ButtonGroup
+                fullWidth
+                variant="outlined"
+                disableElevation
+                color="inherit"
+                aria-label="เลือกส่วนตั้งค่าเมนู"
+                sx={layoutGroupRootSx}
               >
-                {menus.map(({lable,value}) => {
-                  if(device !== "Mobile" && value === "Nav") return
-                  return (
-                    <Tab
-                      label={lable}
-                      value={value}
-                      key={value}
-                      sx={{
-                        flex: 1,          // ✅ กินพื้นที่เท่ากัน
-                        minWidth: 0,      // ✅ กัน Tab ดันเกิน
-                        maxWidth: "none", // ✅ ไม่ให้โดนจำกัด maxWidth
-                        textTransform: "none",
-                        fontSize: 13,
-                        height: 52,
-                        backgroundColor: menu === value ? "#454b57" : "#b5b5b6",
-            
-                        borderRightWidth: 1,
-                        borderRightStyle: "solid",
-                        borderRightColor: "rgba(0,0,0,0.15)",
-                        "&:last-of-type": { borderRightWidth: 0 },
-            
-                        color: "#454b57",
-                        fontWeight: value === "Top" ? 800 : 500,
-                        "&.Mui-selected": {
-                          color: "white",
-                          fontWeight: value === "Top" ? 900 : 600,
-                        },
-                      }}
-                    />
-                  )
-                })}
-              </TabList>
+                {menus
+                  .filter(({ value }) => device === "Mobile" || value !== "Nav")
+                  .map(({ lable, value }) => {
+                    const selected = menu === value;
+                    return (
+                      <Button
+                        key={value}
+                        color="inherit"
+                        onClick={() => {
+                          setMenu(value);
+                          if (value === "Nav") {
+                            close("Nav");
+                          } else {
+                            close("Menu");
+                          }
+                          closePopper();
+                        }}
+                        sx={{
+                          ...layoutGroupButtonSx(selected, darkTextColor),
+                          minHeight: 36,
+                          fontSize: 12,
+                          fontWeight: value === "Top" ? 700 : 500,
+                        }}
+                      >
+                        {lable}
+                      </Button>
+                    );
+                  })}
+              </ButtonGroup>
             </div>
          
             {device === "Desktop" && (
@@ -1777,7 +1728,11 @@ const MenuBarOffcanvas = ({
    />
         <div className="grid grid-cols-2">
         <div className="col col-span-2" >
-              <MainLabel label="ความสูงโลโก้" value={lh_D} />
+              <MainLabel
+                label="ความสูงโลโก้"
+                value={lh_D}
+                spacingClass="mt-5 mb-[7px]"
+              />
               <Range
               darkMode={darkMode}
               darkTextColor={darkTextColor}
@@ -1802,10 +1757,10 @@ const MenuBarOffcanvas = ({
       </div>
     )}
       <div className="mb-3 mt-4 flex items-center gap-2">
-        <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+        <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
           Top Bar
         </span>
-        <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+        <div className="dash-heading-rule min-w-0 flex-1 border-b" />
         <AntSwitch
           inputProps={{ "aria-label": "toggle top bar section" }}
           checked={showTopBarEverywhere}
@@ -1816,10 +1771,10 @@ const MenuBarOffcanvas = ({
         </Typography>
       </div>
       <div className="mb-3 mt-4 flex items-center gap-2">
-        <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+        <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
           รูปแบบการแสดงผล
         </span>
-        <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+        <div className="dash-heading-rule min-w-0 flex-1 border-b" />
       </div>
       <ButtonGroup
         fullWidth
@@ -1845,7 +1800,20 @@ const MenuBarOffcanvas = ({
       </ButtonGroup>
       <div className="grid grid-cols-2">
         <div className="col col-span-2">
-          <MainLabel label="การจัดวาง" />
+          <div className="mb-3 mt-4 flex items-center gap-2">
+            <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
+              การจัดวาง
+            </span>
+            <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+            <AntSwitch
+              inputProps={{ "aria-label": "toggle menu overlay hero" }}
+              checked={toBoolean(isOverlay_D)}
+              onChange={changeDesktopOverlay}
+            />
+            <Typography sx={{ fontSize: 13, color: darkMode === "dark" ? "#94a3b8" : "#9ca3af" }}>
+              Overlay
+            </Typography>
+          </div>
         </div>
         {displays.map((item, i) => (
           <div
@@ -1926,7 +1894,7 @@ const MenuBarOffcanvas = ({
       </div>
 
       {selectedMenuColorDesktop && (
-        <div className="mb-[25px]">
+        <div className="mb-[8px]">
           <MainLabel label="สีข้อความ - สีพื้นหลัง" />
           <SelectLine
             prev={() => cycleMenuMainColorDesktop(-1)}
@@ -1984,6 +1952,9 @@ const MenuBarOffcanvas = ({
                 valueInline={isInlineMenuValue}
                 valueSuffix={isInlineMenuValue ? "" : "PX"}
                 valueColor={isInlineMenuValue ? "#94a3b8" : "gray"}
+                spacingClass={
+                  isInlineMenuValue ? "mt-5 mb-[7px]" : "mt-5 mb-3"
+                }
               />
               <Range
               darkMode={darkMode}
@@ -2015,20 +1986,33 @@ const MenuBarOffcanvas = ({
             darkMode={darkMode}
           />
 
-          <div className="grid grid-cols-2">
-            <div className="col col-span-1 ml-[5px] mr-[5px]">
+          <div className="grid grid-cols-12">
+            <div className="col col-span-8 ml-[5px] mr-[5px]">
               <MainLabel label="รูปแบบ" />
-              <SelectInput
-                name="dividerStyle"
-                value={dvs_D}
-                handChange={(e) =>
-                  handleSelect(e.target.value, e.target.name)
-                }
-                array={dividerStyles}
-                darkMode={darkMode}
-              />
+              <ButtonGroup
+                fullWidth
+                variant="outlined"
+                disableElevation
+                color="inherit"
+                aria-label="รูปแบบเส้นคั่นเมนูหลัก"
+                sx={layoutGroupRootSx}
+              >
+                {dividerStyles.map((opt) => {
+                  const selected = dvs_D === opt.value;
+                  return (
+                    <Button
+                      key={opt.value}
+                      color="inherit"
+                      onClick={() => handleSelect(opt.value, "dividerStyle")}
+                      sx={layoutGroupButtonSx(selected, textColor)}
+                    >
+                      {opt.label}
+                    </Button>
+                  );
+                })}
+              </ButtonGroup>
             </div>
-            <div className="col col-span-1 ml-[5px] mr-[5px]">
+            <div className="col col-span-4 ml-[5px] mr-[5px]">
               <MainLabel label="ความหนา" />
               <NumberInput
                 plus={plusFontSize}
@@ -2151,18 +2135,28 @@ const MenuBarOffcanvas = ({
               </div>
               <div className="col col-span-2 ml-[5px] mr-[5px]">
               <MainLabel label="รูปแบบ" />
-              </div>
-              <div className="col col-span-1 ml-[5px] mr-[5px]">
-              <div className="mb-[2px]"/>
-                    <SelectInput
-                    darkMode={darkMode}
-                      name="subMenuBorderStyle"
-                      value={s_bs_D}
-                      handChange={(e) =>
-                        handleSelect(e.target.value, e.target.name)
-                      }
-                      array={dividerStyles}
-                    />
+              <ButtonGroup
+                fullWidth
+                variant="outlined"
+                disableElevation
+                color="inherit"
+                aria-label="รูปแบบเส้นคั่นเมนูย่อย"
+                sx={layoutGroupRootSx}
+              >
+                {dividerStyles.map((opt) => {
+                  const selected = s_bs_D === opt.value;
+                  return (
+                    <Button
+                      key={opt.value}
+                      color="inherit"
+                      onClick={() => handleSelect(opt.value, "subMenuBorderStyle")}
+                      sx={layoutGroupButtonSx(selected, textColor)}
+                    >
+                      {opt.label}
+                    </Button>
+                  );
+                })}
+              </ButtonGroup>
               </div>
              </div>
    
@@ -2185,7 +2179,11 @@ const MenuBarOffcanvas = ({
    />
         <div className="grid grid-cols-2">
         <div className="col col-span-2" >
-              <MainLabel label="ความสูงโลโก้" value={lh_M} />
+              <MainLabel
+                label="ความสูงโลโก้"
+                value={lh_M}
+                spacingClass="mt-5 mb-[7px]"
+              />
               <Range
               darkMode={darkMode}
               darkTextColor={darkTextColor}
@@ -2313,6 +2311,8 @@ const MenuBarOffcanvas = ({
           const { data, label, name, min, max, step } = item;
           const isInlineMenuValue =
             label === "ความสูงบาร์" || label === "ระยะห่างเมนู";
+          const tightBottom =
+            label === "ระยะห่างเมนู" || label === "ความสูงเมนู";
           return (
             <div className={`col col-span-1 ml-[5px] mr-[5px]`} key={i}>
               <MainLabel
@@ -2321,6 +2321,9 @@ const MenuBarOffcanvas = ({
                 valueInline={isInlineMenuValue}
                 valueSuffix={isInlineMenuValue ? "" : "PX"}
                 valueColor={isInlineMenuValue ? "#94a3b8" : "gray"}
+                spacingClass={
+                  tightBottom ? "mt-5 mb-[7px]" : "mt-5 mb-3"
+                }
               />
               <Range
               darkMode={darkMode}
@@ -2534,10 +2537,10 @@ const MenuBarOffcanvas = ({
           <TabPanel value="Top" sx={{marginTop:-3}}>
             <div className="mt-4 ml-[5px] mr-[5px]">
               <div className="mb-3 flex items-center gap-2">
-                <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                   โหมดการแสดงผล
                 </span>
-                <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                <div className="dash-heading-rule min-w-0 flex-1 border-b" />
               </div>
               <ButtonGroup
                 fullWidth
@@ -2735,10 +2738,10 @@ const MenuBarOffcanvas = ({
       {navd_M === "menu" && (
         <>
       <div className="mb-3 mt-2 flex items-center gap-2">
-        <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+        <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
           รูปแบบเมนู
         </span>
-        <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+        <div className="dash-heading-rule min-w-0 flex-1 border-b" />
       </div>
       <ButtonGroup
         fullWidth
@@ -2813,6 +2816,8 @@ const MenuBarOffcanvas = ({
           .filter((item) => (navd_M === "menu" ? true : item.name !== "navSpace"))
           .map((item, i) => {
           const { data, label, name, min, max, step } = item;
+          const tightBottom =
+            label === "ระยะห่างเมนู" || label === "ความสูงเมนู";
           return (
             <div className={`col col-span-1 ml-[5px] mr-[5px]`} key={i}>
               <MainLabel
@@ -2821,6 +2826,9 @@ const MenuBarOffcanvas = ({
                 valueInline
                 valueSuffix=""
                 valueColor="#94a3b8"
+                spacingClass={
+                  tightBottom ? "mt-5 mb-[7px]" : "mt-5 mb-3"
+                }
               />
               <Range
               darkMode={darkMode}
@@ -2982,7 +2990,7 @@ const MenuBarOffcanvas = ({
 
     return (
       <div className={`flex items-center gap-2 ${spacingClass}`}>
-        <span className="text-dark dark:text-white/80 text-[13px] font-bold">
+        <span className="dash-panel-label text-[13px] font-bold">
           {label}
         </span>
         {valueInline && !Number.isNaN(value) && (
@@ -2991,7 +2999,7 @@ const MenuBarOffcanvas = ({
             {valueSuffix ? ` ${valueSuffix}` : ""}
           </span>
         )}
-        <div className={`border-b border-slate-200 dark:border-white/15 ${w}`}></div>
+        <div className={`dash-heading-rule border-b ${w}`}></div>
         {colorSwitch && (
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             <AntSwitch

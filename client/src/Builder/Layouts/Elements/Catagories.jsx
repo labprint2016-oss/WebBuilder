@@ -521,13 +521,11 @@ const Catagories = ({
                   {(() => {
                     const showAreaFrame = builderMode === "Layout Mode";
                     const areaClass = ghost
-                      ? "border border-dashed border-blue-400 bg-blue-50 dark:border-blue-400/70 dark:bg-blue-900/10"
+                      ? "border border-dashed border-slate-300/40 bg-slate-50/40 dark:border-slate-400/40 dark:bg-white/5"
                       : hasElements
-                        ? "border border-dashed border-slate-300 bg-transparent dark:border-white/20"
-                        : "border border-dashed border-slate-300 bg-slate-50 dark:border-white/20 dark:bg-white/5";
-                    const editorClass = hasElements
-                      ? "bg-transparent"
-                      : "bg-transparent";
+                        ? "border border-dashed border-slate-300/40 bg-transparent dark:border-slate-400/40"
+                        : "border border-dashed border-slate-300/40 bg-slate-50/30 dark:border-slate-400/40 dark:bg-white/5";
+                    const editorClass = "border border-transparent bg-transparent";
                       return (
                     <div
                       className={`relative min-h-[72px] w-full px-3 py-2 text-[12px] transition-colors ${

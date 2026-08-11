@@ -27,6 +27,7 @@ import Stack from '@mui/material/Stack';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
+import { panelGroupButtonSx } from "../panelControlSx";
 
 
 const COLUMN_PADDING_MAX = 200;
@@ -114,8 +115,7 @@ const ColumnOffcanvas = ({
             color: '#fff',
             '& + .MuiSwitch-track': {
               opacity: 1,
-              backgroundColor: textColor,
-             
+              backgroundColor: "var(--dash-panel-switch-on, #333333)",
             },
           },
         },
@@ -312,11 +312,11 @@ const ColumnOffcanvas = ({
         <aside
         className={`
        
-       sm:block 0 overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10`}
+       dash-panel flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10`}
       >
-        <div className="px-6 mt-5 flex items-center justify-between">
+        <div className="shrink-0 flex items-center justify-between border-b border-slate-200 dash-panel-header bg-gray-100 px-6 pt-5 pb-3 dark:border-white/10 dark:bg-slate-800/70">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+            <span className="shrink-0 font-bold tracking-wide">
               {panelLabel}
             </span>
             <span
@@ -344,7 +344,7 @@ const ColumnOffcanvas = ({
             </svg>
           </button>
         </div>
-        <nav className="px-4 pb-6  overflow-y-auto h-[calc(100%-64px)] w-[400px]">
+        <nav className="dash-panel flex-1 min-h-0 px-4 pb-6 overflow-y-auto w-full bg-slate-50 dark:bg-slate-900/40">
           <ul className="mt-1 pl-1">
             <li>
      
@@ -380,7 +380,7 @@ const ColumnOffcanvas = ({
               <div className="order-2">
                 <MainLabel label="สีกรอบ" />
                 <Box sx={{ width: "100%", px: 0.25, pt: 0 }}>
-                  <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] dark:bg-zinc-800">
+                  <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] dark:bg-zinc-800">
                     <div className="px-[5px] pb-2">
                       <input
                         type="range"
@@ -459,7 +459,7 @@ const ColumnOffcanvas = ({
 
             {!data.isGradient ? (
               <Box sx={{ width: "100%", px: 0.25, pt: 0 }}>
-                <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                   <div className="px-[5px] pb-2">
                     <input
                       type="range"
@@ -527,27 +527,7 @@ const ColumnOffcanvas = ({
                         key={opt.value}
                         color="inherit"
                         onClick={() => setColumnGradientPicker(opt.value)}
-                        sx={{
-                          flex: 1,
-                          fontSize: 11,
-                          minHeight: 34,
-                          py: 0.75,
-                          px: 0.5,
-                          textTransform: "none",
-                          lineHeight: 1.25,
-                          boxShadow: "none",
-                          ...(selected
-                            ? {
-                                backgroundColor: textColor || "#0d9488",
-                                color: "#fff",
-                                borderColor: "transparent",
-                                "&:hover": {
-                                  backgroundColor: textColor || "#0d9488",
-                                  borderColor: "transparent",
-                                },
-                              }
-                            : {}),
-                        }}
+                        sx={panelGroupButtonSx(selected)}
                       >
                         {opt.label}
                       </Button>
@@ -556,7 +536,7 @@ const ColumnOffcanvas = ({
                 </ButtonGroup>
 
                 <Box sx={{ width: "100%", px: 0.25, pt: 0.75 }}>
-                  <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                  <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                     <div className="px-[5px] pb-2">
                       <input
                         type="range"
@@ -635,13 +615,13 @@ const ColumnOffcanvas = ({
 
             {/* กรอบเบลอ */}
             <div className="flex items-center gap-2 mt-5 mb-2">
-              <span className="text-dark dark:text-white/80 text-[13px] font-bold">กรอบเบลอ</span>
+              <span className="dash-panel-label text-[13px] font-bold">กรอบเบลอ</span>
               {data.colGlassEnabled === true && (
                 <span className="text-[13px] tabular-nums text-slate-400">
                   {Math.round(Number.isFinite(Number(data.colGlassLevel)) ? Number(data.colGlassLevel) : 50)}
                 </span>
               )}
-              <div className="flex-1 border-b border-gray-500/50" />
+              <div className="flex-1 dash-heading-rule border-b" />
               <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                 <AntSwitch
                   checked={data.colGlassEnabled === true}
@@ -655,7 +635,7 @@ const ColumnOffcanvas = ({
             </div>
             {data.colGlassEnabled === true && (
               <Box sx={{ width: "100%", px: 0.25, pt: 0 }}>
-                <div className="mt-0 w-full rounded-md bg-white px-[5px] pb-[8px] pt-[4px] dark:bg-zinc-800">
+                <div className="mt-0 dash-card w-full rounded-md bg-white px-[5px] pb-[8px] pt-[4px] dark:bg-zinc-800">
                   <input
                     type="range"
                     min={0}
@@ -690,18 +670,21 @@ const ColumnOffcanvas = ({
             : label === "Padding Bottom"
             ? "w-[64px]"
             : "flex-1";
-        const colorSwitch = ["สีพื้นหลังแบบสีพื้น","สีพื้นหลังแบบไล่โทน"].includes(label)
-        const typography = label === "สีพื้นหลังแบบสีพื้น" ? "สีไล่โทน" : label === "สีพื้นหลังแบบไล่โทน" ? "สีพื้น" : ""
+        const isBgColorLabel = ["สีพื้นหลังแบบสีพื้น","สีพื้นหลังแบบไล่โทน"].includes(label)
+        const colorSwitch = isBgColorLabel
+        // หัวข้อสีพื้นหลัง: แสดง "สีพื้นหลัง" / "สีไล่โทน" คงที่ — ไม่ดึงชื่อหรือค่าสีตามโหมด
+        const displayLabel = isBgColorLabel ? "สีพื้นหลัง" : label
+        const typography = isBgColorLabel ? "สีไล่โทน" : ""
         const checked = data.isGradient
         return (
           <div className="flex items-center gap-2 mt-5 mb-2">
-            <span className="text-dark dark:text-white/80 text-[13px] font-bold">
-              {label}
+            <span className="dash-panel-label text-[13px] font-bold">
+              {displayLabel}
             </span>
             {value !== undefined && (
               <span className="text-[13px] tabular-nums text-slate-400">{value}</span>
             )}
-            <div className={`border-b border-gray-500/50 ${w}`}></div>
+            <div className={`dash-heading-rule border-b ${w}`}></div>
             {colorSwitch && (
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                  <AntSwitch  inputProps={{ 'aria-label': 'ant design' }} checked={checked} onChange={()=>{
@@ -712,7 +695,14 @@ const ColumnOffcanvas = ({
                     setUpdated(true)
                     return
                  }}   />
-                 <Typography sx={{ fontSize: 13 }}>{typography}</Typography>
+                 {typography ? (
+                   <Typography
+                     className="text-slate-400 dark:text-slate-400"
+                     sx={{ fontSize: 13 }}
+                   >
+                     {typography}
+                   </Typography>
+                 ) : null}
               </Stack>
              
             )}

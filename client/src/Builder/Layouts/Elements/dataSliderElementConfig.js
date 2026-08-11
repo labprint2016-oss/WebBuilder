@@ -16,8 +16,10 @@ export const DATA_SLIDER_ELEMENT_DEFAULTS = {
   dataSliderPerViewDesktop: 3,
   dataSliderPerViewTablet: 2,
   dataSliderPerViewMobile: 1,
-  dataSliderGap: 12,
+  dataSliderGap: 0,
   dataSliderNavShape: "square",
+  /** แสดงปุ่มเลื่อนบนหน้าเว็บ — หน้า Builder แสดงเสมอ */
+  dataSliderNavShowOnWebsite: true,
   dataSliderNavColor: "#d8d8d8",
   dataSliderNavColorOpacity: 255,
   dataSliderNavActiveColor: { type: "mainColor", index: 0 },
@@ -86,6 +88,7 @@ export function mergeDataSliderElement(raw) {
       2000,
       Number(base.dataSliderAutoplayDelayMs) || 4500
     ),
+    dataSliderNavShowOnWebsite: base.dataSliderNavShowOnWebsite !== false,
     dataSliderNavColorOpacity: op255(base.dataSliderNavColorOpacity),
     dataSliderNavActiveColorOpacity: op255(base.dataSliderNavActiveColorOpacity),
   };

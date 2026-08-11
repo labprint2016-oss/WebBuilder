@@ -2,23 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
-/* แถบความคืบหน้า range ที่ใช้ --fill: อ่อนกว่าหัวเลื่อนเล็กน้อย (ไม่ชนกับสีวงกลม) */
+/* แถบความคืบหน้า range ที่ใช้ --fill / --track / --thumb */
 @layer components {
   .theme-range-fill-track {
+    background-color: var(--track, #e4e4e7);
     background-repeat: no-repeat;
     background-size: var(--pos, 0%) 100%;
     background-image: linear-gradient(
       to right,
-      color-mix(in srgb, var(--fill) 80%, white),
-      color-mix(in srgb, var(--fill) 80%, white)
+      var(--fill, #333333),
+      var(--fill, #333333)
     );
   }
   .dark .theme-range-fill-track {
+    background-color: var(--track, #3f3f46);
     background-image: linear-gradient(
       to right,
-      color-mix(in srgb, var(--fill) 80%, rgb(63 63 70)),
-      color-mix(in srgb, var(--fill) 80%, rgb(63 63 70))
+      var(--fill, #29b7a5),
+      var(--fill, #29b7a5)
     );
+  }
+  .theme-range-fill-track::-webkit-slider-thumb {
+    background: var(--thumb, #0f172a);
+    background-color: var(--thumb, #0f172a);
+  }
+  .theme-range-fill-track::-moz-range-thumb {
+    background: var(--thumb, #0f172a);
+    background-color: var(--thumb, #0f172a);
+    border: 0;
   }
 }
 
@@ -38,5 +49,382 @@ body {
 }
 p {
   size: 10px;
+}
+
+/* Dashboard chrome tokens (ตั้งค่าได้ที่หน้า Settings) */
+.dashboard-chrome {
+  background: var(--dash-bg, #f8fafc);
+  color: var(--dash-text, #334155);
+}
+.dashboard-chrome .dash-nav-rail {
+  background: var(--dash-nav, #ffffff);
+  border-color: var(--dash-nav-border, var(--dash-border, #e2e8f0));
+  color: var(--dash-icon, #475569);
+}
+.dashboard-chrome .dash-nav-panel {
+  background: var(--dash-nav-panel, #ffffff);
+  border-color: var(--dash-nav-panel-border, var(--dash-nav-border, var(--dash-border, #e2e8f0)));
+  color: var(--dash-nav-panel-text, #64748b);
+}
+.dashboard-chrome .dash-nav-panel .dash-heading {
+  color: var(--dash-nav-panel-heading, #0f172a);
+}
+.dashboard-chrome .dash-nav-panel .dash-muted {
+  color: var(--dash-nav-panel-text, #64748b);
+}
+.dashboard-chrome .dash-nav-panel .dash-nav-item {
+  background: var(--dash-nav-panel-item-bg, #f8fafc) !important;
+  border-color: var(--dash-nav-panel-item-border, #e2e8f0) !important;
+}
+.dashboard-chrome .dash-nav-panel .dash-nav-heading-rule {
+  border-color: color-mix(
+    in srgb,
+    var(--dash-nav-panel-heading, #0f172a) 15%,
+    transparent
+  ) !important;
+}
+/* Scrollbar panel ซ้าย — บางคงที่ (ไม่สลับหนา/บางตาม OS) */
+.dashboard-chrome .dash-nav-panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(
+      in srgb,
+      var(--dash-nav-panel-text, #64748b) 45%,
+      transparent
+    )
+    transparent;
+}
+.dashboard-chrome .dash-nav-panel-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.dashboard-chrome .dash-nav-panel-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.dashboard-chrome .dash-nav-panel-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(
+    in srgb,
+    var(--dash-nav-panel-text, #64748b) 40%,
+    transparent
+  );
+  border-radius: 999px;
+}
+.dashboard-chrome .dash-nav-panel-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(
+    in srgb,
+    var(--dash-nav-panel-text, #64748b) 65%,
+    transparent
+  );
+}
+.dashboard-chrome .dash-header {
+  background: var(--dash-header-bg, #ffffff);
+  border-color: var(--dash-border, #e2e8f0);
+  color: var(--dash-header-text, #0f172a);
+}
+.dashboard-chrome .dash-heading {
+  color: var(--dash-heading, #0f172a);
+}
+.dashboard-chrome .dash-muted {
+  color: var(--dash-text-muted, #64748b);
+}
+.dashboard-chrome .dash-button {
+  background: var(--dash-header-button, #374151) !important;
+  color: var(--dash-header-button-text, #ffffff) !important;
+}
+.dashboard-chrome .dash-header-select {
+  background: var(--dash-header-btn-group-inactive, #e6e7eb) !important;
+  color: var(--dash-header-btn-group-inactive-text, #64748b) !important;
+  border-color: var(--dash-header-btn-group-border, #e2e8f0) !important;
+}
+.dashboard-chrome .dash-header-btn-group {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--dash-header-btn-group-border, #e2e8f0);
+  border-radius: 0.375rem;
+}
+.dashboard-chrome .dash-header-btn-group-btn {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  padding: 0.375rem 1rem;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+  background: var(--dash-header-btn-group-inactive, #e6e7eb);
+  color: var(--dash-header-btn-group-inactive-text, #64748b);
+}
+.dashboard-chrome .dash-header-btn-group-btn.is-active {
+  background: var(--dash-header-btn-group-active, #374151);
+  color: var(--dash-header-btn-group-active-text, #ffffff);
+}
+.dashboard-chrome .dash-header-btn-group-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.dashboard-chrome .dash-header-device-active {
+  color: var(--dash-header-button, #374151) !important;
+}
+.dashboard-chrome .dash-header-device-idle {
+  color: var(--dash-header-button, #374151) !important;
+  opacity: 0.35;
+}
+.dashboard-chrome .dash-accent {
+  color: var(--dash-panel-accent, #333333);
+}
+/* Panel shell */
+.dash-panel {
+  background: var(--dash-panel, #f8fafc) !important;
+  border-color: var(--dash-border, #e2e8f0) !important;
+  --fill: var(--dash-panel-accent, #333333);
+  --track: var(--dash-panel-slider-track, #e4e4e7);
+  --thumb: var(--dash-panel-slider-thumb, #0f172a);
+  --dash-control: var(--dash-panel-accent, #333333);
+  --dash-panel-input-border: var(--dash-panel-btn-group-border, #e2e8f0);
+}
+/* ชั้นในของ Panel ไม่ทับพื้นหลังซ้ำ (โดยเฉพาะสีโปร่งแสง) */
+.dash-panel .dash-panel {
+  background: transparent !important;
+}
+/* Dark Mode — ไม่แสดงเส้นกรอบด้านขวาของ Panel */
+.dark .dash-panel {
+  border-right-width: 0 !important;
+  border-right-color: transparent !important;
+}
+/* กรอบ Input / ช่องกรอก ใน Panel = สีเดียวกับกรอบ Btn Group */
+.dash-panel input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]),
+.dash-panel textarea,
+.dash-panel select,
+.dash-panel .MuiOutlinedInput-notchedOutline,
+.dash-panel .MuiInputBase-root.MuiOutlinedInput-root,
+.dash-panel .MuiNativeSelect-select,
+.dash-panel .MuiSelect-outlined,
+.dash-panel .MuiInput-underline::before {
+  border-color: var(--dash-panel-input-border, #e2e8f0) !important;
+}
+/* กรอบ/พื้นหลัง input ใน Panel = สีกรอบ + สีปุ่ม [Btn Group] */
+.dash-panel .dash-input {
+  border-style: solid;
+  border-width: 1px;
+  border-color: var(--dash-panel-btn-group-border, var(--dash-panel-input-border, #e2e8f0)) !important;
+  background-color: var(--dash-panel-btn-group-inactive, #ffffff) !important;
+  box-sizing: border-box;
+}
+.dark .dash-panel .dash-input {
+  border-color: var(--dash-panel-btn-group-border, var(--dash-panel-input-border, rgba(255, 255, 255, 0.1))) !important;
+  background-color: var(--dash-panel-btn-group-inactive, rgba(30, 41, 59, 0.9)) !important;
+}
+/* placeholder = สีข้อความ [Btn Group] */
+.dash-panel .dash-input::placeholder,
+.dash-panel .dash-input input::placeholder,
+.dash-panel .dash-input textarea::placeholder,
+.dash-panel input.dash-input::placeholder,
+.dash-panel textarea.dash-input::placeholder {
+  color: var(--dash-panel-btn-group-inactive-text, #1e293b) !important;
+  opacity: 1;
+}
+.dark .dash-panel .dash-input::placeholder,
+.dark .dash-panel .dash-input input::placeholder,
+.dark .dash-panel .dash-input textarea::placeholder,
+.dark .dash-panel input.dash-input::placeholder,
+.dark .dash-panel textarea.dash-input::placeholder {
+  color: var(--dash-panel-btn-group-inactive-text, #f1f5f9) !important;
+  opacity: 1;
+}
+/* ชื่อการคำนวณ / สูตรคำนวณ — placeholder อ่อนลง */
+.dash-panel input.dash-input.calc-name-input::placeholder,
+.dark .dash-panel input.dash-input.calc-name-input::placeholder,
+.dash-panel input.dash-input.formula-num-input::placeholder,
+.dark .dash-panel input.dash-input.formula-num-input::placeholder,
+.dash-panel input.dash-input.formula-name-input::placeholder,
+.dark .dash-panel input.dash-input.formula-name-input::placeholder {
+  color: var(--dash-text-muted, #94a3b8) !important;
+  opacity: 0.65 !important;
+}
+/* Form calculation — ชื่อว่างตอนกดบันทึก */
+.dash-panel input.dash-input.calc-name-invalid,
+.dark .dash-panel input.dash-input.calc-name-invalid {
+  border-color: rgba(220, 38, 38, 0.75) !important;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.35);
+}
+/* SelectLine / ปุ่มเลื่อนซ้ายขวา — พื้นหลัง/กรอบ/ข้อความเท่า Btn Group */
+.dashboard-chrome .dash-select-line-field,
+.dash-panel .dash-select-line-field {
+  border-style: solid;
+  border-width: 1px !important;
+  border-color: var(--dash-panel-btn-group-border, var(--dash-panel-input-border, #e2e8f0)) !important;
+  background-color: var(--dash-panel-btn-group-inactive, #ffffff) !important;
+  color: var(--dash-panel-btn-group-inactive-text, #1e293b) !important;
+  box-sizing: border-box;
+}
+.dashboard-chrome .dash-select-line-value,
+.dash-panel .dash-select-line-value {
+  color: var(--dash-panel-btn-group-inactive-text, #1e293b) !important;
+}
+.dark .dashboard-chrome .dash-select-line-field,
+.dark .dash-panel .dash-select-line-field {
+  border-color: var(--dash-panel-btn-group-border, var(--dash-panel-input-border, rgba(255, 255, 255, 0.1))) !important;
+  background-color: var(--dash-panel-btn-group-inactive, rgba(30, 41, 59, 0.9)) !important;
+  color: var(--dash-panel-btn-group-inactive-text, #f1f5f9) !important;
+}
+.dark .dashboard-chrome .dash-select-line-value,
+.dark .dash-panel .dash-select-line-value {
+  color: var(--dash-panel-btn-group-inactive-text, #f1f5f9) !important;
+}
+.dark .dashboard-chrome .dash-select-line-field:hover:not(:disabled),
+.dark .dash-panel .dash-select-line-field:hover:not(:disabled) {
+  background-color: var(--dash-panel-btn-group-inactive, rgba(30, 41, 59, 0.9)) !important;
+  border-color: var(--dash-panel-btn-group-border, var(--dash-panel-input-border, rgba(255, 255, 255, 0.1))) !important;
+  filter: brightness(1.08);
+}
+.dashboard-chrome .dash-select-line-field:disabled,
+.dash-panel .dash-select-line-field:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dash-panel .MuiButtonGroup-grouped.MuiButton-outlined {
+  border-color: var(--dash-panel-btn-group-border, #e2e8f0) !important;
+}
+.dash-panel .border-slate-200,
+.dash-panel .border-slate-300,
+.dash-panel .border-zinc-200,
+.dash-panel .border-zinc-300,
+.dash-panel .border-zinc-400,
+.dash-panel .border-gray-200,
+.dash-panel .border-gray-300,
+.dash-panel .dark\:border-white\/10,
+.dash-panel .dark\:border-white\/15,
+.dash-panel .dark\:border-white\/20,
+.dash-panel .dark\:border-gray-500\/50 {
+  border-color: var(--dash-panel-input-border, #e2e8f0) !important;
+}
+.dash-panel .theme-range-fill-track {
+  background-color: var(--dash-panel-slider-track, #e4e4e7) !important;
+}
+.dash-panel .theme-range-fill-track::-webkit-slider-thumb {
+  background: var(--dash-panel-slider-thumb, #0f172a) !important;
+  background-color: var(--dash-panel-slider-thumb, #0f172a) !important;
+}
+.dash-panel .theme-range-fill-track::-moz-range-thumb {
+  background: var(--dash-panel-slider-thumb, #0f172a) !important;
+  background-color: var(--dash-panel-slider-thumb, #0f172a) !important;
+  border: 0 !important;
+}
+.dash-panel-header {
+  background: var(--dash-panel-header, #f3f4f6) !important;
+  border-color: var(--dash-border, #e2e8f0) !important;
+  color: var(--dash-panel-heading, #0f172a) !important;
+}
+/* ตัวอักษรในหัว Panel ให้สีเดียวทั้งหมด */
+.dash-panel-header,
+.dash-panel-header *:not(svg):not(path):not(line):not(circle):not(polyline):not(rect) {
+  color: var(--dash-panel-heading, #0f172a) !important;
+}
+.dash-panel-header button,
+.dash-panel-header svg {
+  color: var(--dash-panel-heading, #0f172a) !important;
+}
+/* ป้าย id ในหัว Panel — ผูกกับสีปุ่ม Active / สีข้อความปุ่ม Active */
+.dash-panel-header .font-mono,
+.dash-panel-header [class*="font-mono"] {
+  background: var(--dash-panel-btn-group-active, #333333) !important;
+  background-color: var(--dash-panel-btn-group-active, #333333) !important;
+  border-color: var(--dash-panel-btn-group-active, #333333) !important;
+  color: var(--dash-panel-btn-group-active-text, #ffffff) !important;
+}
+.dash-panel .dash-panel-label {
+  color: var(--dash-panel-heading, #0f172a) !important;
+}
+/* เส้นคั่นหัวข้อ — สีหัวข้อที่ opacity 15% (ไม่ใช้สีกรอบ Input) */
+.dash-panel .dash-heading-rule {
+  border-color: color-mix(
+    in srgb,
+    var(--dash-panel-heading, #0f172a) 15%,
+    transparent
+  ) !important;
+}
+/* การ์ดย่อยใน Panel — ไม่มีกรอบ (ทับกฎกรอบ input ด้านบน) */
+.dash-panel .dash-card {
+  background: var(--dash-panel, #f8fafc) !important;
+  border-width: 0 !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+/* วงกลมสีในชุดธีมสี — กรอบผูกกับ สีกรอบ (Btn Group) */
+.dash-panel button.size-\[25px\].rounded-full,
+.dashboard-chrome button.size-\[25px\].rounded-full,
+#popper-color button.size-\[25px\].rounded-full,
+.dash-panel button.rounded-full.border,
+.dashboard-chrome button.rounded-full.border,
+#popper-color button.rounded-full.border {
+  border-color: var(--dash-panel-btn-group-border, var(--dash-panel-input-border, #e2e8f0)) !important;
+}
+/* ปุ่ม / active ใน Panel — รวมปุ่มธรรมดา + Btn Group Active (ไม่ทับ opacity เดิม) */
+.dash-panel .dash-panel-button,
+.dash-panel .MuiButton-contained:not(.MuiButtonGroup-grouped):not(.dash-panel-soft-btn) {
+  background: var(--dash-panel-btn-group-active, var(--dash-panel-button, #333333)) !important;
+  background-color: var(--dash-panel-btn-group-active, var(--dash-panel-button, #333333)) !important;
+  color: var(--dash-panel-btn-group-active-text, var(--dash-panel-button-text, #ffffff)) !important;
+}
+.dash-panel .MuiButton-contained:not(.MuiButtonGroup-grouped):not(.dash-panel-soft-btn):hover:not(.Mui-disabled) {
+  background: var(--dash-panel-btn-group-active, var(--dash-panel-button, #333333)) !important;
+  background-color: var(--dash-panel-btn-group-active, var(--dash-panel-button, #333333)) !important;
+}
+/* ปุ่มคัดลอก/ลบ — พื้นหลังโปร่ง (soft) ไม่ทับสีไอคอน */
+.dash-panel .dash-panel-soft-btn.MuiButton-contained {
+  color: inherit !important;
+}
+/* ป้าย ID / chip ที่เคย hardcode #333 — พื้นหลัง + ข้อความตามปุ่ม Active */
+.dash-panel .bg-\[\#333333\],
+.dash-panel .dark\:bg-\[\#333333\] {
+  background-color: var(--dash-panel-btn-group-active, #333333) !important;
+  color: var(--dash-panel-btn-group-active-text, #ffffff) !important;
+}
+.dash-panel .bg-\[\#333333\] *,
+.dash-panel .dark\:bg-\[\#333333\] * {
+  color: var(--dash-panel-btn-group-active-text, #ffffff) !important;
+}
+.dash-panel .border-\[\#333333\],
+.dash-panel .dark\:border-\[\#333333\] {
+  border-color: var(--dash-panel-btn-group-active, #333333) !important;
+}
+/* inline style #333 / rgb(51,51,51) — คง opacity จาก class/style เดิม */
+.dash-panel [style*="background-color: rgb(51, 51, 51)"],
+.dash-panel [style*="background-color:#333"],
+.dash-panel [style*="background-color: #333"] {
+  background-color: var(--dash-panel-btn-group-active, #333333) !important;
+}
+.dash-panel .MuiSwitch-track {
+  background-color: var(--dash-panel-switch-off, rgba(0, 0, 0, 0.25)) !important;
+  opacity: 1 !important;
+}
+.dash-panel .MuiSwitch-thumb {
+  background-color: #ffffff !important;
+  color: #ffffff !important;
+}
+.dash-panel .MuiSwitch-switchBase {
+  color: #ffffff !important;
+}
+.dash-panel .MuiSwitch-switchBase.Mui-checked {
+  color: #ffffff !important;
+}
+.dash-panel .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track {
+  background-color: var(--dash-panel-switch-on, #333333) !important;
+  opacity: 1 !important;
+}
+.dash-panel .MuiButtonGroup-root .MuiButton-root[aria-pressed="true"],
+.dash-panel .MuiButtonGroup-grouped.Mui-selected,
+.dash-panel .MuiButton-root.Mui-selected {
+  background-color: var(--dash-panel-btn-group-active, #333333) !important;
+  color: var(--dash-panel-btn-group-active-text, #ffffff) !important;
+  border-color: var(--dash-panel-btn-group-border, #e2e8f0) !important;
+  box-shadow: none !important;
+}
+.dash-panel .MuiButtonGroup-root {
+  align-items: stretch;
+}
+.dash-panel .MuiButtonGroup-grouped {
+  height: 34px;
+  min-height: 34px;
+  max-height: 34px;
+  box-sizing: border-box;
 }
 

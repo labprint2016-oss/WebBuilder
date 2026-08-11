@@ -1,11 +1,13 @@
 import { useState,useEffect,useRef } from "react";
 import { Modal,Box,Fade,Backdrop,Button} from "@mui/material";
-import {uploadImage,listImages,deleteImage} from "../../Functions/media";
+import {uploadImage,listImages,deleteImage,uploadMedia,listMedia,deleteMedia} from "../../Functions/media";
 import { Check,X } from "lucide-react";
 
 
 
-function ImageModal({openModal,setOpenModal,handleChange,isPost=false}){
+const VIDEO_EXTENSION_PATTERN = /\.(mp4|webm|ogg|mov|m4v|avi)$/i;
+
+function ImageModal({openModal,setOpenModal,handleChange,isPost=false,allowVideo=false}){
 
 
   const [hover,setHover] = useState("")
@@ -18,7 +20,16 @@ function ImageModal({openModal,setOpenModal,handleChange,isPost=false}){
   const options = [
     {
       Funct:(img) => {
-        handleChange(`/uploads/${img}`);
+        const selectedUrl = `/uploads/${img}`;
+        if (allowVideo) {
+          handleChange({
+            url: selectedUrl,
+            mediaType: VIDEO_EXTENSION_PATTERN.test(String(img || "")) ? "video" : "image",
+            fileName: img,
+          });
+        } else {
+          handleChange(selectedUrl);
+        }
         handleClose();
       },
       Icon:Check,
@@ -48,7 +59,8 @@ function ImageModal({openModal,setOpenModal,handleChange,isPost=false}){
 
 
     const loadImages = ()=>{
-        listImages()
+        const mediaLoader = allowVideo ? listMedia : listImages;
+        mediaLoader()
         .then((res)=>{
           const nextImages = Array.isArray(res?.data) ? res.data : [];
           setImage(nextImages);
@@ -64,7 +76,8 @@ function ImageModal({openModal,setOpenModal,handleChange,isPost=false}){
         Funct:async () => {
           if (!remove) return;
           try {
-            await deleteImage(remove);
+            const deleteRequest = allowVideo ? deleteMedia : deleteImage;
+            await deleteRequest(remove);
             setImage((prev) => prev.filter((img) => img !== remove));
             setHover("");
             setSelectedImage((prev) => (prev === remove ? "" : prev));
@@ -92,7 +105,7 @@ function ImageModal({openModal,setOpenModal,handleChange,isPost=false}){
 
     useEffect(()=>{
         loadImages()
-    },[])
+    },[allowVideo])
     useEffect(() => {
       if (!openModal || isRemove) return undefined;
       const onKeyDown = (event) => {
@@ -152,7 +165,7 @@ if(isRemove){
                 <div className="flex justify-between px-4 pt-3 pb-1">
                   <div className="text-[15px] font-bold">
                     <span className="text-red-600 dark:text-emerald-300">
-                      ลบรูปภาพ
+                      {allowVideo ? "ลบสื่อ" : "ลบรูปภาพ"}
                       </span>{" "}
                   </div>
                   <div>
@@ -165,7 +178,7 @@ if(isRemove){
                   className={`border-b border-dotted border-gray-500/50 flex-1`}
                 ></div>
                 <div className="flex justify-center mt-4 text-[13px] ">
-                คุณต้องการลบรูปภาพนี้ใช่หรือไม่?
+                {allowVideo ? "คุณต้องการลบสื่อนี้ใช่หรือไม่?" : "คุณต้องการลบรูปภาพนี้ใช่หรือไม่?"}
                 </div>
     
                 <div className="flex justify-center my-4 pb-5">
@@ -228,7 +241,7 @@ if(isRemove){
     {/* Header */}
     <div className="flex justify-between px-4 pt-3 pb-1">
       <div className="text-[15px] font-bold">
-        <span className="text-red-600 dark:text-emerald-300">คลังรูปภาพ</span>
+        <span className="text-red-600 dark:text-emerald-300">{allowVideo ? "คลังรูปภาพและวิดีโอ" : "คลังรูปภาพ"}</span>
       </div>
       <a onClick={handleClose} style={{ cursor: "pointer" }}>X</a>
     </div>
@@ -275,21 +288,39 @@ if(isRemove){
     
           )}
           
-          <img
-            src={`/uploads/${img}`}
-            alt={`image-${index}`}
-            style={{
-              height: 120,
-              width: "100%",
-              opacity:hover === img ? 0.2:1,
-              borderRadius: 5,
-              objectFit: "cover",
-              cursor:"pointer",
-              outline: selectedImage === img ? "2px solid #333333" : "none",
-              outlineOffset: selectedImage === img ? "2px" : "0px",
-            }}
-           
-          />
+          {VIDEO_EXTENSION_PATTERN.test(String(img || "")) ? (
+            <video
+              src={`/uploads/${img}`}
+              muted
+              playsInline
+              preload="metadata"
+              style={{
+                height: 120,
+                width: "100%",
+                opacity:hover === img ? 0.2:1,
+                borderRadius: 5,
+                objectFit: "cover",
+                cursor:"pointer",
+                outline: selectedImage === img ? "2px solid #333333" : "none",
+                outlineOffset: selectedImage === img ? "2px" : "0px",
+              }}
+            />
+          ) : (
+            <img
+              src={`/uploads/${img}`}
+              alt={`image-${index}`}
+              style={{
+                height: 120,
+                width: "100%",
+                opacity:hover === img ? 0.2:1,
+                borderRadius: 5,
+                objectFit: "cover",
+                cursor:"pointer",
+                outline: selectedImage === img ? "2px solid #333333" : "none",
+                outlineOffset: selectedImage === img ? "2px" : "0px",
+              }}
+            />
+          )}
         </div>
       ))}
     </div>
@@ -301,13 +332,18 @@ if(isRemove){
       <input
         type="file"
         ref={fileInput}
-        name="image"
+        name={allowVideo ? "media" : "image"}
+        accept={allowVideo ? "image/*,video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/x-msvideo" : "image/*"}
         onChange={(e) => {
+          const selectedFile = e.target.files?.[0];
+          if (!selectedFile) return;
           const image = new FormData();
-          image.append("image", e.target.files[0]);
-          uploadImage(image)
+          image.append(allowVideo ? "media" : "image", selectedFile);
+          const uploadRequest = allowVideo ? uploadMedia : uploadImage;
+          uploadRequest(image)
             .then(() => loadImages())
             .catch((err) => console.log(err));
+          e.target.value = "";
         }}
         hidden
       />
@@ -320,7 +356,9 @@ if(isRemove){
       </button>
 
       <span className="text-[12px] text-gray-400 ml-5">
-        * รองรับไฟล์ .png .webp .jpg .gif
+        {allowVideo
+          ? "* รองรับไฟล์ .png .webp .jpg .gif .mp4 .webm .ogg .mov .m4v .avi"
+          : "* รองรับไฟล์ .png .webp .jpg .gif"}
       </span>
     </div>
   </Box>

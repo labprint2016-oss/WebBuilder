@@ -68,10 +68,10 @@ const MainLabel = ({
         flex: 1,
         fontSize: 13,
         fontWeight,
-        color: "rgb(51 65 85)",
+        color: "var(--dash-panel-heading, #0f172a)",
         mb,
         fontVariantNumeric: "tabular-nums",
-        ".dark &": { color: "rgba(255,255,255,0.78)" },
+        ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
       }}
     >
       {label}{" "}
@@ -81,7 +81,7 @@ const MainLabel = ({
         </span>
       )}
       {!noLine && (
-        <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+        <div className="dash-heading-rule min-w-0 flex-1 border-b" />
       )}
 
       {checked !== "-" && (

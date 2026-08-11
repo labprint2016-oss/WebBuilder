@@ -22,3 +22,16 @@ export const deleteImage = async (img) => {
 export const getImage = async (img) => {
   return await api.get(`/getImage/${img}`);
 };
+
+export const uploadMedia = async (media) => {
+  return await api.post("/uploadMedia", media);
+};
+
+export const listMedia = async () => {
+  return await api.get("/listMedia");
+};
+
+export const deleteMedia = async (fileName) => {
+  const safeFileName = encodeURIComponent(String(fileName || ""));
+  return await api.delete(`/deleteMedia/${safeFileName}`);
+};

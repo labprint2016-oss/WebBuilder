@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Button, ButtonGroup, Stack, Typography } from "@mui/material";
 import Switch from "@mui/material/Switch";
 import { styled } from "@mui/material/styles";
+import { panelGroupButtonSx } from "../panelControlSx";
 import {
   ArrowDown,
   ArrowUp,
@@ -175,58 +176,7 @@ const CHIP_BG_HOVER = "#f8fafc";
 const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
 const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 
-const sectionLayoutGroupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 11,
-    minHeight: 34,
-    py: 0,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.2,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": {
-            backgroundColor: a,
-            borderColor: "transparent",
-          },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": {
-            borderColor: `${CHIP_BORDER} !important`,
-            backgroundColor: CHIP_BG_HOVER,
-          },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": {
-              borderColor: `${CHIP_BORDER_DARK} !important`,
-              backgroundColor: CHIP_BG_DARK_HOVER,
-            },
-          },
-        }),
-    "&.Mui-focusVisible": {
-      outline: `2px solid ${a}`,
-      outlineOffset: 1,
-      boxShadow: "none",
-    },
-    "& .MuiTouchRipple-child": {
-      backgroundColor: a,
-    },
-  };
-};
+const sectionLayoutGroupButtonSx = panelGroupButtonSx;
 
 const sectionLayoutGroupRootSx = {
   width: "100%",
@@ -246,16 +196,16 @@ const sectionLayoutGroupRootSx = {
     borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER_DARK} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
@@ -297,17 +247,17 @@ const CarouselMarginLabel = ({ label, value, mb = 0.35 }) => (
       flex: 1,
       fontSize: 13,
       fontWeight: 600,
-      color: "rgb(51 65 85)",
+      color: "var(--dash-panel-heading, #0f172a)",
       mb,
       fontVariantNumeric: "tabular-nums",
-      ".dark &": { color: "rgba(255,255,255,0.78)" },
+      ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
     }}
   >
     {label}{" "}
     <span className="text-slate-400 dark:text-slate-400">
       {Math.round(value)}
     </span>
-    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
   </Typography>
 );
 
@@ -408,7 +358,7 @@ function CarouselNavDualThemeColorBlock({
     setModeIndex((i) => (i >= nModes - 1 ? 0 : i + 1));
 
   return (
-    <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+    <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
       <SelectLine prev={goPrev} next={goNext} value={mode.label} />
 
       <div className="px-[5px] pb-2">
@@ -573,12 +523,12 @@ const CarouselElementOffcanvas = ({
 
   return (
     <aside
-      className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10"
+      className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
       style={{ color: textColor || undefined }}
     >
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             Carousel
           </span>
           <span
@@ -614,10 +564,10 @@ const CarouselElementOffcanvas = ({
             <Stack spacing={2}>
           <Box>
             <div className="mb-3 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 รูปแบบไอเทม
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <ButtonGroup
               fullWidth
@@ -666,10 +616,10 @@ const CarouselElementOffcanvas = ({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="mb-3 mt-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     จำนวนรายการ
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <NumericStepper
                   value={draft.carouselItemCount}
@@ -687,10 +637,10 @@ const CarouselElementOffcanvas = ({
               </div>
               <div>
                 <div className="mb-3 mt-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ระยะห่าง
                   </span>
-                  <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <NumericStepper
                   value={draft.carouselGap}
@@ -760,10 +710,10 @@ const CarouselElementOffcanvas = ({
 
           <Box>
             <div className="mb-3 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 จำนวนไอเทมที่แสดง
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <Stack direction="row" spacing={1} className="w-full">
               {CAROUSEL_PERVIEW_INPUTS.map(
@@ -864,10 +814,10 @@ const CarouselElementOffcanvas = ({
 
           <Box>
             <div className="mb-3 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 ปุ่มเลื่อน
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <ButtonGroup
               fullWidth
@@ -927,10 +877,10 @@ const CarouselElementOffcanvas = ({
 
           <Box>
             <div className="mb-0 mt-1 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 แสดงผลอัตโนมัติ
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
               <AntSwitch
                 checked={Boolean(draft.carouselAutoplay)}
                 onChange={(e) => {
@@ -953,10 +903,10 @@ const CarouselElementOffcanvas = ({
 
           <Box>
             <div className="mb-3 flex items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-slate-700 dark:text-white/80">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 รายการทั้งหมด
               </span>
-              <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
             <div className="flex flex-col gap-1.5">
               {slides.map((sl, idx) => (

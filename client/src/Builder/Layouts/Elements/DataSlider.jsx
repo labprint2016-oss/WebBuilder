@@ -235,6 +235,8 @@ const DataSlider = ({
   onHostDoubleClick,
   onUpdate,
   theme,
+  /** true = หน้าเว็บ/Preview runtime — เคารพ dataSliderNavShowOnWebsite */
+  isSiteRuntime = false,
 }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -260,19 +262,17 @@ const DataSlider = ({
   );
   const gap = Math.max(0, Number(data?.dataSliderGap) || 0);
   const pageCount = Math.max(1, Math.ceil((items.length || 0) / Math.max(1, perView)));
+  /** จัดหน้าตาม perView — ไม่เลื่อนหน้าต่างเริ่มจากรายการที่เลือก (กันหายรายการอื่นในหน้า) */
+  const activePage = Math.min(
+    pageCount - 1,
+    Math.max(0, Math.floor(activeIndex / Math.max(1, perView)))
+  );
+  const pageStart = activePage * Math.max(1, perView);
 
   const visibleItems = useMemo(() => {
     if (!items.length) return [];
-    const n = Math.min(perView, items.length);
-    return Array.from({ length: n }, (_, i) => {
-      const idx = (activeIndex + i) % items.length;
-      return items[idx];
-    });
-  }, [items, perView, activeIndex]);
-  const activePage = Math.min(
-    pageCount - 1,
-    Math.floor(activeIndex / Math.max(1, perView))
-  );
+    return items.slice(pageStart, pageStart + perView);
+  }, [items, perView, pageStart]);
 
   const marginTop = Math.max(
     0,
@@ -296,6 +296,10 @@ const DataSlider = ({
     "#e2e8f0",
     data?.dataSliderNavColorOpacity
   );
+  /* Builder แสดงปุ่มเลื่อนเสมอ — หน้าเว็บเคารพ Switch (ค่าเริ่มต้นเปิด) */
+  const showNavDots =
+    pageCount > 1 &&
+    (!isSiteRuntime || data?.dataSliderNavShowOnWebsite !== false);
   const imageLikeTypeSet = new Set(["img", "imgh", "imgo", "bnr", "lbx", "vid"]);
   const showAreaGuides = builderMode === "Layout Mode";
 
@@ -369,10 +373,10 @@ const DataSlider = ({
                   !showAreaGuides
                     ? "border border-transparent bg-transparent"
                     : isThisSlideHovered
-                    ? "border border-dashed border-blue-400 bg-blue-50 dark:border-blue-400/70 dark:bg-blue-900/10"
+                    ? "border border-dashed border-slate-300/40 bg-slate-50/40 dark:border-slate-400/40 dark:bg-white/5"
                     : hasElements
-                      ? "border border-dashed border-slate-300 bg-transparent dark:border-white/20"
-                      : "border border-dashed border-slate-300 bg-slate-50 dark:border-white/20 dark:bg-white/5"
+                      ? "border border-dashed border-slate-300/40 bg-transparent dark:border-slate-400/40"
+                      : "border border-dashed border-slate-300/40 bg-slate-50/30 dark:border-slate-400/40 dark:bg-white/5"
                 }`}
                 data-drop="TAB-CONTENT"
                 data-tab-element-id={String(elementData?.id || "")}
@@ -900,7 +904,7 @@ const DataSlider = ({
           );
           })}
         </div>
-        {pageCount > 1 && (
+        {showNavDots && (
           <div className="mt-3 flex flex-wrap justify-center gap-2">
             {Array.from({ length: pageCount }, (_, pageIndex) => {
               const active = pageIndex === activePage;

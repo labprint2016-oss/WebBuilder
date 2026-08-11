@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, ButtonGroup, Stack, Typography } from "@mui/material";
 import Switch from "@mui/material/Switch";
 import { styled } from "@mui/material/styles";
+import { panelGroupButtonSx } from "../panelControlSx";
 import {
   AlignCenter,
   AlignLeft,
@@ -56,55 +57,7 @@ const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
 const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 const OPTION_CHIP_RADIUS = "0.375rem";
 
-const groupButtonSx = (selected, accent) => {
-  const a = accent || "#0d9488";
-  return {
-    flex: 1,
-    fontSize: 11,
-    minHeight: 34,
-    py: 0.75,
-    px: 0.5,
-    textTransform: "none",
-    lineHeight: 1.25,
-    boxShadow: "none",
-    ...(selected
-      ? {
-          backgroundColor: a,
-          color: "#fff",
-          borderColor: "transparent",
-          "&:hover": {
-            backgroundColor: a,
-            borderColor: "transparent",
-          },
-        }
-      : {
-          color: "#1e293b",
-          borderColor: `${CHIP_BORDER} !important`,
-          backgroundColor: CHIP_BG,
-          "&:hover": {
-            borderColor: `${CHIP_BORDER} !important`,
-            backgroundColor: CHIP_BG_HOVER,
-          },
-          ".dark &": {
-            color: "#f1f5f9",
-            borderColor: `${CHIP_BORDER_DARK} !important`,
-            backgroundColor: CHIP_BG_DARK,
-            "&:hover": {
-              borderColor: `${CHIP_BORDER_DARK} !important`,
-              backgroundColor: CHIP_BG_DARK_HOVER,
-            },
-          },
-        }),
-    "&.Mui-focusVisible": {
-      outline: `2px solid ${a}`,
-      outlineOffset: 1,
-      boxShadow: "none",
-    },
-    "& .MuiTouchRipple-child": {
-      backgroundColor: a,
-    },
-  };
-};
+const groupButtonSx = panelGroupButtonSx;
 
 const groupRootSx = {
   width: "100%",
@@ -124,16 +77,16 @@ const groupRootSx = {
     borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: `${CHIP_BORDER_DARK} !important`,
+    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
   ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: `${CHIP_BORDER_DARK} !important`,
+    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
   },
 };
 
@@ -232,10 +185,10 @@ const MainLabel = ({
         flex: 1,
         fontSize: 13,
         fontWeight: 600,
-        color: "rgb(51 65 85)",
+        color: "var(--dash-panel-heading, #0f172a)",
         mb,
         fontVariantNumeric: "tabular-nums",
-        ".dark &": { color: "rgba(255,255,255,0.78)" },
+        ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
       }}
     >
       {label}{" "}
@@ -244,7 +197,7 @@ const MainLabel = ({
           {formatValue ? formatValue(value) : Math.round(value)}
         </span>
       )}
-      <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+      <div className="dash-heading-rule min-w-0 flex-1 border-b" />
       {checked !== "-" && (
         <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
           <HeadingPanelAntSwitch
@@ -275,18 +228,18 @@ const DividerSubheading = ({ children, mb = 0.75 }) => (
       minWidth: 0,
       fontSize: 13,
       fontWeight: 600,
-      color: "rgb(51 65 85)",
+      color: "var(--dash-panel-heading, #0f172a)",
       mb,
-      ".dark &": { color: "rgba(255,255,255,0.78)" },
+      ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
     }}
   >
     <span className="shrink-0">{children}</span>
-    <div className="min-w-0 flex-1 border-b border-slate-200 dark:border-white/15" />
+    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
   </Typography>
 );
 
 const HEADING_LABEL_FIELD_CLASS =
-  "min-w-0 flex-1 h-10 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:border-white/10 dark:bg-slate-900/80 dark:text-white/90 dark:placeholder:text-slate-500";
+  "dash-input min-w-0 flex-1 h-10 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:border-white/10 dark:bg-[#27272a] dark:text-white/90 dark:placeholder:text-slate-500";
 
 /** สไลด์เต็มความกว้าง — สไตล์แทร็ก/นิ้วเหมือนปรับแสงรูป แต่ไม่มีไอคอนข้าง */
 const FullWidthRangeRow = ({
@@ -503,19 +456,30 @@ const HeadingElementOffcanvas = ({
 
   return (
     <aside
-      className={`flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900/80 border-r border-slate-200 dark:border-white/10`}
+      className={`dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10`}
     >
-      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between bg-gray-100 dark:bg-gray-900/50">
+      <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-gray-900/50">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 font-bold tracking-wide text-slate-800 dark:text-white/90">
+          <span className="shrink-0 font-bold tracking-wide">
             Heading
           </span>
-          <span
-            className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center rounded-md border border-[#333333] bg-[#333333] px-1.5 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
             title={String(data?.id ?? "")}
+            aria-label={`คัดลอก ID ${String(data?.id ?? "")}`}
+            onClick={() => {
+              const id = String(data?.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
           >
-            <span className="truncate">{data?.id}</span>
-          </span>
+            {(() => {
+              const id = String(data?.id ?? "");
+              const maxChars = 15;
+              return id.length > maxChars ? `${id.slice(0, maxChars)}…` : id;
+            })()}
+          </button>
         </div>
         <button
           type="button"
@@ -681,7 +645,7 @@ const HeadingElementOffcanvas = ({
                   })}
                 </ButtonGroup>
               ) : null}
-              <div className="mt-2 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+              <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                 <div className="px-[5px] pb-2">
                   <Range
                     min={0}
@@ -809,7 +773,7 @@ const HeadingElementOffcanvas = ({
                       );
                     })}
                   </ButtonGroup>
-                  <div className="mt-0 w-full rounded-md bg-white px-[5px] pb-3 pt-2 dark:bg-zinc-800">
+                  <div className="mt-0 dash-card w-full rounded-md bg-white px-[5px] pb-3 pt-2 dark:bg-zinc-800">
                     <div className="mb-4 grid w-full grid-cols-2 gap-x-3 gap-y-2 items-start">
                       <div className="min-w-0">
                         <DividerSubheading>รูปแบบเส้น</DividerSubheading>
@@ -934,7 +898,7 @@ const HeadingElementOffcanvas = ({
                   <DividerSubheading mb={0.25}>
                     สีเส้นคั่น
                   </DividerSubheading>
-                  <div className="mt-1 w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+                  <div className="mt-1 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                     <div className="px-[5px] pb-2">
                       <Range
                         min={0}

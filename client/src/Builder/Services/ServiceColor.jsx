@@ -48,9 +48,11 @@ const ServiceColor = ({
   rangeColor,
   darkMode = "light",
   compact = false,
+  hideOpacity = false,
 })=>{
     const normalizeColorString = (value) =>
       typeof value === "string" ? value.trim().toLowerCase() : value;
+    const safeOpacity = Number.isFinite(Number(opacity)) ? Number(opacity) : 255;
     const [theme, setTheme] = useState(null);
 
     const loadTheme = () => {
@@ -103,10 +105,12 @@ const ServiceColor = ({
 
 
     return(   
-        <div className={`${compact ? "mt-0" : "mt-2"} w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800`}>
+        <div className={`${compact ? "mt-0" : "mt-2"} dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800`}>
+        {!hideOpacity && (
         <div className="px-[5px] pb-2">
-            <Range min={0} max={255} step={1} value={opacity} pos={(opacity / 255) * 100} handleChange={handleOpacity} color={rangeColor}/>
+            <Range min={0} max={255} step={1} value={safeOpacity} pos={(safeOpacity / 255) * 100} handleChange={handleOpacity} color={rangeColor}/>
         </div>
+        )}
         <div className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]">
           {allColors.map((c, i) => {
              const bgColor =
