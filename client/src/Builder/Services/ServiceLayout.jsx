@@ -6,7 +6,6 @@ import {
   Copy,
   Trash2,
   Minus,
-  Move,
   MoveUp,
   MoveDown,
   MoveLeft,
@@ -25,7 +24,6 @@ function ServiceLayout({
     layouts,
     element,
     clone,
-    scheduleDND,
     openOffcavanas,
     ids,
     remove,
@@ -34,12 +32,6 @@ function ServiceLayout({
     modal,
     changeSize=null,
     changePosition=null,
-    dndHandle=null,
-    sectionDndHandle=null,
-    onDragAble=null,
-    onDragDisable=null,
-    onSectionDragEnable=null,
-    onSectionDragDisable=null,
     isSpanMorePinned=false,
     onSpanMoreToggle=null,
     isColumnPresetModalPinned=false,
@@ -51,8 +43,7 @@ function ServiceLayout({
     
     const {conID,colID,spnID} = ids
     let changeSizeColumn,changeSizeSpan,
-         changeSpanPosition,changeColumnPosition,changeContainerPosition,
-         onDragDisableCol,onDragDisableSpn
+         changeSpanPosition,changeColumnPosition,changeContainerPosition
     if(changeSize){
         changeSizeColumn = changeSize.changeSizeColumn
         changeSizeSpan = changeSize.changeSizeSpan
@@ -60,9 +51,6 @@ function ServiceLayout({
         changeContainerPosition = changePosition.changeContainerPosition
         changeSpanPosition = changePosition.changeSpanPosition
         changeColumnPosition = changePosition.changeColumnPosition
-    }if(onDragDisable){
-        onDragDisableCol = onDragDisable.onDragDisableCol
-        onDragDisableSpn = onDragDisable.onDragDisableSpn
     }
     
 
@@ -170,7 +158,7 @@ function ServiceLayout({
         
       }
 
-    const toggleColumnSplit = () => {
+    const splitColumnCells = () => {
       if (offcavanas !== "Column") return;
       const fromElement = element?.colData && typeof element.colData === "object"
         ? element.colData
@@ -184,14 +172,12 @@ function ServiceLayout({
           ? layouts[IDX].columns[idx]
           : null;
       const current = fromElement || fromLayout;
-      if (!current?.id) return;
+      if (!current?.id || current.isSpan) return;
       onUpdate?.(
-        {
-          ...current,
-          isSpan: !Boolean(current.isSpan),
-        },
+        { isSpan: true },
         current.id,
-        conID
+        conID,
+        { columnSplitToggle: true }
       );
     };
 
@@ -241,7 +227,7 @@ function ServiceLayout({
       onColumnPresetModalToggle?.(true);
       onOpenPresetModal?.({
         defaultName: fallbackName,
-        column: JSON.parse(JSON.stringify(currentColumn)),
+        column: currentColumn,
         source: {
           conID,
           colID,
@@ -299,7 +285,6 @@ function ServiceLayout({
         <div
         className="flex items-center justify-center absolute -top-px -left-px"
         data-drop="COLUMN-BTN"
-        onMouseMove={scheduleDND}
       >
         <Tooltip title="ขึ้น" {...SMALL_TOOLTIP_PROPS}>
           <button
@@ -324,7 +309,23 @@ function ServiceLayout({
         <Tooltip title="ตั้งค่า" {...SMALL_TOOLTIP_PROPS}>
           <button
             className=" bg-gray-900  text-white  px-[3px] py-1"
-            onClick={() => openOffcavanas(offcavanas, { ...element, _sectionIndex: effectiveIDX, _isSplitSection: Boolean(_splitRowId) }, onUpdate)}
+            onClick={() =>
+              openOffcavanas(
+                offcavanas,
+                {
+                  ...element,
+                  _sectionIndex: effectiveIDX,
+                  _isSplitSection: Boolean(_splitRowId),
+                  _previewTargetIds: _splitRowId
+                    ? layouts
+                        .filter((layout) => layout?.splitRowId === _splitRowId)
+                        .map((layout) => layout?.container?.id)
+                        .filter(Boolean)
+                    : [element?.id],
+                },
+                onUpdate
+              )
+            }
           >
             <Settings className="size-4 m-[5px]" />
           </button>
@@ -365,9 +366,6 @@ function ServiceLayout({
                 if (stillInsideColumn) return;
                 // ปล่อยให้ root ของ Column เป็นผู้จัดการการปิด pin/unpin หลัก
                 // เพื่อลดอาการเปิด More Option แล้วหลุดเองแบบสุ่ม
-              }}
-              onMouseMove={(e) => {
-                scheduleDND(e);
               }}
             >
               {!columnMoreOpen && (
@@ -479,15 +477,17 @@ function ServiceLayout({
                           <EllipsisVertical className="size-4 m-[5px]" />
                         </button>
                       </Tooltip>
-                      <Tooltip title={element?.colData?.isSpan ? "ยกเลิกแยกเซลล์" : "แยกเซลล์"} {...SMALL_TOOLTIP_PROPS}>
-                        <button
-                          className={`px-[3px] py-1 text-white ${element?.colData?.isSpan ? "bg-emerald-700" : "bg-gray-900"}`}
-                          onClick={toggleColumnSplit}
-                          aria-label={element?.colData?.isSpan ? "ยกเลิกแยกเซลล์" : "แยกเซลล์"}
-                        >
-                          <Grid2X2Plus className="size-4 m-[5px]" />
-                        </button>
-                      </Tooltip>
+                      {!element?.colData?.isSpan && (
+                        <Tooltip title="แยกเซลล์" {...SMALL_TOOLTIP_PROPS}>
+                          <button
+                            className="bg-gray-900 px-[3px] py-1 text-white"
+                            onClick={splitColumnCells}
+                            aria-label="แยกเซลล์"
+                          >
+                            <Grid2X2Plus className="size-4 m-[5px]" />
+                          </button>
+                        </Tooltip>
+                      )}
                       {hasPresetElementsInColumn ? (
                         <Tooltip title="บันทึก Preset" {...SMALL_TOOLTIP_PROPS}>
                           <button
@@ -534,9 +534,6 @@ function ServiceLayout({
         return (
           <div
             className="flex items-center justify-center absolute -top-px -left-px"
-            onMouseMove={(e) => {
-              scheduleDND(e);
-            }}
             data-drop="BTN"
           >
             {!isFirstSpanMoreOpen && (
@@ -668,19 +665,7 @@ function ServiceLayout({
                         <EllipsisVertical className="size-4 m-[5px]" />
                       </button>
                     </Tooltip>
-                    <Tooltip title="เลื่อนลง" {...SMALL_TOOLTIP_PROPS}>
-                      <button
-                        type="button"
-                        draggable={false}
-                        className=" bg-gray-900  text-white  px-[3px] py-1"
-                        onClick={() => {
-                          changeSpanPosition(sidx, getID(), "+");
-                        }}
-                      >
-                        <MoveDown className="size-4 m-[5px]" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip title="เลื่อนขึ้น" {...SMALL_TOOLTIP_PROPS}>
+                    <Tooltip title="ก่อนหน้า" {...SMALL_TOOLTIP_PROPS}>
                       <button
                         type="button"
                         draggable={false}
@@ -688,8 +673,22 @@ function ServiceLayout({
                         onClick={() => {
                           changeSpanPosition(sidx, getID(), "-");
                         }}
+                        aria-label="ก่อนหน้า"
                       >
-                        <MoveUp className="size-4 m-[5px]" />
+                        <MoveLeft className="size-4 m-[5px]" />
+                      </button>
+                    </Tooltip>
+                    <Tooltip title="ถัดไป" {...SMALL_TOOLTIP_PROPS}>
+                      <button
+                        type="button"
+                        draggable={false}
+                        className=" bg-gray-900  text-white  px-[3px] py-1"
+                        onClick={() => {
+                          changeSpanPosition(sidx, getID(), "+");
+                        }}
+                        aria-label="ถัดไป"
+                      >
+                        <MoveRight className="size-4 m-[5px]" />
                       </button>
                     </Tooltip>
                     <Tooltip title="เพิ่ม" {...SMALL_TOOLTIP_PROPS}>
@@ -767,7 +766,6 @@ function ServiceLayout({
       return (
         <div
           className="flex items-center justify-center absolute -top-px -left-px"
-          onMouseMove={(e) => { scheduleDND(e); }}
           data-drop="BTN"
         >
           {range === 0 && (
@@ -802,24 +800,26 @@ function ServiceLayout({
                   <Grid2X2X className="size-[17px] m-[4.5px]" />
                 </button>
               </Tooltip>
-              <Tooltip title="เลื่อนลง" {...SMALL_TOOLTIP_PROPS}>
-                <button
-                  type="button"
-                  draggable={false}
-                  className=" bg-gray-900  text-white  px-[3px] py-1"
-                  onClick={() => { changeSpanPosition(sidx, getID(), "+"); }}
-                >
-                  <MoveDown className="size-4 m-[5px]" />
-                </button>
-              </Tooltip>
-              <Tooltip title="เลื่อนขึ้น" {...SMALL_TOOLTIP_PROPS}>
+              <Tooltip title="ก่อนหน้า" {...SMALL_TOOLTIP_PROPS}>
                 <button
                   type="button"
                   draggable={false}
                   className=" bg-gray-900  text-white  px-[3px] py-1"
                   onClick={() => { changeSpanPosition(sidx, getID(), "-"); }}
+                  aria-label="ก่อนหน้า"
                 >
-                  <MoveUp className="size-4 m-[5px]" />
+                  <MoveLeft className="size-4 m-[5px]" />
+                </button>
+              </Tooltip>
+              <Tooltip title="ถัดไป" {...SMALL_TOOLTIP_PROPS}>
+                <button
+                  type="button"
+                  draggable={false}
+                  className=" bg-gray-900  text-white  px-[3px] py-1"
+                  onClick={() => { changeSpanPosition(sidx, getID(), "+"); }}
+                  aria-label="ถัดไป"
+                >
+                  <MoveRight className="size-4 m-[5px]" />
                 </button>
               </Tooltip>
               <Tooltip title="ย่อ" {...SMALL_TOOLTIP_PROPS}>

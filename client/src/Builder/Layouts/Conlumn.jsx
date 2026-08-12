@@ -1,5 +1,7 @@
 import { setColor } from "../../../function";
 import ServiceLayout from "../Services/ServiceLayout"
+import { useMemo } from "react";
+import { usePanelPreview } from "../panelPreviewStore";
 
 function Column({
   elementData,
@@ -13,15 +15,11 @@ function Column({
   showOption,
   layouts,
   funct,
-  scheduleDND,
   openOffcavanas,
   onUpdate,
   modal,
   changeSize,
   changePosition,
-  dndHandle,
-  onDragAble,
-  onDragDisable,
   isColumnPresetModalPinned = false,
   onColumnPresetModalToggle = null,
   onOpenPresetModal = null,
@@ -33,6 +31,11 @@ function Column({
   removeTopBorder = false,
   children,
 }) {
+  const previewData = usePanelPreview("column", elementData?.id);
+  const visualElementData = useMemo(
+    () => (previewData ? { ...elementData, ...previewData } : elementData),
+    [elementData, previewData]
+  );
   const {
     paddingX,
     paddingY,
@@ -54,7 +57,7 @@ function Column({
     colGlassEnabled,
     colGlassLevel,
     elements = [],
-  } = elementData;
+  } = visualElementData;
 
   const glassLevelNum = Number.isFinite(Number(colGlassLevel)) ? Number(colGlassLevel) : 50;
   const glassRatio = colGlassEnabled === true
@@ -166,7 +169,7 @@ function Column({
             : "opacity-0 pointer-events-none"
         }`}
       >
-        <ServiceLayout layouts={layouts} element={element} clone={clone} remove={remove} scheduleDND={scheduleDND} openOffcavanas={openOffcavanas} ids={IDS} onUpdate={onUpdate} modal={modal} offcavanas="Column" changeSize={changeSize} changePosition={changePosition} dndHandle={dndHandle} onDragAble={onDragAble} onDragDisable={onDragDisable} isColumnPresetModalPinned={isColumnPresetModalPinned} onColumnPresetModalToggle={onColumnPresetModalToggle} onOpenPresetModal={onOpenPresetModal} onOpenPresetLoadModal={onOpenPresetLoadModal}/>
+        <ServiceLayout layouts={layouts} element={element} clone={clone} remove={remove} openOffcavanas={openOffcavanas} ids={IDS} onUpdate={onUpdate} modal={modal} offcavanas="Column" changeSize={changeSize} changePosition={changePosition} isColumnPresetModalPinned={isColumnPresetModalPinned} onColumnPresetModalToggle={onColumnPresetModalToggle} onOpenPresetModal={onOpenPresetModal} onOpenPresetLoadModal={onOpenPresetLoadModal}/>
       </div>
       {hasColBgImage && (
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">

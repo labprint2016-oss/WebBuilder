@@ -29,6 +29,10 @@ import {
 } from "../Layouts/sectionOverlapDevice";
 import Range from "../HTML/Range";
 import ImageModal from "../imageModal";
+import {
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
 
 /** ระยะห่าง Section ด้านบน/ล่าง: อย่างน้อย 0–200; ถ้าข้อมูลเดิมเกิน 200 จะขยาย max ของ slider ให้ลากลงมาได้ */
 const SECTION_VERTICAL_PADDING_MAX = 200;
@@ -121,60 +125,70 @@ const OVERLAP_DEVICE_TABS = [
   { id: "tablet", ariaLabel: "แท็บเล็ต", Icon: Tablet },
   { id: "mobile", ariaLabel: "มือถือ", Icon: Smartphone },
 ];
+const SPLIT_SECTION_PREVIEW_FIELDS = [
+  "paddingTop",
+  "paddingBottom",
+  "isFluid",
+  "sectionOverlapTop",
+  "sectionOverlapTopDesktop",
+  "sectionOverlapTopTablet",
+  "sectionOverlapTopMobile",
+];
+const selectSplitSectionPreview = (value) =>
+  Object.fromEntries(
+    SPLIT_SECTION_PREVIEW_FIELDS.filter((key) => key in value).map((key) => [
+      key,
+      value[key],
+    ])
+  );
 
-const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColor }) => {
+const AntSwitch = styled(Switch)(({ theme }) => ({
+  width: 28,
+  height: 16,
+  padding: 0,
+  display: "flex",
+  "&:active": {
+    "& .MuiSwitch-thumb": { width: 15 },
+    "& .MuiSwitch-switchBase.Mui-checked": { transform: "translateX(9px)" },
+  },
+  "& .MuiSwitch-switchBase": {
+    padding: 2,
+    "&.Mui-checked": {
+      transform: "translateX(12px)",
+      color: "#fff",
+      "& + .MuiSwitch-track": {
+        opacity: 1,
+        backgroundColor: "var(--dash-panel-switch-on, #333333)",
+      },
+    },
+  },
+  "& .MuiSwitch-thumb": {
+    boxShadow: "0 2px 4px 0 rgb(0 35 11 / 20%)",
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    transition: theme.transitions.create(["width"], { duration: 200 }),
+  },
+  "& .MuiSwitch-track": {
+    borderRadius: 8,
+    opacity: 1,
+    backgroundColor: "rgba(0,0,0,.25)",
+    boxSizing: "border-box",
+    ".dark &": { backgroundColor: "rgba(255,255,255,.25)" },
+  },
+}));
+
+const ContainerOffcanvas = ({
+  element,
+  updateContainer: onUpdate,
+  close,
+  textColor,
+}) => {
 
 
   const [darkTextColor,setDarkTextColor] = useState(localStorage.getItem("darkTextColor"))
 
 
-
-  const AntSwitch = styled(Switch)(({ theme }) => ({
-    width: 28,
-    height: 16,
-    padding: 0,
-    display: 'flex',
-    '&:active': {
-      '& .MuiSwitch-thumb': {
-        width: 15,
-        
-      },
-      '& .MuiSwitch-switchBase.Mui-checked': {
-        transform: 'translateX(9px)',
-        
-      },
-    },
-    '& .MuiSwitch-switchBase': {
-      padding: 2,
-      '&.Mui-checked': {
-        transform: 'translateX(12px)',
-        
-        color: '#fff',
-        '& + .MuiSwitch-track': {
-          opacity: 1,
-          backgroundColor: "var(--dash-panel-switch-on, #333333)",
-        },
-      },
-    },
-    '& .MuiSwitch-thumb': {
-      boxShadow: '0 2px 4px 0 rgb(0 35 11 / 20%)',
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      transition: theme.transitions.create(['width'], {
-        duration: 200,
-      }),
-      
-    },
-    '& .MuiSwitch-track': {
-      borderRadius: 16 / 2,
-      opacity: 1,
-      backgroundColor: 'rgba(0,0,0,.25)',
-      boxSizing: 'border-box',
-      ".dark &":{backgroundColor: 'rgba(255,255,255,.25)'},
-      
-    },
-  }));
 
   const [data, setData] = useState(() =>
     normalizeContainerOverlapFields(element ?? {})
@@ -186,6 +200,39 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
   const [sectionGradientPicker, setSectionGradientPicker] = useState("start");
   const [backgroundPickerOpen, setBackgroundPickerOpen] = useState(false);
   const [overlapDeviceTab, setOverlapDeviceTab] = useState("desktop");
+  const panelTargetId = element?.id;
+  useEffect(() => {
+    markBuilderPanelMounted("Container", panelTargetId);
+  }, [panelTargetId]);
+  const splitPreviewTargetIds =
+    Array.isArray(element?._previewTargetIds) &&
+    element._previewTargetIds.length > 0
+      ? element._previewTargetIds
+      : [element?.id];
+  const normalizeForCommit = (value) => {
+    const normalized = lodash.cloneDeep(value);
+    for (const key in normalized) {
+      if (normalized[key] === "") normalized[key] = 0;
+    }
+    return normalized;
+  };
+  const {
+    updateSlider,
+    commitSlider,
+    sliderCommitProps,
+  } = usePanelSliderPreview({
+    type: "section",
+    targetIds: [element?.id],
+    mirroredTargetIds: splitPreviewTargetIds.filter(
+      (id) => String(id) !== String(element?.id)
+    ),
+    selectMirroredData: selectSplitSectionPreview,
+    data,
+    setData,
+    onCommit: (latest) => onUpdate(normalizeForCommit(latest), latest.id),
+  });
+  const handleRangeCommit = (_value, reason) =>
+    commitSlider(reason || "range-commit");
 
 
   const loadTheme = () => {
@@ -205,7 +252,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
     Math.max(SECTION_VERTICAL_PADDING_MAX, Number(v) || 0);
 
   const handlePadding = (field, valueOrUpdater) => {
-    setData((prev) => {
+    updateSlider((prev) => {
       const current = prev[field];
       let next =
         typeof valueOrUpdater === "function"
@@ -226,7 +273,6 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
 
       return { ...prev, [field]: next };
     });
-    setUpdated(true);
   };
 
   const changeFluid = (value) => {
@@ -238,12 +284,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
 
   useEffect(() => {
     if (!updated) return;
-    const clonedData = lodash.cloneDeep(data);
-    for (const key in clonedData) {
-      if (clonedData[key] === "") {
-        clonedData[key] = 0;
-      }
-    }
+    const clonedData = normalizeForCommit(data);
     onUpdate(clonedData, data.id);
     /* สำคัญ: ถ้าไม่รีเซ็ต หลังแก้ Section ครั้งหนึ่ง updated จะค้าง true — พอ sync latestColID จาก canvas จะ setData แล้ว effect นี้ยิง onUpdate อีกครั้งด้วย layouts เก่าใน closure ของ parent → ทับคอลัมน์ที่เพิ่งโคลน */
     setUpdated(false);
@@ -255,7 +296,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
     if(!isNull(index)){
 
       setData((prev)=>{
-        const bgc = prev.backgroundColorGradient
+        const bgc = [...(prev.backgroundColorGradient || [])]
         bgc[index] = value
         return{...prev,backgroundColorGradient:bgc}
       })
@@ -268,16 +309,14 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
 
   const handleOpacity = (field,value,index=null) => {
     if(!isNull(index)){
-      setData((prev)=>{
-        const opct = prev[field]
+      updateSlider((prev)=>{
+        const opct = [...(prev[field] || [])]
         opct[index] = value
         return{...prev,[field]:opct}
       })
     }else{
-      setData((prev)=>{return{...prev,[field]:value}})
+      updateSlider((prev)=>{return{...prev,[field]:value}})
     }
-    
-    setUpdated(true)
   }
 
   useEffect(() => {
@@ -293,14 +332,13 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
   );
   const setOverlapForTab = (tab, v) => {
     const key = overlapFieldKeyForTab(tab);
-    setData((prev) => {
+    updateSlider((prev) => {
       const next = { ...prev, [key]: v };
       if (tab === "desktop") {
         next.sectionOverlapTop = v;
       }
       return next;
     });
-    setUpdated(true);
   };
 
   /** หลังโคลนคอลัมน์บน canvas ค่า latestColID จาก parent อัปเดต — ผสมเข้า draft โดยไม่รีเซ็ตฟิลด์อื่น */
@@ -348,8 +386,6 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
        
     
   },[theme])
-
-
   const colorlabels = ["สีพื้นหลังแบบสีพื้น","สีพื้นหลังแบบไล่โทน"];
 
   const sectionGradientGi = sectionGradientPicker === "end" ? 1 : 0;
@@ -427,7 +463,10 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
         </div>
         <button
           className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
-          onClick={() => close(null, null, null)}
+          onClick={() => {
+            commitSlider("close");
+            close(null, null, null);
+          }}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -468,6 +507,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                           Number(e.target.value) || 0
                         )
                       }
+                      {...sliderCommitProps}
                       className={THEME_RANGE_SLIDER_CLASS}
                       style={{
                         ["--pos"]: `${
@@ -499,6 +539,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                           Number(e.target.value) || 0
                         )
                       }
+                      {...sliderCommitProps}
                       className={THEME_RANGE_SLIDER_CLASS}
                       style={{
                         ["--pos"]: `${
@@ -569,6 +610,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                     const v = Number(e.target.value) || 0;
                     setOverlapForTab(overlapDeviceTab, v);
                   }}
+                  {...sliderCommitProps}
                   className={THEME_RANGE_SLIDER_CLASS}
                   style={{
                     ["--pos"]: `${(overlapSliderValue / 300) * 100}%`,
@@ -644,6 +686,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                           Number(e.target.value)
                         )
                       }
+                      onCommit={handleRangeCommit}
                       pos={((Number(data.opacityColor) || 0) / 255) * 100}
                       color={textColor || "#0d9488"}
                     />
@@ -740,6 +783,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                             sectionGradientGi
                           )
                         }
+                        onCommit={handleRangeCommit}
                         pos={
                           ((Number(
                             data.opacityColorGradient?.[sectionGradientGi]
@@ -830,8 +874,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                       value={sectionGradientDeg}
                       handleChange={(e) => {
                         const v = Number(e.target.value);
-                        setUpdated(true);
-                        setData((prev) => ({
+                        updateSlider((prev) => ({
                           ...prev,
                           degrees: Math.min(
                             360,
@@ -839,6 +882,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                           ),
                         }));
                       }}
+                      onCommit={handleRangeCommit}
                       pos={(sectionGradientDeg / 360) * 100}
                       color={textColor || "#0d9488"}
                     />
@@ -930,6 +974,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
     step={0.01}
     value={data.opacityImage}
     onChange={(e) => handleOpacity("opacityImage", Number(e.target.value))}
+    {...sliderCommitProps}
     className={`
     w-full cursor-pointer appearance-none h-2 rounded-full
     bg-zinc-200
@@ -970,6 +1015,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
     step={1}
     value={data.blur}
     onChange={(e) => handleOpacity("blur", Number(e.target.value))}
+    {...sliderCommitProps}
     className={`
     w-full cursor-pointer appearance-none h-2 rounded-full
     bg-zinc-200
@@ -1105,8 +1151,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                       value={columnDividerVerticalLengthPct}
                       handleChange={(e) => {
                         const v = Number(e.target.value);
-                        setUpdated(true);
-                        setData((prev) => ({
+                        updateSlider((prev) => ({
                           ...prev,
                           columnDividerVerticalLengthPercent: Math.min(
                             100,
@@ -1114,6 +1159,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                           ),
                         }));
                       }}
+                      onCommit={handleRangeCommit}
                       pos={
                         ((columnDividerVerticalLengthPct - 10) / (100 - 10)) *
                         100
@@ -1153,6 +1199,7 @@ const ContainerOffcanvas = ({ element, updateContainer: onUpdate, close,textColo
                           Number(e.target.value)
                         )
                       }
+                      onCommit={handleRangeCommit}
                       pos={
                         ((Number(columnDividerOpacity) || 0) / 255) * 100
                       }

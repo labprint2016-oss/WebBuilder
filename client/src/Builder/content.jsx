@@ -1,18 +1,20 @@
 import React, {
+  startTransition,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useState,
   useRef,
+  useSyncExternalStore,
 } from "react";
 import { createPortal, flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
 import {
   Settings,
   Copy,
   Trash2,
   Minus,
-  Move,
   MoveUp,
   MoveDown,
   MoveLeft,
@@ -57,11 +59,11 @@ import {
   pointerWithin,
   DragOverlay,
   MeasuringStrategy,
+  useDndContext,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   useSortable,
-  rectSortingStrategy,
   verticalListSortingStrategy,
   defaultAnimateLayoutChanges,
 } from "@dnd-kit/sortable";
@@ -76,6 +78,25 @@ import "swiper/css/navigation";
 import "swiper/css/pagination";
 import Container from "./Layouts/Container"
 import Column from "./Layouts/Conlumn";
+import {
+  completeObservedPanelLayoutCommitsAfterPaint,
+  completeScopedLayoutSnapshot,
+  hasPendingPanelLayoutCommit,
+  isScopedLayoutSnapshot,
+  markScopedLayoutSnapshot,
+  observePendingPanelLayoutCommits,
+  recordBuilderPanelOpenCanvasCommit,
+  recordPanelSliderCanvasCommit,
+  recordPanelSliderSectionCacheStats,
+} from "./panelPreviewStore";
+import {
+  createStructuralOptionStore,
+  structuralOptionKey,
+} from "./structuralOptionStore";
+import {
+  createElementSelectionStore,
+  elementSelectionKey,
+} from "./elementSelectionStore";
 import Element from "./Layouts/Element";
 import ServiceLayout from "./Services/ServiceLayout";
 import RichTextEditorModal from "./richText/RichTextEditorModal";
@@ -1330,18 +1351,50 @@ function inlineCounterRowDividerStyle(item, theme) {
   return { enabled, borderLeftStyle, color, height };
 }
 
-function findDropElementNodeByEleId(eleId) {
-  if (eleId == null) return null;
-  const want = String(eleId);
+let dropElementNodeByIdCache = null;
+let dropElementRectCache = new WeakMap();
+
+function resetDropElementGeometryCache() {
+  dropElementNodeByIdCache = null;
+  dropElementRectCache = new WeakMap();
+}
+
+function resetDropElementRectCache() {
+  dropElementRectCache = new WeakMap();
+}
+
+function ensureDropElementNodeCache() {
+  if (dropElementNodeByIdCache) return dropElementNodeByIdCache;
+  const next = new Map();
   const all = document.querySelectorAll('[data-drop="ELEMENT"]');
   for (let i = 0; i < all.length; i++) {
-    const n = all[i];
-    const raw = n.getAttribute("id");
+    const node = all[i];
+    const raw = node.getAttribute("id");
     if (!raw) continue;
     const last = raw.includes("/") ? raw.split("/").pop() : raw;
-    if (last === want) return n;
+    if (last && !next.has(last)) next.set(last, node);
   }
-  return null;
+  dropElementNodeByIdCache = next;
+  return next;
+}
+
+function getCachedDropElementRect(node) {
+  if (!node) return null;
+  const cached = dropElementRectCache.get(node);
+  if (cached) return cached;
+  const rect = node.getBoundingClientRect();
+  dropElementRectCache.set(node, rect);
+  return rect;
+}
+
+function findDropElementNodeByEleId(eleId) {
+  if (eleId == null) return null;
+  const id = String(eleId);
+  const cached = ensureDropElementNodeCache().get(id) ?? null;
+  if (!cached || cached.isConnected) return cached;
+  // Content ยังมี component ภายในอยู่หลายตัว จึงอาจ remount หลัง target เปลี่ยน
+  dropElementNodeByIdCache = null;
+  return ensureDropElementNodeCache().get(id) ?? null;
 }
 
 /** กึ่งกลางแนวตั้งของก้อน list ต่อเนื่องทั้งก้อน (บนแถวแรก → ล่างแถวสุดท้าย) */
@@ -1354,8 +1407,8 @@ function listRunBlockMidY(eleBucket, runStart, runEndEx) {
   const nA = findDropElementNodeByEleId(first.id);
   const nB = findDropElementNodeByEleId(last.id);
   if (!nA || !nB) return null;
-  const ra = nA.getBoundingClientRect();
-  const rb = nB.getBoundingClientRect();
+  const ra = getCachedDropElementRect(nA);
+  const rb = getCachedDropElementRect(nB);
   return (ra.top + rb.bottom) / 2;
 }
 
@@ -1394,20 +1447,20 @@ function readInsertBoundaryY(eleBucket, insertI) {
   if (insertI <= 0) {
     const firstNode = findDropElementNodeByEleId(eleBucket[0]?.id);
     if (!firstNode) return null;
-    const r = firstNode.getBoundingClientRect();
+    const r = getCachedDropElementRect(firstNode);
     return r.top;
   }
   if (insertI >= eleBucket.length) {
     const lastNode = findDropElementNodeByEleId(eleBucket[eleBucket.length - 1]?.id);
     if (!lastNode) return null;
-    const r = lastNode.getBoundingClientRect();
+    const r = getCachedDropElementRect(lastNode);
     return r.bottom;
   }
   const upNode = findDropElementNodeByEleId(eleBucket[insertI - 1]?.id);
   const dnNode = findDropElementNodeByEleId(eleBucket[insertI]?.id);
   if (!upNode || !dnNode) return null;
-  const up = upNode.getBoundingClientRect();
-  const dn = dnNode.getBoundingClientRect();
+  const up = getCachedDropElementRect(upNode);
+  const dn = getCachedDropElementRect(dnNode);
   return (up.bottom + dn.top) / 2;
 }
 
@@ -1441,7 +1494,7 @@ function computeStableElementInsertIndex({
     if (prevIndex === 0) {
       const firstNode = findDropElementNodeByEleId(eleBucket[0]?.id);
       if (firstNode) {
-        const r = firstNode.getBoundingClientRect();
+        const r = getCachedDropElementRect(firstNode);
         if (mouseY <= r.top + EDGE_LOCK_HY) {
           eleInsertSnapState = {
             bucketKey,
@@ -1455,7 +1508,7 @@ function computeStableElementInsertIndex({
     } else if (prevIndex === eleBucket.length) {
       const lastNode = findDropElementNodeByEleId(eleBucket[eleBucket.length - 1]?.id);
       if (lastNode) {
-        const r = lastNode.getBoundingClientRect();
+        const r = getCachedDropElementRect(lastNode);
         if (mouseY >= r.bottom - EDGE_LOCK_HY) {
           eleInsertSnapState = {
             bucketKey,
@@ -1790,7 +1843,7 @@ function collectElementMidById(elements) {
     if (!id || midById.has(id)) continue;
     const node = findDropElementNodeByEleId(id);
     if (!node) continue;
-    const rect = node.getBoundingClientRect();
+    const rect = getCachedDropElementRect(node);
     const midY = rect.top + rect.height / 2;
     if (!Number.isFinite(midY)) continue;
     midById.set(id, midY);
@@ -2165,6 +2218,78 @@ function canvasTotalToneBracketLabel(tone) {
  * พรีวิวสีปุ่ม footer (dev): ตั้งเป็น 'yellow' | 'red' | 'green' เพื่อดู design — ใช้งานปกติเป็น null
  */
 const PREVIEW_CANVAS_FOOTER_BUTTON_TONE = null;
+const OFFSCREEN_SECTION_BENCHMARK_MIN_WEIGHTED_ITEMS = 401;
+const OFFSCREEN_SECTION_BENCHMARK_MIN_SECTIONS = 12;
+const OFFSCREEN_SECTION_BENCHMARK_QUERY_PARAM = "builderSectionPerf";
+const STABLE_ELEMENT_RENDER_REVISION = Object.freeze({});
+const OFFSCREEN_SECTION_FALLBACK_HEIGHT_PX = 600;
+const OFFSCREEN_SECTION_UNSAFE_ELEMENT_TYPES = new Set([
+  "bnr",
+  "crl",
+  "dts",
+]);
+
+function sectionHasUnsafeOffscreenConfiguration(value, seen = new WeakSet()) {
+  if (!value || typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+
+  if (
+    typeof value.type === "string" &&
+    OFFSCREEN_SECTION_UNSAFE_ELEMENT_TYPES.has(value.type.toLowerCase())
+  ) {
+    return true;
+  }
+
+  for (const [rawKey, nestedValue] of Object.entries(value)) {
+    const key = rawKey.toLowerCase();
+    if (
+      key === "parallaxenabled" &&
+      nestedValue === true
+    ) {
+      return true;
+    }
+    if (
+      key.includes("overlap") &&
+      Number(nestedValue) > 0
+    ) {
+      return true;
+    }
+    if (
+      key.includes("sticky") &&
+      Boolean(nestedValue)
+    ) {
+      return true;
+    }
+    if (
+      key.includes("position") &&
+      typeof nestedValue === "string" &&
+      /^(absolute|fixed|sticky)$/i.test(nestedValue.trim())
+    ) {
+      return true;
+    }
+    if (
+      typeof nestedValue === "string" &&
+      /(?:^|[^\w])[-+]?(?:\d*\.?\d+)(?:dvh|svh|lvh|vh)\b/i.test(nestedValue)
+    ) {
+      return true;
+    }
+    if (
+      nestedValue &&
+      typeof nestedValue === "object" &&
+      sectionHasUnsafeOffscreenConfiguration(nestedValue, seen)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isOffscreenSectionEligible(layout) {
+  if (!layout?.container) return false;
+  if (layout.heros) return false;
+  return !sectionHasUnsafeOffscreenConfiguration(layout);
+}
 
 /** ใช้ indices จาก findLayoutElementListIndex — ตรงกับ list เสมอ (แก้กรณี spn/mspn id หายหรือเป็น "" ทำให้ resolve ด้วย id ชี้คอลัมน์ผิด) */
 function getElementsBucketByLayoutIndices(layouts, { conI, colI, spnI, nestI }) {
@@ -2245,18 +2370,47 @@ function computeSectionPhysicalInsertIndex(
 
 function normalizeSpanStructure(rawLayouts) {
   if (!Array.isArray(rawLayouts) || rawLayouts.length === 0) return rawLayouts;
+  const isValidElement = (item) =>
+    item &&
+    typeof item === "object" &&
+    typeof item.id === "string" &&
+    typeof item.type === "string" &&
+    item.type !== "null";
+  let needsNormalization = false;
+  for (const layout of rawLayouts) {
+    const cols = Array.isArray(layout?.columns) ? layout.columns : [];
+    for (const col of cols) {
+      if (
+        Array.isArray(col?.elements) &&
+        col.elements.some((item) => !isValidElement(item))
+      ) {
+        needsNormalization = true;
+        break;
+      }
+      if (!col?.isSpan || !Array.isArray(col?.spans)) continue;
+      for (const sp of col.spans) {
+        if (
+          (Array.isArray(sp?.elements) &&
+            sp.elements.some((item) => !isValidElement(item))) ||
+          (sp?.hasNestedSpan &&
+            Array.isArray(sp?.nestedSpans) &&
+            sp.nestedSpans.length > 0)
+        ) {
+          needsNormalization = true;
+          break;
+        }
+      }
+      if (needsNormalization) break;
+    }
+    if (needsNormalization) break;
+  }
+  if (!needsNormalization) return rawLayouts;
+
   let changed = false;
   const nextLayouts = lodash.cloneDeep(rawLayouts);
   const sanitizeElements = (list) =>
     Array.isArray(list)
-      ? list.filter(
-          (item) =>
-            item &&
-            typeof item === "object" &&
-            typeof item.id === "string" &&
-            typeof item.type === "string" &&
-            item.type !== "null"
-        )
+      ? list.filter(isValidElement)
       : [];
   for (const layout of nextLayouts) {
     const cols = Array.isArray(layout?.columns) ? layout.columns : [];
@@ -2302,6 +2456,370 @@ const MaybeDndContext = ({ enabled, children, ...props }) => {
   if (!enabled) return <>{children}</>;
   return <DndContext {...props}>{children}</DndContext>;
 };
+
+function ScopedElementDragPreview({
+  activeItemRef,
+  ownerRef,
+  ownerKey,
+  renderPreview,
+}) {
+  const { active } = useDndContext();
+  const activeId =
+    active?.data?.current?.type === "ELEMENT" ? String(active.id || "") : "";
+  return React.useMemo(() => {
+    if (
+      !activeId ||
+      !activeItemRef.current ||
+      ownerRef.current !== ownerKey
+    ) {
+      return null;
+    }
+    return renderPreview(activeItemRef.current);
+  }, [activeId, activeItemRef, ownerKey, ownerRef, renderPreview]);
+}
+
+/**
+ * Content มี renderer ขนาดใหญ่ที่ต้องใช้ closure ล่าสุด แต่ถ้าประกาศ renderer
+ * เป็น component ภายในโดยตรง React จะมองเป็น component type ใหม่ทุก render
+ * boundary เหล่านี้คง type เดิมไว้ และเรียก renderer ล่าสุดผ่าน ref
+ */
+const InlineSortableRenderContext = React.createContext(null);
+const StructuralRenderRevisionContext = React.createContext(null);
+const StructuralOptionStoreContext = React.createContext(null);
+const ElementSelectionStoreContext = React.createContext(null);
+const EMPTY_STRUCTURAL_OPTION_SNAPSHOT = Object.freeze({
+  hovered: false,
+  descendantHovered: false,
+  pinned: false,
+  hoverId: "",
+  publishedAt: 0,
+});
+
+function useElementSelectionSnapshot(ids) {
+  const store = React.useContext(ElementSelectionStoreContext);
+  const key = elementSelectionKey(ids);
+  const subscribe = React.useCallback(
+    (listener) => store?.subscribe(key, listener) || (() => {}),
+    [key, store]
+  );
+  const getSnapshot = React.useCallback(
+    () => store?.getSnapshot(key) || false,
+    [key, store]
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+const TabNestedElementSelectionBoundary = React.memo(
+  function TabNestedElementSelectionBoundary({ ids, children }) {
+    const selected = useElementSelectionSnapshot(ids);
+    const renderersRef = React.useContext(InlineSortableRenderContext);
+    renderersRef?.current?.onElementSelectionBoundaryRender?.();
+    return (
+      <div className="relative w-full">
+        {children}
+        {selected && (
+          <div className="pointer-events-none absolute inset-0 rounded border border-dashed border-red-400 bg-red-300/10" />
+        )}
+      </div>
+    );
+  }
+);
+
+function applySortableElementSnapshot(
+  node,
+  snapshot,
+  previousStylesRef,
+  previousAttributesRef
+) {
+  if (!node || !snapshot) return;
+
+  const previousStyles = previousStylesRef.current || {};
+  const style = snapshot.style || {};
+  Object.keys(previousStyles).forEach((key) => {
+    if (!(key in style)) node.style[key] = "";
+  });
+  Object.keys(style).forEach((key) => {
+    const value = style[key];
+    node.style[key] = value == null ? "" : value;
+  });
+  previousStylesRef.current = style;
+
+  const previousAttributes = previousAttributesRef.current || {};
+  const attributes = snapshot.attributes || {};
+  Object.keys(previousAttributes).forEach((name) => {
+    if (!(name in attributes)) {
+      node.removeAttribute(name === "tabIndex" ? "tabindex" : name);
+    }
+  });
+  Object.entries(attributes).forEach(([name, value]) => {
+    const attributeName = name === "tabIndex" ? "tabindex" : name;
+    if (value == null || value === false) {
+      node.removeAttribute(attributeName);
+    } else {
+      node.setAttribute(attributeName, value === true ? "" : String(value));
+    }
+  });
+  previousAttributesRef.current = attributes;
+}
+
+function useStructuralDomBridge(kind, props) {
+  const renderersRef = React.useContext(InlineSortableRenderContext);
+  const renderRevision = React.useContext(StructuralRenderRevisionContext);
+  const optionStore = React.useContext(StructuralOptionStoreContext);
+  const optionKey = structuralOptionKey(
+    kind === "container" ? "section" : kind,
+    props.id
+  );
+  const subscribeToOptionKey = React.useCallback(
+    (listener) => optionStore?.subscribe(optionKey, listener) || (() => {}),
+    [optionKey, optionStore]
+  );
+  const getOptionSnapshot = React.useCallback(
+    () =>
+      optionStore?.getSnapshot(optionKey) || EMPTY_STRUCTURAL_OPTION_SNAPSHOT,
+    [optionKey, optionStore]
+  );
+  const structuralOption = useSyncExternalStore(
+    subscribeToOptionKey,
+    getOptionSnapshot,
+    getOptionSnapshot
+  );
+  const runtime = renderersRef?.current;
+  const bridgeRef = React.useRef(null);
+
+  if (!bridgeRef.current) {
+    bridgeRef.current = {
+      node: null,
+      nodeRef(node) {
+        bridgeRef.current.node = node;
+      },
+    };
+  }
+
+  runtime?.onStructuralShellRender?.(kind);
+
+  React.useLayoutEffect(() => {
+    const optionTargetVisible =
+      structuralOption.hovered ||
+      (kind === "splitRow" && Boolean(structuralOption.hoverId));
+    if (!optionTargetVisible || !renderRevision?.controlsVisible) return;
+    runtime?.onStructuralOptionVisible?.(
+      kind,
+      props.id,
+      structuralOption.publishedAt
+    );
+  }, [
+    kind,
+    props.id,
+    renderRevision,
+    runtime,
+    structuralOption.hovered,
+    structuralOption.hoverId,
+    structuralOption.publishedAt,
+  ]);
+
+  React.useLayoutEffect(
+    () => () => {
+      bridgeRef.current.node = null;
+    },
+    []
+  );
+
+  return {
+    bridgeRef,
+    renderersRef,
+    renderRevision,
+    structuralOption,
+  };
+}
+
+const MemoStructuralBoundary = React.memo(
+  function MemoStructuralBoundary({
+    kind,
+    renderersRef,
+    domBridge,
+    ...props
+  }) {
+    renderersRef?.current?.onStructuralHeavyRender?.(kind);
+    return (
+      renderersRef?.current?.[kind]?.({
+        ...props,
+        domBridge,
+      }) ?? null
+    );
+  }
+);
+
+function StructuralSplitRowShell(props) {
+  const { bridgeRef, renderersRef, renderRevision, structuralOption } =
+    useStructuralDomBridge("splitRow", props);
+  return (
+    <MemoStructuralBoundary
+      {...props}
+      kind="splitRow"
+      renderersRef={renderersRef}
+      domBridge={bridgeRef}
+      renderRevision={renderRevision}
+      structuralOption={structuralOption}
+    />
+  );
+}
+
+function StructuralContainerShell(props) {
+  const { bridgeRef, renderersRef, renderRevision, structuralOption } =
+    useStructuralDomBridge("container", props);
+  return (
+    <MemoStructuralBoundary
+      {...props}
+      kind="container"
+      renderersRef={renderersRef}
+      domBridge={bridgeRef}
+      renderRevision={renderRevision}
+      structuralOption={structuralOption}
+    />
+  );
+}
+
+function StructuralColumnShell(props) {
+  const { bridgeRef, renderersRef, renderRevision, structuralOption } =
+    useStructuralDomBridge("column", props);
+  return (
+    <MemoStructuralBoundary
+      {...props}
+      kind="column"
+      renderersRef={renderersRef}
+      domBridge={bridgeRef}
+      renderRevision={renderRevision}
+      structuralOption={structuralOption}
+    />
+  );
+}
+
+function StructuralSpanShell(props) {
+  const { bridgeRef, renderersRef, renderRevision, structuralOption } =
+    useStructuralDomBridge("span", props);
+  return (
+    <MemoStructuralBoundary
+      {...props}
+      kind="span"
+      renderersRef={renderersRef}
+      domBridge={bridgeRef}
+      renderRevision={renderRevision}
+      structuralOption={structuralOption}
+    />
+  );
+}
+
+/**
+ * The sortable shell is the only element boundary subscribed to dnd-kit.
+ * It keeps the existing outer DOM node and updates its frame-sensitive style
+ * imperatively, allowing the large editor renderer below to stay memoized.
+ */
+function SortableElementShell(props) {
+  const renderersRef = React.useContext(InlineSortableRenderContext);
+  const runtime = renderersRef?.current;
+  const sortableConfig = runtime?.getElementSortableConfig?.(props) || {};
+  const sortable = useSortable({
+    id: props.id,
+    data: {
+      type: "ELEMENT",
+      conID: props.containerId,
+      colID: props.columnId,
+      spnID: props.spanId ?? null,
+      nestID: props.nestedSpanId ?? null,
+    },
+    ...sortableConfig,
+  });
+  const snapshot = runtime?.getElementSortableSnapshot?.(props, sortable);
+  const previousStylesRef = React.useRef({});
+  const previousAttributesRef = React.useRef({});
+  const bridgeRef = React.useRef(null);
+
+  if (!bridgeRef.current) {
+    bridgeRef.current = {
+      node: null,
+      setNodeRef: null,
+      nodeRef(node) {
+        bridgeRef.current.node = node;
+        bridgeRef.current.setNodeRef?.(node);
+      },
+      snapshot: null,
+    };
+  }
+  bridgeRef.current.setNodeRef = sortable.setNodeRef;
+  bridgeRef.current.snapshot = snapshot;
+
+  React.useLayoutEffect(() => {
+    applySortableElementSnapshot(
+      bridgeRef.current.node,
+      snapshot,
+      previousStylesRef,
+      previousAttributesRef
+    );
+  }, [snapshot]);
+
+  React.useEffect(() => {
+    if (sortable.isDragging) {
+      runtime?.onElementSortableDragStart?.();
+    }
+  }, [runtime, sortable.isDragging]);
+
+  return (
+    <MemoSortableElementBoundary
+      {...props}
+      renderersRef={renderersRef}
+      sortableBridge={bridgeRef}
+      renderRevision={runtime?.elementRenderRevision}
+    />
+  );
+}
+
+function StructuralSplitRowItem(props) {
+  return <StructuralSplitRowShell {...props} />;
+}
+
+function StructuralContainerItem(props) {
+  return <StructuralContainerShell {...props} />;
+}
+
+function StructuralColumnItem(props) {
+  return <StructuralColumnShell {...props} />;
+}
+
+function StructuralSpanItem(props) {
+  return <StructuralSpanShell {...props} />;
+}
+
+const MemoSortableElementBoundary = React.memo(
+  function MemoSortableElementBoundary({
+    renderersRef,
+    sortableBridge,
+    ...props
+  }) {
+    const [hoverElement, setHoverElement] = React.useState(false);
+    const selected = useElementSelectionSnapshot({
+      conID: props.containerId,
+      colID: props.columnId,
+      spnID: props.spanId,
+      nestID: props.nestedSpanId,
+      eleID: props.id,
+    });
+    renderersRef?.current?.onElementSelectionBoundaryRender?.();
+    return (
+      renderersRef?.current?.element?.({
+        ...props,
+        sortableBridge,
+        selected,
+        hoverElement,
+        setHoverElement,
+      }) ?? null
+    );
+  }
+);
+
+function SortableElementItem(props) {
+  return <SortableElementShell {...props} />;
+}
 
 function resolveDeleteElementName(id, layouts) {
   if (!id) return "Item";
@@ -2482,12 +3000,24 @@ const Content = ({
   openListBoxTextEditRef,
   isPreview = false,
 }) => {
-  const layouts = useMemo(
-    () => normalizeSpanStructure(Array.isArray(layoutsProp) ? layoutsProp : []),
-    [layoutsProp]
-  );
+  const layouts = useMemo(() => {
+    const source = Array.isArray(layoutsProp) ? layoutsProp : [];
+    const normalized = normalizeSpanStructure(source);
+    if (normalized !== source && isScopedLayoutSnapshot(source)) {
+      markScopedLayoutSnapshot(normalized);
+    }
+    return normalized;
+  }, [layoutsProp]);
   const isLayoutMode = builderMode === "Layout Mode";
   const isPreviewCleanMode = isPreview;
+  const structuralOptionStoreRef = useRef(null);
+  if (!structuralOptionStoreRef.current) {
+    structuralOptionStoreRef.current = createStructuralOptionStore();
+  }
+  const elementSelectionStoreRef = useRef(null);
+  if (!elementSelectionStoreRef.current) {
+    elementSelectionStoreRef.current = createElementSelectionStore();
+  }
   const previewAuditMode =
     isPreview &&
     typeof window !== "undefined" &&
@@ -2496,14 +3026,23 @@ const Content = ({
   // useState
 
   // การแสดงHTML
-  const [hover, setHover] = useState(null); //เก็บค่าidของ con/col เพื่อแสดง Option Button Group ของ con/col
   const [activeID, setActiveID] = useState(null); // เก็บค่าid ของ layout ที่กำลัง Drag&Drop
   const [activeItem, setActiveItem] = useState(null); // เก็บ JSON HTML ของ layout ที่กำลัง Drag&Drop
+  const activeItemRef = useRef(null);
+  const scopedColumnDragOwnerRef = useRef("");
   const [modal, setModal] = useState(null); // ตัวแปรควบคุมการเปิดปิดของ Confirm Modal
   const [alert, setAlert] = useState(false); // ตัวแปรควบคุมการเปิดปิดของ Confirm Modal
   const [preview, setPreview] = useState(null); // เก็บ JSON HTML ของ layout ใหม่ที่กำลังนำมาวาง
-  const [pinnedSpanOptionId, setPinnedSpanOptionId] = useState(null);
-  const [pinnedColumnOptionId, setPinnedColumnOptionId] = useState(null);
+  const structuralRenderRevision = useMemo(
+    () => ({
+      controlsVisible:
+        device === "Desktop" && builderMode === "Layout Mode",
+    }),
+    [
+      device,
+      builderMode,
+    ]
+  );
   const [columnPresetModal, setColumnPresetModal] = useState({
     open: false,
     name: "",
@@ -2519,19 +3058,17 @@ const Content = ({
   const [presetDeleteConfirmId, setPresetDeleteConfirmId] = useState(null);
   /** เป้าหมายวาง ELEMENT จาก sidebar — ใช้ซ่อน badge Col/Span/Mini ตอนลากเข้าช่อง */
   const [elementDropHighlight, setElementDropHighlight] = useState(null);
+  const [dropRenderKey, setDropRenderKey] = useState("");
   // Drag&Drop
   const [isDraggingLayout, setIsDraggingLayout] = useState(false); // เก็บค่าสถานะการ Drag&Drop (true = กำลังทำ / false = w,jwfhme)
-  // Disable Drag&Drop
-  const [disableConDrag, setDisableConDrag] = useState(true); // ตัวแปรควบคุมการ disable Drag&Drop ของ con
-  const [disableColDrag, setDisableColDrag] = useState(true); // ตัวแปรควบคุมการ disable Drag&Drop ของ col
-  const [disableEleDrag, setDisableEleDrag] = useState(true); // ตัวแปรควบคุมการ disable Drag&Drop ของ ele
-  const [disableSpnDrag, setDisableSpnDrag] = useState(true); // ตัวแปรควบคุมการ disable Drag&Drop ของ spn
   const [suppressDropMotion, setSuppressDropMotion] = useState(false);
   // ฟังก์ชันเกี่ยวกับ Layout
-  const [selectID, setSelectID] = useState({
+  const [selectID, commitSelectID] = useState({
     ids:{},
     status:""
   }); // เก็บค่าid ของ ele ที่กำลังจะแก้ไข
+  const selectIDRef = useRef(selectID);
+  selectIDRef.current = selectID;
   const [positionElementSetting,setPositionElementSetting] = useState({x:null,y:null})
   const [textEditModal, setTextEditModal] = useState(null);
   const [carouselColToastOpen, setCarouselColToastOpen] = useState(false);
@@ -2542,6 +3079,19 @@ const Content = ({
   const [dataSliderTypeToastOpen, setDataSliderTypeToastOpen] = useState(false);
   const [presetSavedToastOpen, setPresetSavedToastOpen] = useState(false);
   const [presetLoadedToastOpen, setPresetLoadedToastOpen] = useState(false);
+  const [builderSectionPerfEnabled] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get(
+        OFFSCREEN_SECTION_BENCHMARK_QUERY_PARAM
+      ) === "1"
+  );
+  const [builderHoverPerfEnabled] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("builderSectionPerf") ===
+        "1"
+  );
   const tabsInTabWarnedRef = useRef(false);
   const postInPostWarnedRef = useRef(false);
   const dataSliderTypeWarnedRef = useRef(false);
@@ -2572,6 +3122,44 @@ const Content = ({
     () => countCanvasLayoutStructureAndElements(layouts),
     [layouts]
   );
+  const useScopedColumnDnd = canvasLayoutCounts.elements >= 250;
+  const benchmarkOffscreenSections =
+    builderSectionPerfEnabled &&
+    canvasLayoutCounts.total >= OFFSCREEN_SECTION_BENCHMARK_MIN_WEIGHTED_ITEMS &&
+    canvasLayoutCounts.sections >= OFFSCREEN_SECTION_BENCHMARK_MIN_SECTIONS;
+  // CSS content-visibility does not skip React reconciliation and changing it
+  // around DnD makes section profiling harder to interpret. Keep the normal
+  // rendering path unchanged and leave the experiment disabled.
+  const offscreenSectionExperimentEnabled = false;
+  const offscreenEligibleSectionCount = useMemo(() => {
+    if (!offscreenSectionExperimentEnabled) return 0;
+    let count = 0;
+    for (let index = 0; index < layouts.length; index += 1) {
+      const layout = layouts[index];
+      if (!layout?.splitRowId) {
+        if (isOffscreenSectionEligible(layout)) count += 1;
+        continue;
+      }
+      if (layout.splitSide !== "left") continue;
+      const splitRowId = layout.splitRowId;
+      const splitLayouts = [];
+      for (
+        let splitIndex = index;
+        splitIndex < layouts.length &&
+        layouts[splitIndex]?.splitRowId === splitRowId;
+        splitIndex += 1
+      ) {
+        splitLayouts.push(layouts[splitIndex]);
+      }
+      if (
+        splitLayouts.length > 0 &&
+        splitLayouts.every(isOffscreenSectionEligible)
+      ) {
+        count += 1;
+      }
+    }
+    return count;
+  }, [layouts]);
 
   const canvasTotalTone = useMemo(() => {
     if (
@@ -2608,6 +3196,11 @@ const Content = ({
 
   // การแสดงHTML
   const ghostRef = useRef(null); // เก็บ Ref ของ Ghost ที่จำลองตำแหน่งการวาง Layout ใหม่
+  const sidebarPreviewHostRef = useRef(null);
+  const sidebarPreviewRootRef = useRef(null);
+  const sidebarPreviewMoveRef = useRef({ frame: null, pending: null });
+  const sidebarPortalPreviewRef = useRef(null);
+  const clearSidebarPortalPreviewRef = useRef(null);
   const dragRef = useRef(null); // เก็บ Ref ของ Preview ของ element ที่กำลัง Drag&Drop
   const activeDragRef = useRef(null);
   const dropTargetRef = useRef({ index: null, type: null, isLast: false }); // เก็บค่า index ประเภท และใช่ตำแหน่งสุดใหม่ไหม ของ Ghost เพื่อใช้เป็นindexสำหรับการวาง Layout ใหม่
@@ -2626,9 +3219,12 @@ const Content = ({
     y: 0,
   });
   const canvasScrollRef = useRef(null);
+  const offscreenSectionNodesRef = useRef(new Map());
+  const offscreenSectionKeyByNodeRef = useRef(new WeakMap());
+  const offscreenSectionSizeCacheRef = useRef(new Map());
+  const offscreenSectionResizeObserverRef = useRef(null);
   // การควบคุม Hover เพื่อใช้งานฟังก์ชัน
   const hoverRef = useRef(null); // สำหรับควบคุมฟังก์ชัน updateHoverFromPoint(การวาง Layout ใหม่)
-  const dndRef = useRef(null); // สำหรับควบคุมฟังก์ชัน updateDND(การ disable Drag&Drop)
   const dropHoldUntilRef = useRef(0); // กันหลุด drop target ทันทีเมื่อเมาส์เฉี่ยวขอบ
   const btnGroupRef = useRef(null); // สำหรับควบคุมฟังก์ชัน updateHoverPosition(การแสดง Option Button Group)
   // การเก็บค่า
@@ -2637,17 +3233,1924 @@ const Content = ({
   const dropCommitGuardRef = useRef({ token: -1, at: 0 });
   const lastDropHandledAtRef = useRef(0);
   const dropMotionTimerRef = useRef(null);
+  const windowDropHandlerRef = useRef(null);
+  const lastHandledDragOverEventRef = useRef(null);
+  const scopedElementPlaceholderRef = useRef(null);
+  const scopedElementPlaceholderTargetKeyRef = useRef("");
+  const scopedElementPlaceholderCommitRef = useRef({
+    frame: null,
+    pending: null,
+  });
+  const scopedElementFlipRef = useRef({
+    states: new WeakMap(),
+    activeNodes: new Set(),
+  });
+  const sidebarNewElementFlipRef = useRef({
+    previousConI: null,
+    preview: null,
+    targetKey: "",
+  });
+  const sidebarPreviewIdentityRef = useRef({
+    ids: new WeakMap(),
+    nextId: 1,
+  });
+  const sidebarNativeDragPerfRef = useRef(null);
+  const finishSidebarNativeDragPerfRef = useRef(null);
+  useEffect(
+    () => () => {
+      const commit = scopedElementPlaceholderCommitRef.current;
+      if (commit.frame != null) cancelAnimationFrame(commit.frame);
+      commit.frame = null;
+      commit.pending = null;
+      for (const node of [...scopedElementFlipRef.current.activeNodes]) {
+        scopedElementFlipRef.current.states.get(node)?.cancel?.();
+      }
+      const placeholder = scopedElementPlaceholderRef.current;
+      if (placeholder?.parentNode) placeholder.parentNode.removeChild(placeholder);
+      scopedElementPlaceholderRef.current = null;
+      const sidebarMove = sidebarPreviewMoveRef.current;
+      if (sidebarMove.frame != null) cancelAnimationFrame(sidebarMove.frame);
+      sidebarMove.frame = null;
+      sidebarMove.pending = null;
+      const sidebarHost = sidebarPreviewHostRef.current;
+      const sidebarRoot = sidebarPreviewRootRef.current;
+      sidebarPreviewRootRef.current = null;
+      sidebarRoot?.unmount();
+      if (sidebarHost) {
+        sidebarHost.ondragover = null;
+        if (sidebarHost.parentNode) {
+          sidebarHost.parentNode.removeChild(sidebarHost);
+        }
+      }
+      if (ghostRef.current === sidebarHost) ghostRef.current = null;
+      sidebarPreviewHostRef.current = null;
+      sidebarPortalPreviewRef.current = null;
+    },
+    []
+  );
+  const incomingDragPreviewRef = useRef({
+    source: null,
+    pageLatestID: null,
+    isCanvasElementMove: false,
+    preview: null,
+    type: null,
+  });
+  const structureDropIntentRef = useRef(null);
+  const blockedDropToastRef = useRef(null);
+  const inlineSortableRenderersRef = useRef({
+    splitRow: null,
+    container: null,
+    column: null,
+    span: null,
+    element: null,
+    structuralRenderRevision: null,
+    onStructuralShellRender: null,
+    onStructuralHeavyRender: null,
+    onStructuralOptionVisible: null,
+    onElementSelectionBoundaryRender: null,
+    elementRenderRevision: null,
+    getElementSortableConfig: null,
+    getElementSortableSnapshot: null,
+    onElementSortableDragStart: null,
+    dragActive: false,
+  });
+  const canvasSectionRenderCacheRef = useRef(new Map());
+  const canvasColumnRenderCacheRef = useRef(new Map());
+  const canvasSectionCacheLayoutsRef = useRef(layouts);
+  const canvasSectionRenderEpochRef = useRef(0);
+  const canvasSectionCacheStatsRef = useRef(null);
+  const elementSelectionCacheTransactionRef = useRef(null);
+  const nextElementSelectionTransactionIdRef = useRef(1);
+  const elementSelectionPerfSessionsRef = useRef(new Map());
+  const elementDeletePerfSessionsRef = useRef(new Map());
+  const nextElementDeletePerfSessionIdRef = useRef(1);
+  const arrowReorderPerfRef = useRef(null);
+  const sizeChangePerfRef = useRef(null);
+  const clonePerfRef = useRef(null);
+  const deletePerfRef = useRef(null);
+  const columnSplitPerfRef = useRef(null);
+  const presetUiCacheRef = useRef({ active: false });
+  const confirmModalUiCacheRef = useRef({ active: false });
+  const spanStructurePerfSessionsRef = useRef(new Map());
+  const nextSpanStructurePerfSessionIdRef = useRef(1);
+  const startSpanStructurePerfSession = (operation, details = {}) => {
+    if (!builderSectionPerfEnabled) return null;
+    const session = {
+      id: nextSpanStructurePerfSessionIdRef.current++,
+      operation,
+      startedAt: performance.now(),
+      preparationMs: 0,
+      sourceSpanId: null,
+      targetSpanId: null,
+      createdSpanId: null,
+      removedSpanId: null,
+      copiedElementCount: 0,
+      removedElementCount: 0,
+      movedElementCount: 0,
+      remainingSpanCount: null,
+      canvasCommits: 0,
+      canvasActualMs: 0,
+      canvasMaxMs: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      cacheMissReasons: {},
+      ...details,
+    };
+    spanStructurePerfSessionsRef.current.set(session.id, session);
+    return session;
+  };
+  const presetPerfSessionsRef = useRef(new Map());
+  const nextPresetPerfSessionIdRef = useRef(1);
+  const markPresetUiInteraction = () => {
+    presetUiCacheRef.current.active = true;
+  };
+  const startPresetPerfSession = (operation, details = {}) => {
+    if (!builderSectionPerfEnabled) return null;
+    const session = {
+      id: nextPresetPerfSessionIdRef.current++,
+      operation,
+      startedAt: performance.now(),
+      preparationMs: 0,
+      storageReadMs: 0,
+      storageWriteMs: 0,
+      serializeMs: 0,
+      payloadBytes: 0,
+      presetCount: 0,
+      loadedElementCount: 0,
+      copiedElementCount: 0,
+      canvasProfilerCommits: 0,
+      canvasProfilerActualMs: 0,
+      canvasProfilerMaxMs: 0,
+      sectionCacheHits: 0,
+      sectionCacheMisses: 0,
+      sectionCacheMissReasons: {},
+      ...details,
+    };
+    presetPerfSessionsRef.current.set(session.id, session);
+    return session;
+  };
+  const canvasSectionPreviousDragRef = useRef({
+    active: false,
+    type: "",
+  });
+  const contentRenderSignalsRef = useRef(null);
+  const contentDndLifecycleRef = useRef({
+    phase: "idle",
+    dragType: "",
+    dragStartedAt: null,
+    firstMoveAt: null,
+    lastMoveAt: null,
+    dropStartedAt: null,
+    dropHandlerCompletedAt: null,
+    layoutCommitObservedAt: null,
+    cleanupAt: null,
+  });
+  const markContentDndLifecycle = (phase, dragType = "") => {
+    if (!builderSectionPerfEnabled) return;
+    const now = performance.now();
+    const lifecycle = contentDndLifecycleRef.current;
+    if (phase === "drag-start") {
+      contentDndLifecycleRef.current = {
+        phase,
+        dragType: String(dragType || "UNKNOWN"),
+        dragStartedAt: now,
+        firstMoveAt: null,
+        lastMoveAt: null,
+        dropStartedAt: null,
+        dropHandlerCompletedAt: null,
+        layoutCommitObservedAt: null,
+        cleanupAt: null,
+      };
+      return;
+    }
+    lifecycle.phase = phase;
+    if (phase === "active-move") {
+      if (lifecycle.firstMoveAt == null) lifecycle.firstMoveAt = now;
+      lifecycle.lastMoveAt = now;
+    } else if (phase === "drop") {
+      lifecycle.dropStartedAt = now;
+    } else if (phase === "drop-handler-complete") {
+      lifecycle.dropHandlerCompletedAt = now;
+    } else if (phase === "post-drop-cleanup") {
+      lifecycle.cleanupAt = now;
+      if (lifecycle.dropStartedAt == null) lifecycle.phase = "cleanup";
+    }
+  };
+  const logicalSectionKeyForElementSelection = useCallback(
+    (rawIds) => {
+      const ids = rawIds || {};
+      let containerId = ids.conID;
+      if (containerId == null && ids.tabsHostId != null) {
+        const hostLocation = findLayoutElementListIndex(
+          layouts,
+          ids.tabsHostId
+        );
+        containerId = layouts[hostLocation?.conI]?.container?.id;
+      }
+      if (containerId == null) return null;
+      const layout = layouts.find(
+        (entry) =>
+          String(entry?.container?.id ?? "") === String(containerId)
+      );
+      if (!layout) return null;
+      return String(layout.splitRowId || layout.container?.id);
+    },
+    [layouts]
+  );
+  const setSelectID = useCallback(
+    (update) => {
+      const previous = selectIDRef.current;
+      const next =
+        typeof update === "function" ? update(previous) : update;
+      if (next == null || Object.is(previous, next)) return;
+      selectIDRef.current = next;
+
+      const previousSelected =
+        previous?.status === "Delete" && previous?.ids?.eleID != null;
+      const nextSelected =
+        next?.status === "Delete" && next?.ids?.eleID != null;
+      const previousSelectionKey = previousSelected
+        ? elementSelectionKey(previous.ids)
+        : "";
+      const nextSelectionKey = nextSelected
+        ? elementSelectionKey(next.ids)
+        : "";
+      if (
+        previousSelectionKey !== nextSelectionKey &&
+        (previousSelected || nextSelected)
+      ) {
+        const transactionId =
+          nextElementSelectionTransactionIdRef.current++;
+        const targetKeys = new Set();
+        if (previousSelected) {
+          const previousKey = logicalSectionKeyForElementSelection(
+            previous.ids
+          );
+          if (previousKey != null) targetKeys.add(previousKey);
+        }
+        if (nextSelected) {
+          const nextKey = logicalSectionKeyForElementSelection(next.ids);
+          if (nextKey != null) targetKeys.add(nextKey);
+        }
+        elementSelectionCacheTransactionRef.current = {
+          id: transactionId,
+          targetKeys,
+          nextSelection: next,
+        };
+        if (builderSectionPerfEnabled) {
+          elementSelectionPerfSessionsRef.current.set(transactionId, {
+            id: transactionId,
+            operation:
+              previousSelected && nextSelected
+                ? "SWITCH"
+                : nextSelected
+                  ? "SELECT"
+                  : "CLEAR",
+            previousElementId: previousSelected
+              ? previous.ids.eleID
+              : null,
+            nextElementId: nextSelected ? next.ids.eleID : null,
+            previousContainerId: previousSelected
+              ? previous.ids.conID ?? previous.ids.tabsHostId ?? null
+              : null,
+            nextContainerId: nextSelected
+              ? next.ids.conID ?? next.ids.tabsHostId ?? null
+              : null,
+            targetedLogicalSectionCount: targetKeys.size,
+            startedAt: performance.now(),
+            clickToCommitWallMs: 0,
+            canvasCommits: 0,
+            canvasActualMs: 0,
+            canvasMaxMs: 0,
+            cacheHits: 0,
+            cacheMisses: 0,
+            cacheMissReasons: {},
+            selectedBoundaryRenderCount: 0,
+          });
+        }
+      }
+      elementSelectionStoreRef.current.publish(previous, next);
+      commitSelectID(next);
+    },
+    [
+      builderSectionPerfEnabled,
+      commitSelectID,
+      logicalSectionKeyForElementSelection,
+    ]
+  );
+  canvasSectionRenderEpochRef.current += 1;
+  canvasSectionCacheStatsRef.current = {
+    renderEpoch: canvasSectionRenderEpochRef.current,
+    cacheHits: 0,
+    cacheMisses: 0,
+    missReasons: {},
+    columnRenderCacheHits: 0,
+    columnRenderCacheMisses: 0,
+    columnRenderCacheMissReasons: {},
+    rebuiltColumnCount: 0,
+    layoutsRootChanged: canvasSectionCacheLayoutsRef.current !== layouts,
+  };
+  const currentDropElement = handleDropElement();
+  const inlineDragActive = Boolean(
+    inlineSortableRenderersRef.current.dragActive
+  );
+  const activeDragType = String(
+    activeDragRef.current?.data?.current?.type || ""
+  );
+  const dragRenderActive = Boolean(
+    preview ||
+      sidebarPortalPreviewRef.current ||
+      isDraggingLayout ||
+      inlineDragActive
+  );
+  const elementCanvasDragRenderActive = Boolean(
+    dragRenderActive &&
+      inlineDragActive &&
+      activeDragType === "ELEMENT" &&
+      activeDragRef.current
+  );
+  const sidebarPreviewRenderActive = Boolean(
+    dragRenderActive &&
+      inlineDragActive &&
+      (sidebarPortalPreviewRef.current ||
+        sidebarPreviewHostRef.current ||
+        sidebarNewElementFlipRef.current.targetKey)
+  );
+  const reusePostElementDropCache = Boolean(
+    canvasSectionCacheStatsRef.current.layoutsRootChanged &&
+      !dragRenderActive &&
+      canvasSectionPreviousDragRef.current.active &&
+      canvasSectionPreviousDragRef.current.type === "ELEMENT"
+  );
+  // The exact marked root is authoritative across React render retries.
+  // A prior attempt may already have advanced canvasSectionCacheLayoutsRef,
+  // making layoutsRootChanged false before the committed attempt.
+  const scopedLayoutSnapshotMatched = isScopedLayoutSnapshot(layouts);
+  const scopedLayoutCacheActive = scopedLayoutSnapshotMatched;
+  const elementSelectionTransaction =
+    elementSelectionCacheTransactionRef.current;
+  const elementSelectionCacheActive = Boolean(
+    elementSelectionTransaction &&
+      !canvasSectionCacheStatsRef.current.layoutsRootChanged &&
+      Object.is(elementSelectionTransaction.nextSelection, selectID)
+  );
+  const presetUiCacheActive =
+    (presetUiCacheRef.current.active ||
+      columnPresetModal.open ||
+      columnPresetLoadModal.open) &&
+    !canvasSectionCacheStatsRef.current.layoutsRootChanged;
+  const confirmModalUiCacheActive =
+    (confirmModalUiCacheRef.current.active || Boolean(modal)) &&
+    !canvasSectionCacheStatsRef.current.layoutsRootChanged;
+  const pendingFinalCommitObserved =
+    canvasSectionCacheStatsRef.current.layoutsRootChanged &&
+    hasPendingPanelLayoutCommit()
+    ? observePendingPanelLayoutCommits() > 0
+    : false;
+  const canReuseSectionCache =
+    dragRenderActive ||
+    reusePostElementDropCache ||
+    scopedLayoutCacheActive ||
+    elementSelectionCacheActive ||
+    presetUiCacheActive ||
+    confirmModalUiCacheActive;
+  canvasSectionCacheStatsRef.current.dragRenderActive = dragRenderActive;
+  canvasSectionCacheStatsRef.current.activeDragType = activeDragType;
+  canvasSectionCacheStatsRef.current.elementCanvasDragRenderActive =
+    elementCanvasDragRenderActive;
+  canvasSectionCacheStatsRef.current.sidebarPreviewRenderActive =
+    sidebarPreviewRenderActive;
+  canvasSectionCacheStatsRef.current.reusePostElementDropCache =
+    reusePostElementDropCache;
+  canvasSectionCacheStatsRef.current.scopedLayoutCacheActive =
+    scopedLayoutCacheActive;
+  canvasSectionCacheStatsRef.current.elementSelectionCacheActive =
+    elementSelectionCacheActive;
+  canvasSectionCacheStatsRef.current.presetUiCacheActive =
+    presetUiCacheActive;
+  canvasSectionCacheStatsRef.current.confirmModalUiCacheActive =
+    confirmModalUiCacheActive;
+  canvasSectionCacheStatsRef.current.pendingFinalCommitObserved =
+    pendingFinalCommitObserved;
+  canvasSectionCacheStatsRef.current.scopedLayoutSnapshotMatched =
+    scopedLayoutSnapshotMatched;
+  canvasSectionCacheStatsRef.current.scopedLayoutSnapshotRoots =
+    layouts === layoutsProp ? [layouts] : [layouts, layoutsProp];
+  if (builderSectionPerfEnabled) {
+    const lifecycle = contentDndLifecycleRef.current;
+    const contentRenderAt = performance.now();
+    if (
+      canvasSectionCacheStatsRef.current.layoutsRootChanged &&
+      lifecycle.dropStartedAt != null
+    ) {
+      lifecycle.layoutCommitObservedAt = contentRenderAt;
+    }
+    const currentSignals = {
+      layouts,
+      layoutsProp,
+      preview,
+      isPreview,
+      isDraggingLayout,
+      currentDropElement,
+      currentDropElementPresent: Boolean(currentDropElement),
+      inlineDragActive,
+      selectID,
+      selectStatus: selectID?.status ?? "",
+      selectElementID: selectID?.ids?.eleID ?? null,
+      activeID,
+      structuralHoverTarget:
+        structuralOptionStoreRef.current.getState().hoverTarget,
+      pinnedSpanOptionId:
+        structuralOptionStoreRef.current.getState().pinnedSpanId,
+      pinnedColumnOptionId:
+        structuralOptionStoreRef.current.getState().pinnedColumnId,
+      positionElementSetting,
+      elementDropHighlight,
+      dropRenderKey,
+      suppressDropMotion,
+      activeItemState: activeItem,
+      modal,
+      alert,
+      carouselColToastOpen,
+      listImageColToastOpen,
+      postColToastOpen,
+      tabsInTabToastOpen,
+      postInPostToastOpen,
+      dataSliderTypeToastOpen,
+      device,
+      builderMode,
+      theme,
+      page,
+      activeDrag: activeDragRef.current,
+      activeDragType: String(
+        activeDragRef.current?.data?.current?.type || ""
+      ),
+      activeItem: activeItemRef.current,
+      dropTargetIndex: dropTargetRef.current?.index ?? null,
+      dropTargetType: dropTargetRef.current?.type ?? null,
+      dragToken: dragToken.current,
+      structureDropIntent: structureDropIntentRef.current,
+      scopedColumnDragOwner: scopedColumnDragOwnerRef.current,
+      blockedDropToast: blockedDropToastRef.current,
+      incomingDragSource: incomingDragPreviewRef.current?.source ?? null,
+      incomingDragPreview: incomingDragPreviewRef.current?.preview ?? null,
+      incomingDragType: incomingDragPreviewRef.current?.type ?? null,
+      elementHoverIntentKey: elementHoverIntentRef.current?.key ?? "",
+      sidebarPreviewIntentKey: sidebarPreviewIntentRef.current?.key ?? "",
+      dndPhase: lifecycle.phase,
+      dndDragStartedAt: lifecycle.dragStartedAt,
+      dndFirstMoveAt: lifecycle.firstMoveAt,
+      dndLastMoveAt: lifecycle.lastMoveAt,
+      dndDropStartedAt: lifecycle.dropStartedAt,
+      dndDropHandlerCompletedAt: lifecycle.dropHandlerCompletedAt,
+      dndLayoutCommitObservedAt: lifecycle.layoutCommitObservedAt,
+      dndCleanupAt: lifecycle.cleanupAt,
+    };
+    const previousSignals = contentRenderSignalsRef.current;
+    const comparisonFor = (signal) => {
+      const previousValue = previousSignals?.[signal];
+      const currentValue = currentSignals[signal];
+      const isReference = (value) =>
+        value !== null &&
+        (typeof value === "object" || typeof value === "function");
+      return isReference(previousValue) || isReference(currentValue)
+        ? "identity"
+        : "value";
+    };
+    const contentChangeReasons = [];
+    if (!previousSignals) {
+      contentChangeReasons.push("initial-content-render");
+    } else {
+      for (const signal of Object.keys(currentSignals)) {
+        if (!Object.is(previousSignals[signal], currentSignals[signal])) {
+          contentChangeReasons.push(
+            `${signal}:${comparisonFor(signal)}`
+          );
+        }
+      }
+    }
+    const changed = (signal) =>
+      contentChangeReasons.includes(
+        `${signal}:${comparisonFor(signal)}`
+      );
+    const observedLayoutCommit = changed("dndLayoutCommitObservedAt");
+    const observedCleanup = changed("dndCleanupAt");
+    let contentRenderCausePhase = "state-update";
+    if (!previousSignals) {
+      contentRenderCausePhase = "initial-render";
+    } else if (observedLayoutCommit && observedCleanup) {
+      contentRenderCausePhase = "drop-layout-commit+cleanup";
+    } else if (observedLayoutCommit) {
+      contentRenderCausePhase = "drop-layout-commit";
+    } else if (observedCleanup) {
+      contentRenderCausePhase =
+        lifecycle.dropStartedAt == null ? "cleanup" : "post-drop-cleanup";
+    } else if (changed("dndDropStartedAt")) {
+      contentRenderCausePhase = "drop-start";
+    } else if (changed("dndLastMoveAt")) {
+      contentRenderCausePhase = "active-move";
+    } else if (changed("dndDragStartedAt")) {
+      contentRenderCausePhase = "drag-start";
+    }
+    canvasSectionCacheStatsRef.current.contentChangeReasons =
+      contentChangeReasons;
+    canvasSectionCacheStatsRef.current.contentRenderCausePhase =
+      contentRenderCausePhase;
+    canvasSectionCacheStatsRef.current.contentRenderAt = contentRenderAt;
+    canvasSectionCacheStatsRef.current.contentDndLifecycle = {
+      ...lifecycle,
+    };
+    contentRenderSignalsRef.current = currentSignals;
+  }
+  if (canvasSectionCacheLayoutsRef.current !== layouts) {
+    // Preserve entries here so per-section reference checks can reuse
+    // structurally shared sections and report the exact misses. Entries are
+    // overwritten below and removed when their key no longer exists.
+    canvasSectionCacheLayoutsRef.current = layouts;
+    const liveKeys = new Set(
+      layouts.map((layout, index) =>
+        String(layout?.splitRowId || layout?.container?.id || index)
+      )
+    );
+    for (const key of canvasSectionRenderCacheRef.current.keys()) {
+      if (!liveKeys.has(key)) canvasSectionRenderCacheRef.current.delete(key);
+    }
+    const liveColumnKeys = new Set();
+    layouts.forEach((entry, sectionIndex) => {
+      const sectionId = String(entry?.container?.id ?? sectionIndex);
+      const branch = entry?.splitRowId ? "split" : "normal";
+      (entry?.columns || []).forEach((column) => {
+        liveColumnKeys.add(
+          `${branch}:${sectionId}:${String(column?.id ?? "")}`
+        );
+      });
+    });
+    for (const key of canvasColumnRenderCacheRef.current.keys()) {
+      if (!liveColumnKeys.has(key)) {
+        canvasColumnRenderCacheRef.current.delete(key);
+      }
+    }
+  }
+  inlineSortableRenderersRef.current.dragActive = dragRenderActive;
+  canvasSectionPreviousDragRef.current = {
+    active: dragRenderActive,
+    type: activeDragType,
+  };
+
+  const renderCachedColumnSubtree = (
+    {
+      branch,
+      sectionId,
+      column,
+      sectionIndex,
+      columnIndex,
+      splitIndex = -1,
+      splitSide = "",
+    },
+    render
+  ) => {
+    const cacheStats = canvasSectionCacheStatsRef.current;
+    const cacheKey = `${branch}:${String(sectionId)}:${String(column?.id ?? "")}`;
+    const cached = canvasColumnRenderCacheRef.current.get(cacheKey);
+    const cacheEnabled = !dragRenderActive && !preview && !isDraggingLayout;
+    let missReason = "no-entry";
+
+    if (!cacheEnabled) {
+      missReason = "drag-or-preview-bypass";
+    } else if (cached) {
+      if (cached.elementData !== column) {
+        missReason = "column-reference-changed";
+      } else if (cached.sectionIndex !== sectionIndex) {
+        missReason = "section-index-changed";
+      } else if (cached.columnIndex !== columnIndex) {
+        missReason = "column-index-changed";
+      } else if (
+        cached.splitIndex !== splitIndex ||
+        cached.splitSide !== splitSide
+      ) {
+        missReason = "split-position-changed";
+      } else if (cached.device !== device) {
+        missReason = "device-changed";
+      } else if (cached.builderMode !== builderMode) {
+        missReason = "builder-mode-changed";
+      } else if (cached.isPreview !== isPreview) {
+        missReason = "preview-mode-changed";
+      } else if (cached.theme !== theme) {
+        missReason = "theme-changed";
+      } else if (
+        cached.controlsVisible !== structuralRenderRevision.controlsVisible
+      ) {
+        missReason = "controls-mode-changed";
+      } else {
+        cacheStats.columnRenderCacheHits += 1;
+        return cached.element;
+      }
+    }
+
+    cacheStats.columnRenderCacheMisses += 1;
+    cacheStats.rebuiltColumnCount += 1;
+    cacheStats.columnRenderCacheMissReasons[missReason] =
+      (cacheStats.columnRenderCacheMissReasons[missReason] || 0) + 1;
+    const element = render();
+    if (cacheEnabled) {
+      canvasColumnRenderCacheRef.current.set(cacheKey, {
+        element,
+        elementData: column,
+        sectionIndex,
+        columnIndex,
+        splitIndex,
+        splitSide,
+        device,
+        builderMode,
+        isPreview,
+        theme,
+        controlsVisible: structuralRenderRevision.controlsVisible,
+      });
+    }
+    return element;
+  };
+
+  const offscreenIntrinsicSizeForKey = (nodeKey) => {
+    const measuredHeight = offscreenSectionSizeCacheRef.current.get(nodeKey);
+    const intrinsicHeight =
+      Number.isFinite(measuredHeight) && measuredHeight > 0
+        ? measuredHeight
+        : OFFSCREEN_SECTION_FALLBACK_HEIGHT_PX;
+    // Preserve normal inline sizing; only provide a remembered/fallback block size.
+    return `none auto ${Math.ceil(intrinsicHeight)}px`;
+  };
+
+  const offscreenStyleForSection = (nodeKey, eligible) => {
+    if (
+      !offscreenSectionExperimentEnabled ||
+      !eligible ||
+      dragRenderActive
+    ) {
+      return {};
+    }
+    return {
+      contentVisibility: "auto",
+      containIntrinsicSize: offscreenIntrinsicSizeForKey(nodeKey),
+    };
+  };
+
+  const ensureOffscreenSectionResizeObserver = () => {
+    if (
+      offscreenSectionResizeObserverRef.current ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return offscreenSectionResizeObserverRef.current;
+    }
+    offscreenSectionResizeObserverRef.current = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const node = entry.target;
+        const nodeKey = offscreenSectionKeyByNodeRef.current.get(node);
+        if (!nodeKey) continue;
+
+        let rendered = true;
+        if (typeof node.checkVisibility === "function") {
+          try {
+            rendered = node.checkVisibility({ contentVisibilityAuto: true });
+          } catch {
+            rendered = true;
+          }
+        } else {
+          const viewport = canvasScrollRef.current?.getBoundingClientRect?.();
+          const rect = node.getBoundingClientRect();
+          rendered =
+            !viewport ||
+            (rect.bottom > viewport.top && rect.top < viewport.bottom);
+        }
+        if (!rendered) continue;
+
+        const borderBoxSize = Array.isArray(entry.borderBoxSize)
+          ? entry.borderBoxSize[0]
+          : entry.borderBoxSize;
+        const measuredHeight =
+          Number(borderBoxSize?.blockSize) || Number(entry.contentRect?.height);
+        if (!Number.isFinite(measuredHeight) || measuredHeight <= 0) continue;
+
+        const roundedHeight = Math.ceil(measuredHeight);
+        if (
+          offscreenSectionSizeCacheRef.current.get(nodeKey) === roundedHeight
+        ) {
+          continue;
+        }
+        offscreenSectionSizeCacheRef.current.set(nodeKey, roundedHeight);
+        if (node.style.contentVisibility === "auto") {
+          node.style.containIntrinsicSize = `none auto ${roundedHeight}px`;
+        }
+      }
+    });
+    return offscreenSectionResizeObserverRef.current;
+  };
+
+  const registerOffscreenSectionNode = (
+    nodeKey,
+    node,
+    setSortableNodeRef,
+    eligible
+  ) => {
+    setSortableNodeRef(node);
+    const previousNode = offscreenSectionNodesRef.current.get(nodeKey);
+    if (previousNode && previousNode !== node) {
+      offscreenSectionResizeObserverRef.current?.unobserve(previousNode);
+      offscreenSectionKeyByNodeRef.current.delete(previousNode);
+      offscreenSectionNodesRef.current.delete(nodeKey);
+    }
+    if (!node || !offscreenSectionExperimentEnabled || !eligible) return;
+
+    offscreenSectionNodesRef.current.set(nodeKey, node);
+    offscreenSectionKeyByNodeRef.current.set(node, nodeKey);
+    ensureOffscreenSectionResizeObserver()?.observe(node);
+  };
+
+  const setOffscreenSectionDndBypass = (active) => {
+    if (!offscreenSectionExperimentEnabled) return;
+    for (const [nodeKey, node] of offscreenSectionNodesRef.current) {
+      if (!node?.isConnected) continue;
+      node.style.contentVisibility = active ? "visible" : "auto";
+      node.style.containIntrinsicSize = active
+        ? ""
+        : offscreenIntrinsicSizeForKey(nodeKey);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hoverPerfTimerRef.current != null) {
+        clearTimeout(hoverPerfTimerRef.current);
+        hoverPerfTimerRef.current = null;
+      }
+      hoverPerfRef.current = null;
+      structuralOptionStoreRef.current.setOnPublish(null);
+      elementSelectionStoreRef.current.clear();
+      offscreenSectionResizeObserverRef.current?.disconnect();
+      offscreenSectionResizeObserverRef.current = null;
+      offscreenSectionNodesRef.current.clear();
+      offscreenSectionSizeCacheRef.current.clear();
+    };
+  }, []);
+
   const activeInlineDragGroupRef = useRef(null);
   const carouselColWarnedRef = useRef(false);
   const listImageColWarnedRef = useRef(false);
   const postColWarnedRef = useRef(false);
-  const blockedDropToastRef = useRef(null);
   const toastSpeechVoicesRef = useRef([]);
   const toastSpeechLastRef = useRef({ key: "", at: 0 });
   const toastAudioRef = useRef(null);
   const toastAudioByKeyRef = useRef({});
   /** ใช้ใน during() คำนวณแทรก Section/Split ให้ตรงกับ ghost (y กึ่งกลาง Section) */
   const sectionReorderPointerRef = useRef({ x: 0, y: 0 });
+  const layoutDragTargetRef = useRef({ containerId: "", id: "" });
+  const dndPerfRef = useRef(null);
+  const offscreenSectionPerfRef = useRef({
+    commitTime: null,
+    phase: "",
+    samples: [],
+    scheduled: false,
+    contentRenderEpoch: 0,
+    contentRenderRan: false,
+    lastCommitRenderEpoch: 0,
+    cacheStats: null,
+    structuralRenders: null,
+    lastStructuralRenderCounts: {
+      shell: {},
+      heavy: {},
+    },
+  });
+  const structuralRenderCountsRef = useRef({
+    shell: {},
+    heavy: {},
+  });
+  const hoverPerfRef = useRef(null);
+  const hoverPerfTimerRef = useRef(null);
+  const structuralKinds = ["splitRow", "container", "column", "span"];
+  const structuralCountSnapshot = () => ({
+    shell: { ...structuralRenderCountsRef.current.shell },
+    heavy: { ...structuralRenderCountsRef.current.heavy },
+  });
+  const structuralCountDelta = (baseline) => ({
+    shell: Object.fromEntries(
+      structuralKinds.map((kind) => [
+        kind,
+        (structuralRenderCountsRef.current.shell[kind] || 0) -
+          (baseline?.shell?.[kind] || 0),
+      ])
+    ),
+    heavy: Object.fromEntries(
+      structuralKinds.map((kind) => [
+        kind,
+        (structuralRenderCountsRef.current.heavy[kind] || 0) -
+          (baseline?.heavy?.[kind] || 0),
+      ])
+    ),
+  });
+  const ensureHoverPerfSession = () => {
+    if (!builderHoverPerfEnabled) return null;
+    if (!hoverPerfRef.current) {
+      hoverPerfRef.current = {
+        startedAt: performance.now(),
+        updateCount: 0,
+        updateTotalMs: 0,
+        updateMaxMs: 0,
+        publishCount: 0,
+        publishTotalMs: 0,
+        publishMaxMs: 0,
+        notifiedKeyTotal: 0,
+        notifiedKeyMax: 0,
+        canvasCommits: 0,
+        canvasActualTotalMs: 0,
+        canvasActualMaxMs: 0,
+        contentRenderCount: 0,
+        lastContentRenderEpoch: canvasSectionRenderEpochRef.current,
+        contentRenderCauses: [],
+        optionVisibleDelayMaxMs: 0,
+        structuralBaseline: structuralCountSnapshot(),
+      };
+    }
+    if (hoverPerfTimerRef.current != null) {
+      clearTimeout(hoverPerfTimerRef.current);
+    }
+    hoverPerfTimerRef.current = setTimeout(() => {
+      hoverPerfTimerRef.current = null;
+      const perf = hoverPerfRef.current;
+      hoverPerfRef.current = null;
+      if (!perf) return;
+      const round = (value) =>
+        Math.round((Number(value) || 0) * 100) / 100;
+      const renders = structuralCountDelta(perf.structuralBaseline);
+      const summary = {
+        durationMs: round(performance.now() - perf.startedAt),
+        updateCount: perf.updateCount,
+        updateAvgMs: round(perf.updateTotalMs / Math.max(1, perf.updateCount)),
+        updateMaxMs: round(perf.updateMaxMs),
+        publishCount: perf.publishCount,
+        publishAvgMs: round(
+          perf.publishTotalMs / Math.max(1, perf.publishCount)
+        ),
+        publishMaxMs: round(perf.publishMaxMs),
+        notifiedKeysAvg: round(
+          perf.notifiedKeyTotal / Math.max(1, perf.publishCount)
+        ),
+        notifiedKeysMax: perf.notifiedKeyMax,
+        canvasProfilerCommits: perf.canvasCommits,
+        canvasProfilerActualAvgMs: round(
+          perf.canvasActualTotalMs / Math.max(1, perf.canvasCommits)
+        ),
+        canvasProfilerActualMaxMs: round(perf.canvasActualMaxMs),
+        contentRenderCount: perf.contentRenderCount,
+        contentRenderCauses: perf.contentRenderCauses,
+        maxInputToOptionVisibleMs: round(perf.optionVisibleDelayMaxMs),
+        structuralShellRenders: renders.shell,
+        structuralHeavyRenders: renders.heavy,
+      };
+      console.groupCollapsed(
+        `[Builder Hover Perf] ${summary.updateCount} updates / ${summary.notifiedKeysMax} max keys`
+      );
+      console.table(summary);
+      console.log("Copy this object:", summary);
+      console.groupEnd();
+    }, 400);
+    return hoverPerfRef.current;
+  };
+  structuralOptionStoreRef.current.setOnPublish(
+    builderHoverPerfEnabled
+      ? (sample) => {
+          if (sample.reason !== "hover") return;
+          const perf = ensureHoverPerfSession();
+          perf.publishCount += 1;
+          perf.publishTotalMs += sample.durationMs;
+          perf.publishMaxMs = Math.max(perf.publishMaxMs, sample.durationMs);
+          perf.notifiedKeyTotal += sample.notifiedKeyCount;
+          perf.notifiedKeyMax = Math.max(
+            perf.notifiedKeyMax,
+            sample.notifiedKeyCount
+          );
+        }
+      : null
+  );
+  const collisionContainerCacheRef = useRef({
+    byType: new Map(),
+    elementBuckets: new Map(),
+    byId: new Map(),
+    lastFilteredCount: 0,
+    lastUsedBucket: false,
+  });
+
+  const startSidebarNativeDragPerf = () => {
+    if (!builderSectionPerfEnabled || sidebarNativeDragPerfRef.current?.active) {
+      return;
+    }
+    sidebarNativeDragPerfRef.current = {
+      active: true,
+      startedAt: performance.now(),
+      lastAction: "cancel",
+      sections: canvasLayoutCounts.sections,
+      elements: canvasLayoutCounts.elements,
+      dragoverCount: 0,
+      dragoverTotalMs: 0,
+      dragoverMaxMs: 0,
+      previewCacheHits: 0,
+      hoverUpdateCount: 0,
+      hoverUpdateTotalMs: 0,
+      hoverUpdateMaxMs: 0,
+      targetChangeCount: 0,
+      duplicateTargetSkips: 0,
+      flipCaptureCount: 0,
+      flipCapturedNodeCount: 0,
+      flipCaptureTotalMs: 0,
+      flipCaptureMaxMs: 0,
+      isolatedPreviewMountCount: 0,
+      isolatedPreviewMountTotalMs: 0,
+      isolatedPreviewMountMaxMs: 0,
+      // Backward-compatible aliases for existing benchmark comparisons.
+      portalMountCommitCount: 0,
+      portalMountCommitTotalMs: 0,
+      portalMountCommitMaxMs: 0,
+      previewCommitCount: 0,
+      previewCommitTotalMs: 0,
+      previewCommitMaxMs: 0,
+      hostMoveCount: 0,
+      hostMoveTotalMs: 0,
+      hostMoveMaxMs: 0,
+      hostDetachCount: 0,
+      canvasRenderCommits: 0,
+      canvasRenderTotalMs: 0,
+      canvasRenderMaxMs: 0,
+      targetSectionRenderCommits: 0,
+      targetSectionRenderTotalMs: 0,
+      targetSectionRenderMaxMs: 0,
+      firstPreviewDelayMs: null,
+    };
+  };
+
+  const finishSidebarNativeDragPerf = (reason = "clear") => {
+    const perf = sidebarNativeDragPerfRef.current;
+    if (!perf?.active) return;
+    perf.active = false;
+    sidebarNativeDragPerfRef.current = null;
+    requestAnimationFrame(() => {
+      const round = (value) => Math.round((Number(value) || 0) * 100) / 100;
+      const summary = {
+        reason: reason === "clear" ? perf.lastAction : reason,
+        sections: perf.sections,
+        elements: perf.elements,
+        dragDurationMs: round(performance.now() - perf.startedAt),
+        dragoverCount: perf.dragoverCount,
+        dragoverAvgMs: round(
+          perf.dragoverTotalMs / Math.max(1, perf.dragoverCount)
+        ),
+        dragoverMaxMs: round(perf.dragoverMaxMs),
+        previewCacheHits: perf.previewCacheHits,
+        hoverUpdateCount: perf.hoverUpdateCount,
+        hoverUpdateAvgMs: round(
+          perf.hoverUpdateTotalMs / Math.max(1, perf.hoverUpdateCount)
+        ),
+        hoverUpdateMaxMs: round(perf.hoverUpdateMaxMs),
+        targetChangeCount: perf.targetChangeCount,
+        duplicateTargetSkips: perf.duplicateTargetSkips,
+        flipCaptureCount: perf.flipCaptureCount,
+        flipCapturedNodeCount: perf.flipCapturedNodeCount,
+        flipCapturedNodesAvg: round(
+          perf.flipCapturedNodeCount / Math.max(1, perf.flipCaptureCount)
+        ),
+        flipCaptureAvgMs: round(
+          perf.flipCaptureTotalMs / Math.max(1, perf.flipCaptureCount)
+        ),
+        flipCaptureMaxMs: round(perf.flipCaptureMaxMs),
+        isolatedPreviewMountCount: perf.isolatedPreviewMountCount,
+        isolatedPreviewMountAvgMs: round(
+          perf.isolatedPreviewMountTotalMs /
+            Math.max(1, perf.isolatedPreviewMountCount)
+        ),
+        isolatedPreviewMountMaxMs: round(perf.isolatedPreviewMountMaxMs),
+        portalMountCommitCount: perf.portalMountCommitCount,
+        portalMountCommitAvgMs: round(
+          perf.portalMountCommitTotalMs /
+            Math.max(1, perf.portalMountCommitCount)
+        ),
+        portalMountCommitMaxMs: round(perf.portalMountCommitMaxMs),
+        previewCommitCount: perf.previewCommitCount,
+        previewCommitAvgMs: round(
+          perf.previewCommitTotalMs / Math.max(1, perf.previewCommitCount)
+        ),
+        previewCommitMaxMs: round(perf.previewCommitMaxMs),
+        hostMoveCount: perf.hostMoveCount,
+        hostMoveAvgMs: round(
+          perf.hostMoveTotalMs / Math.max(1, perf.hostMoveCount)
+        ),
+        hostMoveMaxMs: round(perf.hostMoveMaxMs),
+        hostDetachCount: perf.hostDetachCount,
+        canvasRenderCommits: perf.canvasRenderCommits,
+        canvasRenderAvgMs: round(
+          perf.canvasRenderTotalMs / Math.max(1, perf.canvasRenderCommits)
+        ),
+        canvasRenderMaxMs: round(perf.canvasRenderMaxMs),
+        targetSectionRenderCommits: perf.targetSectionRenderCommits,
+        targetSectionRenderAvgMs: round(
+          perf.targetSectionRenderTotalMs /
+            Math.max(1, perf.targetSectionRenderCommits)
+        ),
+        targetSectionRenderMaxMs: round(perf.targetSectionRenderMaxMs),
+        firstPreviewDelayMs: round(perf.firstPreviewDelayMs),
+      };
+      console.groupCollapsed(
+        `[Builder Sidebar DnD Perf] ${summary.elements} elements`
+      );
+      console.table(summary);
+      console.log("Copy this object:", summary);
+      console.groupEnd();
+    });
+  };
+  finishSidebarNativeDragPerfRef.current = finishSidebarNativeDragPerf;
+
+  useEffect(() => {
+    const finishNativeSidebarDrag = () => {
+      finishSidebarNativeDragPerfRef.current?.("cancel");
+      clearSidebarPortalPreviewRef.current?.();
+    };
+    window.addEventListener("dragend", finishNativeSidebarDrag, false);
+    return () => {
+      window.removeEventListener("dragend", finishNativeSidebarDrag, false);
+      sidebarNativeDragPerfRef.current = null;
+    };
+  }, []);
+
+  const startDndPerf = (active, dndScope = "CANVAS") => {
+    markContentDndLifecycle(
+      "drag-start",
+      active?.data?.current?.type
+    );
+    collisionContainerCacheRef.current = {
+      byType: new Map(),
+      elementBuckets: new Map(),
+      byId: new Map(),
+      lastFilteredCount: 0,
+      lastUsedBucket: false,
+    };
+    dndPerfRef.current = {
+      active: true,
+      phase: "drag-start",
+      type: String(active?.data?.current?.type || "UNKNOWN"),
+      dndScope,
+      startedAt: performance.now(),
+      firstMoveDelayMs: null,
+      moveCount: 0,
+      moveTotalMs: 0,
+      moveMaxMs: 0,
+      collisionCount: 0,
+      collisionTotalMs: 0,
+      collisionMaxMs: 0,
+      collisionCandidatesTotal: 0,
+      collisionCandidatesMax: 0,
+      renderCommits: 0,
+      renderTotalMs: 0,
+      renderMaxMs: 0,
+      baseRenderMaxMs: 0,
+      renderSamples: [],
+      dragStartRenderCommits: 0,
+      dragStartRenderTotalMs: 0,
+      dragStartRenderMaxMs: 0,
+      bucketCollisionCount: 0,
+      fallbackCollisionCount: 0,
+      dropCommitMs: 0,
+      scopedIntentCount: 0,
+      scopedIntentTotalMs: 0,
+      scopedIntentMaxMs: 0,
+      scopedTargetChanges: 0,
+      scopedPlaceholderMounts: 0,
+      scopedPlaceholderMoves: 0,
+      scopedPlaceholderRemovals: 0,
+      scopedPlaceholderSkippedDuplicates: 0,
+      scopedPlaceholderResolveTotalMs: 0,
+      scopedPlaceholderResolveMaxMs: 0,
+      scopedPlaceholderWriteTotalMs: 0,
+      scopedPlaceholderWriteMaxMs: 0,
+      scopedFlipNodeCount: 0,
+      scopedFlipAnimationBatches: 0,
+      scopedFlipCaptureCount: 0,
+      scopedFlipCaptureTotalMs: 0,
+      scopedFlipCaptureMaxMs: 0,
+      scopedFlipWriteCount: 0,
+      scopedFlipWriteTotalMs: 0,
+      scopedFlipWriteMaxMs: 0,
+      scopedEventPointerCount: 0,
+      scopedCollisionPointerFallbackCount: 0,
+      lastAction: "drag-start",
+    };
+  };
+
+  const recordCanvasProfiler = (
+    _id,
+    _phase,
+    actualDuration,
+    baseDuration
+  ) => {
+    recordBuilderPanelOpenCanvasCommit(actualDuration);
+    recordPanelSliderCanvasCommit(actualDuration);
+    recordPanelSliderSectionCacheStats(canvasSectionCacheStatsRef.current);
+    const committedElementSelectionTransaction =
+      elementSelectionCacheTransactionRef.current;
+    const elementSelectionTransactionCommitted = Boolean(
+      committedElementSelectionTransaction &&
+        Object.is(
+          committedElementSelectionTransaction.nextSelection,
+          selectID
+        )
+    );
+    if (
+      builderSectionPerfEnabled &&
+      elementSelectionPerfSessionsRef.current.size > 0 &&
+      elementSelectionTransactionCommitted
+    ) {
+      const cacheStats = canvasSectionCacheStatsRef.current;
+      const completedSessions = [
+        ...elementSelectionPerfSessionsRef.current.values(),
+      ];
+      completedSessions.forEach((session) => {
+        session.canvasCommits += 1;
+        session.canvasActualMs += actualDuration;
+        session.canvasMaxMs = Math.max(session.canvasMaxMs, actualDuration);
+        session.cacheHits += cacheStats?.cacheHits || 0;
+        session.cacheMisses += cacheStats?.cacheMisses || 0;
+        Object.entries(cacheStats?.missReasons || {}).forEach(
+          ([reason, count]) => {
+            session.cacheMissReasons[reason] =
+              (session.cacheMissReasons[reason] || 0) + count;
+          }
+        );
+        session.clickToCommitWallMs = performance.now() - session.startedAt;
+        elementSelectionPerfSessionsRef.current.delete(session.id);
+      });
+      queueMicrotask(() => {
+        const round = (value) =>
+          Math.round((Number(value) || 0) * 100) / 100;
+        completedSessions.forEach((session) => {
+          console.info("[Builder Element Select Perf]", {
+            operation: session.operation,
+            previousElementId: session.previousElementId,
+            nextElementId: session.nextElementId,
+            previousContainerId: session.previousContainerId,
+            nextContainerId: session.nextContainerId,
+            clickToCommitWallMs: round(session.clickToCommitWallMs),
+            canvasCommits: session.canvasCommits,
+            canvasActualMs: round(session.canvasActualMs),
+            canvasMaxMs: round(session.canvasMaxMs),
+            cacheHits: session.cacheHits,
+            cacheMisses: session.cacheMisses,
+            cacheMissReasons: session.cacheMissReasons,
+            targetedLogicalSectionCount:
+              session.targetedLogicalSectionCount,
+            selectedBoundaryRenderCount:
+              session.selectedBoundaryRenderCount,
+          });
+        });
+      });
+    }
+    if (
+      builderSectionPerfEnabled &&
+      elementDeletePerfSessionsRef.current.size > 0
+    ) {
+      const cacheStats = canvasSectionCacheStatsRef.current;
+      const completedSessions = [
+        ...elementDeletePerfSessionsRef.current.values(),
+      ];
+      completedSessions.forEach((session) => {
+        session.canvasCommits += 1;
+        session.canvasActualMs += actualDuration;
+        session.canvasMaxMs = Math.max(session.canvasMaxMs, actualDuration);
+        session.cacheHits += cacheStats?.cacheHits || 0;
+        session.cacheMisses += cacheStats?.cacheMisses || 0;
+        session.columnRenderCacheHits +=
+          cacheStats?.columnRenderCacheHits || 0;
+        session.columnRenderCacheMisses +=
+          cacheStats?.columnRenderCacheMisses || 0;
+        session.rebuiltColumnCount += cacheStats?.rebuiltColumnCount || 0;
+        Object.entries(cacheStats?.missReasons || {}).forEach(
+          ([reason, count]) => {
+            session.cacheMissReasons[reason] =
+              (session.cacheMissReasons[reason] || 0) + count;
+          }
+        );
+        Object.entries(
+          cacheStats?.columnRenderCacheMissReasons || {}
+        ).forEach(([reason, count]) => {
+          session.columnRenderCacheMissReasons[reason] =
+            (session.columnRenderCacheMissReasons[reason] || 0) + count;
+        });
+        session.clickToCommitWallMs = performance.now() - session.startedAt;
+        elementDeletePerfSessionsRef.current.delete(session.id);
+      });
+      queueMicrotask(() => {
+        const round = (value) =>
+          Math.round((Number(value) || 0) * 100) / 100;
+        completedSessions.forEach((session) => {
+          console.info("[Builder Element Delete Perf]", {
+            targetType: session.targetType,
+            targetPath: session.targetPath,
+            preparationMs: round(session.preparationMs),
+            clickToCommitWallMs: round(session.clickToCommitWallMs),
+            canvasCommits: session.canvasCommits,
+            canvasActualMs: round(session.canvasActualMs),
+            canvasMaxMs: round(session.canvasMaxMs),
+            cacheHits: session.cacheHits,
+            cacheMisses: session.cacheMisses,
+            cacheMissReasons: session.cacheMissReasons,
+            columnRenderCacheHits: session.columnRenderCacheHits,
+            columnRenderCacheMisses: session.columnRenderCacheMisses,
+            columnRenderCacheMissReasons:
+              session.columnRenderCacheMissReasons,
+            rebuiltColumnCount: session.rebuiltColumnCount,
+            bucketSizeBefore: session.bucketSizeBefore,
+            bucketSizeAfter: session.bucketSizeAfter,
+            orphanGroupCleanupCount: session.orphanGroupCleanupCount,
+          });
+        });
+      });
+    }
+    if (elementSelectionTransactionCommitted) {
+      elementSelectionCacheTransactionRef.current = null;
+    }
+    if (
+      builderSectionPerfEnabled &&
+      spanStructurePerfSessionsRef.current.size > 0
+    ) {
+      const cacheStats = canvasSectionCacheStatsRef.current;
+      const completedSessions = [
+        ...spanStructurePerfSessionsRef.current.values(),
+      ];
+      completedSessions.forEach((session) => {
+        session.canvasCommits += 1;
+        session.canvasActualMs += actualDuration;
+        session.canvasMaxMs = Math.max(session.canvasMaxMs, actualDuration);
+        session.cacheHits += cacheStats?.cacheHits || 0;
+        session.cacheMisses += cacheStats?.cacheMisses || 0;
+        Object.entries(cacheStats?.missReasons || {}).forEach(
+          ([reason, count]) => {
+            session.cacheMissReasons[reason] =
+              (session.cacheMissReasons[reason] || 0) + count;
+          }
+        );
+        session.clickToCommitWallMs = performance.now() - session.startedAt;
+        spanStructurePerfSessionsRef.current.delete(session.id);
+      });
+      queueMicrotask(() => {
+        const round = (value) =>
+          Math.round((Number(value) || 0) * 100) / 100;
+        completedSessions.forEach((session) => {
+          console.info("[Builder Span Structure Perf]", {
+            operation: session.operation,
+            sourceSpanId: session.sourceSpanId,
+            targetSpanId: session.targetSpanId,
+            createdSpanId: session.createdSpanId,
+            removedSpanId: session.removedSpanId,
+            preparationMs: round(session.preparationMs),
+            clickToCommitWallMs: round(session.clickToCommitWallMs),
+            canvasCommits: session.canvasCommits,
+            canvasActualMs: round(session.canvasActualMs),
+            canvasMaxMs: round(session.canvasMaxMs),
+            cacheHits: session.cacheHits,
+            cacheMisses: session.cacheMisses,
+            cacheMissReasons: session.cacheMissReasons,
+            copiedElementCount: session.copiedElementCount,
+            removedElementCount: session.removedElementCount,
+            movedElementCount: session.movedElementCount,
+            remainingSpanCount: session.remainingSpanCount,
+          });
+        });
+      });
+    }
+    if (builderSectionPerfEnabled && presetPerfSessionsRef.current.size > 0) {
+      const cacheStats = canvasSectionCacheStatsRef.current;
+      const completedSessions = [...presetPerfSessionsRef.current.values()];
+      completedSessions.forEach((session) => {
+        session.canvasProfilerCommits += 1;
+        session.canvasProfilerActualMs += actualDuration;
+        session.canvasProfilerMaxMs = Math.max(
+          session.canvasProfilerMaxMs,
+          actualDuration
+        );
+        session.sectionCacheHits += cacheStats?.cacheHits || 0;
+        session.sectionCacheMisses += cacheStats?.cacheMisses || 0;
+        Object.entries(cacheStats?.missReasons || {}).forEach(([reason, count]) => {
+          session.sectionCacheMissReasons[reason] =
+            (session.sectionCacheMissReasons[reason] || 0) + count;
+        });
+        session.clickToCommitWallMs = performance.now() - session.startedAt;
+        presetPerfSessionsRef.current.delete(session.id);
+      });
+      queueMicrotask(() => {
+        const round = (value) =>
+          Math.round((Number(value) || 0) * 100) / 100;
+        completedSessions.forEach((session) => {
+          console.info("[Builder Preset Perf]", {
+            operation: session.operation,
+            target: session.target || null,
+            source: session.source || null,
+            presetId: session.presetId || null,
+            preparationMs: round(session.preparationMs),
+            storageReadMs: round(session.storageReadMs),
+            storageWriteMs: round(session.storageWriteMs),
+            serializeMs: round(session.serializeMs),
+            payloadBytes: session.payloadBytes || 0,
+            presetCount: session.presetCount || 0,
+            loadedElementCount: session.loadedElementCount || 0,
+            copiedElementCount: session.copiedElementCount || 0,
+            clickToCommitWallMs: round(session.clickToCommitWallMs),
+            canvasProfilerCommits: session.canvasProfilerCommits,
+            canvasProfilerActualMs: round(session.canvasProfilerActualMs),
+            canvasProfilerMaxMs: round(session.canvasProfilerMaxMs),
+            sectionCacheHits: session.sectionCacheHits,
+            sectionCacheMisses: session.sectionCacheMisses,
+            sectionCacheMissReasons: session.sectionCacheMissReasons,
+            presetUiCacheActive: Boolean(cacheStats?.presetUiCacheActive),
+            scopedLayoutCacheActive: Boolean(
+              cacheStats?.scopedLayoutCacheActive
+            ),
+            cacheStatsInterpretation:
+              "summed per canvas commit; React dev retries can report cache hits with zero misses",
+          });
+        });
+      });
+    }
+    presetUiCacheRef.current.active = false;
+    confirmModalUiCacheRef.current.active = false;
+    canvasSectionCacheStatsRef.current.scopedLayoutSnapshotRoots?.forEach(
+      completeScopedLayoutSnapshot
+    );
+    completeObservedPanelLayoutCommitsAfterPaint();
+    const columnSplitPerf = columnSplitPerfRef.current;
+    if (builderSectionPerfEnabled && columnSplitPerf) {
+      const cacheStats = canvasSectionCacheStatsRef.current;
+      columnSplitPerf.canvasCommits += 1;
+      columnSplitPerf.canvasActualMs += actualDuration;
+      columnSplitPerf.canvasActualMaxMs = Math.max(
+        columnSplitPerf.canvasActualMaxMs,
+        actualDuration
+      );
+      columnSplitPerf.cacheHits += cacheStats?.cacheHits || 0;
+      columnSplitPerf.cacheMisses += cacheStats?.cacheMisses || 0;
+      Object.entries(cacheStats?.missReasons || {}).forEach(([reason, count]) => {
+        columnSplitPerf.cacheMissReasons[reason] =
+          (columnSplitPerf.cacheMissReasons[reason] || 0) + count;
+      });
+      columnSplitPerf.clickToCommitWallMs =
+        performance.now() - columnSplitPerf.startedAt;
+      if (!columnSplitPerf.logScheduled) {
+        columnSplitPerf.logScheduled = true;
+        queueMicrotask(() => {
+          if (columnSplitPerfRef.current !== columnSplitPerf) return;
+          columnSplitPerfRef.current = null;
+          const round = (value) =>
+            Math.round((Number(value) || 0) * 100) / 100;
+          console.info("[Builder Cell Split Perf]", {
+            operation: columnSplitPerf.operation,
+            sourceColumn: columnSplitPerf.sourceColumn,
+            targetColumn: columnSplitPerf.targetColumn,
+            fromSpanCount: columnSplitPerf.fromSpanCount,
+            toSpanCount: columnSplitPerf.toSpanCount,
+            movedElementCount: columnSplitPerf.movedElementCount,
+            preparationMs: round(columnSplitPerf.preparationMs),
+            clickToCommitWallMs: round(
+              columnSplitPerf.clickToCommitWallMs
+            ),
+            canvasProfilerCommits: columnSplitPerf.canvasCommits,
+            canvasProfilerActualMs: round(columnSplitPerf.canvasActualMs),
+            canvasProfilerMaxMs: round(columnSplitPerf.canvasActualMaxMs),
+            sectionCacheHits: columnSplitPerf.cacheHits,
+            sectionCacheMisses: columnSplitPerf.cacheMisses,
+            sectionCacheMissReasons: columnSplitPerf.cacheMissReasons,
+            cacheStatsInterpretation:
+              "summed per canvas commit; React dev retries can report cache hits with zero misses",
+          });
+        });
+      }
+    }
+    const arrowPerf = arrowReorderPerfRef.current;
+    if (builderSectionPerfEnabled && arrowPerf) {
+      const cacheStats = canvasSectionCacheStatsRef.current;
+      arrowPerf.canvasCommits += 1;
+      arrowPerf.canvasActualMs += actualDuration;
+      arrowPerf.canvasActualMaxMs = Math.max(
+        arrowPerf.canvasActualMaxMs,
+        actualDuration
+      );
+      arrowPerf.cacheHits += cacheStats?.cacheHits || 0;
+      arrowPerf.cacheMisses += cacheStats?.cacheMisses || 0;
+      arrowPerf.scopedLayoutCacheActive ||= Boolean(
+        cacheStats?.scopedLayoutCacheActive
+      );
+      arrowPerf.elementCanvasDragRenderActive ||= Boolean(
+        cacheStats?.elementCanvasDragRenderActive
+      );
+      arrowPerf.sidebarPreviewRenderActive ||= Boolean(
+        cacheStats?.sidebarPreviewRenderActive
+      );
+      Object.entries(cacheStats?.missReasons || {}).forEach(([reason, count]) => {
+        arrowPerf.cacheMissReasons[reason] =
+          (arrowPerf.cacheMissReasons[reason] || 0) + count;
+      });
+      arrowPerf.clickToCommitWallMs = performance.now() - arrowPerf.startedAt;
+      if (!arrowPerf.logScheduled) {
+        arrowPerf.logScheduled = true;
+        queueMicrotask(() => {
+          if (arrowReorderPerfRef.current !== arrowPerf) return;
+          arrowReorderPerfRef.current = null;
+          console.info("[Builder Arrow Reorder Perf]", {
+            type: arrowPerf.type,
+            source: arrowPerf.source,
+            target: arrowPerf.target,
+            clickToCommitWallMs:
+              Math.round(arrowPerf.clickToCommitWallMs * 100) / 100,
+            canvasProfilerCommits: arrowPerf.canvasCommits,
+            canvasProfilerActualMs:
+              Math.round(arrowPerf.canvasActualMs * 100) / 100,
+            canvasProfilerMaxMs:
+              Math.round(arrowPerf.canvasActualMaxMs * 100) / 100,
+            sectionCacheHits: arrowPerf.cacheHits,
+            sectionCacheMisses: arrowPerf.cacheMisses,
+            sectionCacheMissReasons: arrowPerf.cacheMissReasons,
+            scopedLayoutCacheActive: arrowPerf.scopedLayoutCacheActive,
+            elementCanvasDragRenderActive:
+              arrowPerf.elementCanvasDragRenderActive,
+            sidebarPreviewRenderActive: arrowPerf.sidebarPreviewRenderActive,
+          });
+        });
+      }
+    }
+    const sizePerf = sizeChangePerfRef.current;
+    if (builderSectionPerfEnabled && sizePerf) {
+      const cacheStats = canvasSectionCacheStatsRef.current;
+      sizePerf.canvasCommits += 1;
+      sizePerf.canvasActualMs += actualDuration;
+      sizePerf.canvasActualMaxMs = Math.max(
+        sizePerf.canvasActualMaxMs,
+        actualDuration
+      );
+      sizePerf.cacheHits += cacheStats?.cacheHits || 0;
+      sizePerf.cacheMisses += cacheStats?.cacheMisses || 0;
+      Object.entries(cacheStats?.missReasons || {}).forEach(([reason, count]) => {
+        sizePerf.cacheMissReasons[reason] =
+          (sizePerf.cacheMissReasons[reason] || 0) + count;
+      });
+      sizePerf.clickToCommitWallMs = performance.now() - sizePerf.startedAt;
+      if (!sizePerf.logScheduled) {
+        sizePerf.logScheduled = true;
+        queueMicrotask(() => {
+          if (sizeChangePerfRef.current !== sizePerf) return;
+          sizeChangePerfRef.current = null;
+          const round = (value) =>
+            Math.round((Number(value) || 0) * 100) / 100;
+          console.info("[Builder Size Change Perf]", {
+            type: sizePerf.type,
+            target: sizePerf.target,
+            fromSize: sizePerf.fromSize,
+            toSize: sizePerf.toSize,
+            clickToCommitWallMs: round(sizePerf.clickToCommitWallMs),
+            canvasProfilerCommits: sizePerf.canvasCommits,
+            canvasProfilerActualMs: round(sizePerf.canvasActualMs),
+            canvasProfilerMaxMs: round(sizePerf.canvasActualMaxMs),
+            sectionCacheHits: sizePerf.cacheHits,
+            sectionCacheMisses: sizePerf.cacheMisses,
+            sectionCacheMissReasons: sizePerf.cacheMissReasons,
+            validationMs: round(sizePerf.validationMs),
+          });
+        });
+      }
+    }
+    const clonePerf = clonePerfRef.current;
+    if (builderSectionPerfEnabled && clonePerf) {
+      const cacheStats = canvasSectionCacheStatsRef.current;
+      clonePerf.canvasCommits += 1;
+      clonePerf.canvasActualMs += actualDuration;
+      clonePerf.canvasActualMaxMs = Math.max(
+        clonePerf.canvasActualMaxMs,
+        actualDuration
+      );
+      clonePerf.cacheHits += cacheStats?.cacheHits || 0;
+      clonePerf.cacheMisses += cacheStats?.cacheMisses || 0;
+      Object.entries(cacheStats?.missReasons || {}).forEach(([reason, count]) => {
+        clonePerf.cacheMissReasons[reason] =
+          (clonePerf.cacheMissReasons[reason] || 0) + count;
+      });
+      clonePerf.clickToCommitWallMs = performance.now() - clonePerf.startedAt;
+      if (!clonePerf.logScheduled) {
+        clonePerf.logScheduled = true;
+        queueMicrotask(() => {
+          if (clonePerfRef.current !== clonePerf) return;
+          clonePerfRef.current = null;
+          const round = (value) =>
+            Math.round((Number(value) || 0) * 100) / 100;
+          console.info("[Builder Clone Perf]", {
+            type: clonePerf.type,
+            source: clonePerf.source,
+            createdIds: clonePerf.createdIds,
+            sourceElementCount: clonePerf.sourceElementCount,
+            weightedCopiedItemCount: clonePerf.weightedCopiedItemCount,
+            preparationMs: round(clonePerf.preparationMs),
+            clickToCommitWallMs: round(clonePerf.clickToCommitWallMs),
+            canvasProfilerCommits: clonePerf.canvasCommits,
+            canvasProfilerActualMs: round(clonePerf.canvasActualMs),
+            canvasProfilerMaxMs: round(clonePerf.canvasActualMaxMs),
+            sectionCacheHits: clonePerf.cacheHits,
+            sectionCacheMisses: clonePerf.cacheMisses,
+            sectionCacheMissReasons: clonePerf.cacheMissReasons,
+            cacheStatsInterpretation:
+              "summed per canvas commit; React dev render retries can repeat counts",
+          });
+        });
+      }
+    }
+    const deletePerf = deletePerfRef.current;
+    if (builderSectionPerfEnabled && deletePerf) {
+      const cacheStats = canvasSectionCacheStatsRef.current;
+      deletePerf.canvasCommits += 1;
+      deletePerf.canvasActualMs += actualDuration;
+      deletePerf.canvasActualMaxMs = Math.max(
+        deletePerf.canvasActualMaxMs,
+        actualDuration
+      );
+      deletePerf.cacheHits += cacheStats?.cacheHits || 0;
+      deletePerf.cacheMisses += cacheStats?.cacheMisses || 0;
+      Object.entries(cacheStats?.missReasons || {}).forEach(([reason, count]) => {
+        deletePerf.cacheMissReasons[reason] =
+          (deletePerf.cacheMissReasons[reason] || 0) + count;
+      });
+      deletePerf.clickToCommitWallMs = performance.now() - deletePerf.startedAt;
+      if (!deletePerf.logScheduled) {
+        deletePerf.logScheduled = true;
+        queueMicrotask(() => {
+          if (deletePerfRef.current !== deletePerf) return;
+          deletePerfRef.current = null;
+          const round = (value) =>
+            Math.round((Number(value) || 0) * 100) / 100;
+          console.info("[Builder Delete Perf]", {
+            type: deletePerf.type,
+            source: deletePerf.source,
+            removedIds: deletePerf.removedIds,
+            removedCounts: deletePerf.removedCounts,
+            removedElementCount: deletePerf.removedElementCount,
+            weightedRemovedItemCount: deletePerf.weightedRemovedItemCount,
+            preparationMs: round(deletePerf.preparationMs),
+            clickToCommitWallMs: round(deletePerf.clickToCommitWallMs),
+            canvasProfilerCommits: deletePerf.canvasCommits,
+            canvasProfilerActualMs: round(deletePerf.canvasActualMs),
+            canvasProfilerMaxMs: round(deletePerf.canvasActualMaxMs),
+            sectionCacheHits: deletePerf.cacheHits,
+            sectionCacheMisses: deletePerf.cacheMisses,
+            sectionCacheMissReasons: deletePerf.cacheMissReasons,
+            cacheStatsInterpretation:
+              "summed per canvas commit; React dev render retries can produce cache hits with zero misses",
+          });
+        });
+      }
+    }
+    const sidebarPerf = sidebarNativeDragPerfRef.current;
+    if (sidebarPerf?.active) {
+      sidebarPerf.canvasRenderCommits += 1;
+      sidebarPerf.canvasRenderTotalMs += actualDuration;
+      sidebarPerf.canvasRenderMaxMs = Math.max(
+        sidebarPerf.canvasRenderMaxMs,
+        actualDuration
+      );
+    }
+    const hoverPerf = hoverPerfRef.current;
+    if (builderHoverPerfEnabled && hoverPerf) {
+      hoverPerf.canvasCommits += 1;
+      hoverPerf.canvasActualTotalMs += actualDuration;
+      hoverPerf.canvasActualMaxMs = Math.max(
+        hoverPerf.canvasActualMaxMs,
+        actualDuration
+      );
+      const contentEpoch = canvasSectionRenderEpochRef.current;
+      if (contentEpoch !== hoverPerf.lastContentRenderEpoch) {
+        hoverPerf.contentRenderCount += Math.max(
+          1,
+          contentEpoch - hoverPerf.lastContentRenderEpoch
+        );
+        hoverPerf.lastContentRenderEpoch = contentEpoch;
+        const reasons =
+          canvasSectionCacheStatsRef.current?.contentChangeReasons || [];
+        for (const reason of reasons) {
+          if (!hoverPerf.contentRenderCauses.includes(reason)) {
+            hoverPerf.contentRenderCauses.push(reason);
+          }
+        }
+      }
+    }
+    const perf = dndPerfRef.current;
+    if (!perf?.active) return;
+    perf.renderCommits += 1;
+    perf.renderTotalMs += actualDuration;
+    perf.renderMaxMs = Math.max(perf.renderMaxMs, actualDuration);
+    perf.baseRenderMaxMs = Math.max(perf.baseRenderMaxMs, baseDuration);
+    if (perf.phase === "drag-start") {
+      perf.dragStartRenderCommits += 1;
+      perf.dragStartRenderTotalMs += actualDuration;
+      perf.dragStartRenderMaxMs = Math.max(
+        perf.dragStartRenderMaxMs,
+        actualDuration
+      );
+    }
+    perf.renderSamples.push({
+      atMs: Math.round((performance.now() - perf.startedAt) * 100) / 100,
+      phase: _phase,
+      actualMs: Math.round(actualDuration * 100) / 100,
+      baseMs: Math.round(baseDuration * 100) / 100,
+      action: perf.lastAction,
+    });
+    if (actualDuration >= 50) {
+      console.warn("[Builder DnD Slow Render]", {
+        action: perf.lastAction,
+        actualMs: Math.round(actualDuration * 100) / 100,
+        cacheSize: canvasSectionRenderCacheRef.current.size,
+        source: activeDragRef.current?.data?.current,
+        target: dropTargetRef.current,
+      });
+    }
+  };
+
+  const recordOffscreenSectionProfiler = (
+    profilerId,
+    phase,
+    actualDuration,
+    baseDuration,
+    _startTime,
+    commitTime
+  ) => {
+    const sidebarPerf = sidebarNativeDragPerfRef.current;
+    if (sidebarPerf?.active) {
+      const nativeProfilerMatch = /^BuilderSection:(\d+):/.exec(
+        String(profilerId || "")
+      );
+      const sectionIndex = Number(nativeProfilerMatch?.[1]);
+      const targetSectionIndex =
+        dropTargetRef.current?.type === "ELEMENT" ||
+        dropTargetRef.current?.type === "TAB-ELEMENT"
+          ? dropTargetRef.current?.index?.conI
+          : null;
+      if (
+        Number.isInteger(sectionIndex) &&
+        sectionIndex === targetSectionIndex
+      ) {
+        sidebarPerf.targetSectionRenderCommits += 1;
+        sidebarPerf.targetSectionRenderTotalMs += actualDuration;
+        sidebarPerf.targetSectionRenderMaxMs = Math.max(
+          sidebarPerf.targetSectionRenderMaxMs,
+          actualDuration
+        );
+      }
+    }
+    if (!benchmarkOffscreenSections) return;
+    const perf = offscreenSectionPerfRef.current;
+    if (perf.commitTime !== commitTime) {
+      perf.commitTime = commitTime;
+      perf.phase = phase;
+      perf.samples = [];
+      const currentStructuralCounts = structuralRenderCountsRef.current;
+      const previousStructuralCounts = perf.lastStructuralRenderCounts;
+      const structuralKinds = ["splitRow", "container", "column", "span"];
+      perf.structuralRenders = {
+        shell: Object.fromEntries(
+          structuralKinds.map((kind) => [
+            kind,
+            (currentStructuralCounts.shell[kind] || 0) -
+              (previousStructuralCounts.shell[kind] || 0),
+          ])
+        ),
+        heavy: Object.fromEntries(
+          structuralKinds.map((kind) => [
+            kind,
+            (currentStructuralCounts.heavy[kind] || 0) -
+              (previousStructuralCounts.heavy[kind] || 0),
+          ])
+        ),
+      };
+      perf.lastStructuralRenderCounts = {
+        shell: { ...currentStructuralCounts.shell },
+        heavy: { ...currentStructuralCounts.heavy },
+      };
+      const cacheStats = canvasSectionCacheStatsRef.current;
+      const renderEpoch = cacheStats?.renderEpoch || 0;
+      perf.contentRenderEpoch = renderEpoch;
+      perf.contentRenderRan = perf.lastCommitRenderEpoch !== renderEpoch;
+      perf.lastCommitRenderEpoch = renderEpoch;
+      perf.cacheStats = cacheStats
+        ? {
+            ...cacheStats,
+            missReasons: { ...cacheStats.missReasons },
+          }
+        : null;
+    }
+    const profilerKey = String(profilerId || "");
+    const profilerMatch = /^BuilderSection:(\d+):(.*)$/.exec(profilerKey);
+    const sectionIndex = Number(profilerMatch?.[1]);
+    const rawId = profilerMatch?.[2] || profilerKey;
+    perf.samples.push({
+      id: rawId,
+      index: sectionIndex,
+      actualDuration,
+      baseDuration,
+    });
+    if (perf.scheduled) return;
+    perf.scheduled = true;
+    requestAnimationFrame(() => {
+      perf.scheduled = false;
+      const scroller = canvasScrollRef.current;
+      const samples = perf.samples;
+      if (!scroller || samples.length === 0) return;
+
+      const geometryStartedAt = performance.now();
+      const viewportRect = scroller.getBoundingClientRect();
+      let visibleSections = 0;
+      let offscreenSections = 0;
+      let visibleActualMs = 0;
+      let offscreenActualMs = 0;
+      let visibleBaseMs = 0;
+      let offscreenBaseMs = 0;
+      let unresolvedSections = 0;
+      const sectionRows = [];
+
+      for (const sample of samples) {
+        const node = scroller.querySelector(
+          `[data-drop="SECTION"][data-section-index="${sample.index}"]`
+        );
+        if (!node || node.getAttribute("data-drop") !== "SECTION") {
+          unresolvedSections += 1;
+          continue;
+        }
+        const rect = node.getBoundingClientRect();
+        const visible =
+          rect.bottom > viewportRect.top && rect.top < viewportRect.bottom;
+        if (visible) {
+          visibleSections += 1;
+          visibleActualMs += sample.actualDuration;
+          visibleBaseMs += sample.baseDuration;
+        } else {
+          offscreenSections += 1;
+          offscreenActualMs += sample.actualDuration;
+          offscreenBaseMs += sample.baseDuration;
+        }
+        sectionRows.push({
+          index: sample.index,
+          id: sample.id,
+          visibility: visible ? "visible" : "offscreen",
+          actualMs: Math.round(sample.actualDuration * 100) / 100,
+          baseMs: Math.round(sample.baseDuration * 100) / 100,
+          top: Math.round(rect.top),
+          height: Math.round(rect.height),
+        });
+      }
+
+      const round = (value) =>
+        Math.round((Number(value) || 0) * 100) / 100;
+      const summary = {
+        phase: perf.phase,
+        contentRenderEpoch: perf.contentRenderEpoch,
+        contentRenderRan: perf.contentRenderRan,
+        weightedItems: canvasLayoutCounts.total,
+        renderedSections: samples.length,
+        cacheHits: perf.cacheStats?.cacheHits || 0,
+        cacheMisses: perf.cacheStats?.cacheMisses || 0,
+        cacheMissReasons: perf.cacheStats?.missReasons || {},
+        layoutsRootChanged: Boolean(perf.cacheStats?.layoutsRootChanged),
+        dragRenderActive: Boolean(perf.cacheStats?.dragRenderActive),
+        reusePostElementDropCache: Boolean(
+          perf.cacheStats?.reusePostElementDropCache
+        ),
+        contentChangeReasons: perf.cacheStats?.contentChangeReasons || [],
+        contentRenderCausePhase:
+          perf.cacheStats?.contentRenderCausePhase || "unavailable",
+        contentRenderAt: perf.cacheStats?.contentRenderAt ?? null,
+        contentDndLifecycle: perf.cacheStats?.contentDndLifecycle || null,
+        structuralShellRenders: perf.structuralRenders?.shell || {},
+        structuralHeavyRenders: perf.structuralRenders?.heavy || {},
+        offscreenExperimentEnabled: offscreenSectionExperimentEnabled,
+        offscreenEligibleSections: offscreenEligibleSectionCount,
+        visibleSections,
+        offscreenSections,
+        unresolvedSections,
+        visibleActualMs: round(visibleActualMs),
+        offscreenActualMs: round(offscreenActualMs),
+        visibleBaseMs: round(visibleBaseMs),
+        offscreenBaseMs: round(offscreenBaseMs),
+        offscreenRenderSharePct: round(
+          (offscreenActualMs /
+            Math.max(0.001, visibleActualMs + offscreenActualMs)) *
+            100
+        ),
+        geometryReadMs: round(performance.now() - geometryStartedAt),
+      };
+      console.groupCollapsed(
+        `[Builder Section Perf] ${summary.offscreenSections} offscreen / ${summary.renderedSections} rendered`
+      );
+      console.table(summary);
+      console.table(sectionRows);
+      console.log("Copy this object:", { summary, sections: sectionRows });
+      console.groupEnd();
+    });
+  };
+
+  const finishDndPerf = (reason) => {
+    const perf = dndPerfRef.current;
+    if (!perf?.active) return;
+    perf.active = false;
+    requestAnimationFrame(() => {
+      const round = (value) => Math.round((Number(value) || 0) * 100) / 100;
+      const durationMs = performance.now() - perf.startedAt;
+      const summary = {
+        reason,
+        type: perf.type,
+        dndScope: perf.dndScope,
+        sections: canvasLayoutCounts.sections,
+        elements: canvasLayoutCounts.elements,
+        weightedItems: canvasLayoutCounts.total,
+        dragDurationMs: round(durationMs),
+        firstMoveDelayMs: round(perf.firstMoveDelayMs),
+        moveCount: perf.moveCount,
+        moveAvgMs: round(perf.moveTotalMs / Math.max(1, perf.moveCount)),
+        moveMaxMs: round(perf.moveMaxMs),
+        collisionCount: perf.collisionCount,
+        collisionAvgMs: round(
+          perf.collisionTotalMs / Math.max(1, perf.collisionCount)
+        ),
+        collisionMaxMs: round(perf.collisionMaxMs),
+        collisionCandidatesAvg: round(
+          perf.collisionCandidatesTotal / Math.max(1, perf.collisionCount)
+        ),
+        collisionCandidatesMax: perf.collisionCandidatesMax,
+        renderCommits: perf.renderCommits,
+        renderTotalMs: round(perf.renderTotalMs),
+        renderAvgMs: round(
+          perf.renderTotalMs / Math.max(1, perf.renderCommits)
+        ),
+        renderMaxMs: round(perf.renderMaxMs),
+        baseRenderMaxMs: round(perf.baseRenderMaxMs),
+        dragStartCanvasCommits: perf.dragStartRenderCommits,
+        dragStartCanvasActualMs: round(perf.dragStartRenderTotalMs),
+        dragStartCanvasActualMaxMs: round(perf.dragStartRenderMaxMs),
+        bucketCollisionCount: perf.bucketCollisionCount,
+        fallbackCollisionCount: perf.fallbackCollisionCount,
+        dropCommitMs: round(perf.dropCommitMs),
+        scopedIntentCount: perf.scopedIntentCount,
+        scopedIntentAvgMs: round(
+          perf.scopedIntentTotalMs / Math.max(1, perf.scopedIntentCount)
+        ),
+        scopedIntentMaxMs: round(perf.scopedIntentMaxMs),
+        scopedTargetChanges: perf.scopedTargetChanges,
+        scopedPlaceholderMounts: perf.scopedPlaceholderMounts,
+        scopedPlaceholderMoves: perf.scopedPlaceholderMoves,
+        scopedPlaceholderRemovals: perf.scopedPlaceholderRemovals,
+        scopedPlaceholderSkippedDuplicates:
+          perf.scopedPlaceholderSkippedDuplicates,
+        scopedPlaceholderResolveAvgMs: round(
+          perf.scopedPlaceholderResolveTotalMs /
+            Math.max(
+              1,
+              perf.scopedPlaceholderMounts + perf.scopedPlaceholderMoves
+            )
+        ),
+        scopedPlaceholderResolveMaxMs: round(
+          perf.scopedPlaceholderResolveMaxMs
+        ),
+        scopedPlaceholderWriteAvgMs: round(
+          perf.scopedPlaceholderWriteTotalMs /
+            Math.max(
+              1,
+              perf.scopedPlaceholderMounts +
+                perf.scopedPlaceholderMoves +
+                perf.scopedPlaceholderRemovals
+            )
+        ),
+        scopedPlaceholderWriteMaxMs: round(perf.scopedPlaceholderWriteMaxMs),
+        scopedFlipNodeCount: perf.scopedFlipNodeCount,
+        scopedFlipAnimationBatches: perf.scopedFlipAnimationBatches,
+        scopedFlipCaptureAvgMs: round(
+          perf.scopedFlipCaptureTotalMs /
+            Math.max(1, perf.scopedFlipCaptureCount)
+        ),
+        scopedFlipCaptureMaxMs: round(perf.scopedFlipCaptureMaxMs),
+        scopedFlipWriteAvgMs: round(
+          perf.scopedFlipWriteTotalMs / Math.max(1, perf.scopedFlipWriteCount)
+        ),
+        scopedFlipWriteMaxMs: round(perf.scopedFlipWriteMaxMs),
+        scopedEventPointerCount: perf.scopedEventPointerCount,
+        scopedCollisionPointerFallbackCount:
+          perf.scopedCollisionPointerFallbackCount,
+        topRenderCommits: [...perf.renderSamples]
+          .sort((a, b) => b.actualMs - a.actualMs)
+          .slice(0, 8),
+      };
+      console.groupCollapsed(
+        `[Builder DnD Perf] ${summary.type} — ${summary.elements} elements`
+      );
+      console.table(summary);
+      console.table(summary.topRenderCommits);
+      console.log("Copy this object:", summary);
+      console.groupEnd();
+    });
+  };
   // การเก็บ Ref ของ Layout
   const contained = useRef([]); // Ref ของ container
   const columned = useRef([]); // Ref ของ column
@@ -2655,6 +5158,52 @@ const Content = ({
   const nestedSpaned = useRef([]); // Ref ของ nestedSpan
   const layoutsRef = useRef(layouts);
   layoutsRef.current = layouts;
+  const pendingDeleteRefGridOpsRef = useRef([]);
+  useLayoutEffect(() => {
+    const operations = pendingDeleteRefGridOpsRef.current.splice(0);
+    const spliceOuterGrid = (gridRef, layoutIndex) => {
+      const grid = gridRef?.current;
+      if (Array.isArray(grid)) grid.splice(layoutIndex, 1);
+    };
+    for (const operation of operations) {
+      if (operation.removeLayout) {
+        spliceOuterGrid(contained, operation.layoutIndex);
+        spliceOuterGrid(columned, operation.layoutIndex);
+        spliceOuterGrid(spaned, operation.layoutIndex);
+        spliceOuterGrid(nestedSpaned, operation.layoutIndex);
+        continue;
+      }
+      if (operation.removeSpan) {
+        const spanGrid =
+          spaned.current?.[operation.layoutIndex]?.[operation.columnIndex];
+        const nestedGrid =
+          nestedSpaned.current?.[operation.layoutIndex]?.[operation.columnIndex];
+        if (operation.collapseToColumn) {
+          if (spaned.current?.[operation.layoutIndex]) {
+            spaned.current[operation.layoutIndex][operation.columnIndex] = null;
+          }
+          if (nestedSpaned.current?.[operation.layoutIndex]) {
+            nestedSpaned.current[operation.layoutIndex][operation.columnIndex] =
+              null;
+          }
+        } else {
+          if (Array.isArray(spanGrid)) {
+            spanGrid.splice(operation.spanIndex, 1);
+          }
+          if (Array.isArray(nestedGrid)) {
+            nestedGrid.splice(operation.spanIndex, 1);
+          }
+        }
+        continue;
+      }
+      for (const gridRef of [columned, spaned, nestedSpaned]) {
+        const sectionGrid = gridRef?.current?.[operation.layoutIndex];
+        if (Array.isArray(sectionGrid)) {
+          sectionGrid.splice(operation.columnIndex, 1);
+        }
+      }
+    }
+  }, [layouts]);
   const textEditModalRef = useRef(textEditModal);
   textEditModalRef.current = textEditModal;
   /** กัน auto-select ทันทีหลัง drop ปุ่มใน Tab/DataSlider area */
@@ -4250,22 +6799,33 @@ const Content = ({
   const renderTabsNestedElement = useCallback(
     (tabsHostId, tabElement, tabElementIndex, tabId) => {
       if (!tabElement) return null;
+      const hostLocation = findLayoutElementListIndex(layouts, tabsHostId);
+      const selectionIds = {
+        conID: hostLocation?.conID,
+        colID: hostLocation?.colID,
+        spnID: hostLocation?.spnID,
+        nestID: hostLocation?.nestID,
+        tabsHostId,
+        tabId,
+        eleID: tabElement.id,
+      };
       const getFresh = () =>
         findLayoutElementById(layouts, String(tabElement.id)) ?? tabElement;
       return (
-        <div
-          key={String(tabElement.id || `tab-nested-${tabElementIndex}`)}
-          data-tabs-nested-edit-id={String(tabElement.id || "")}
-          data-tab-nested-id={String(tabElement.id || "")}
-          className="w-full"
-          onDoubleClickCapture={(e) => {
-            /* Layout Mode: intercept & open element's config panel */
-            if (builderMode !== "Layout Mode") return;
-            e.preventDefault();
-            e.stopPropagation();
-            openTabsNestedElementEditor(tabsHostId, tabId, tabElement);
-          }}
-        >
+        <TabNestedElementSelectionBoundary ids={selectionIds}>
+          <div
+            key={String(tabElement.id || `tab-nested-${tabElementIndex}`)}
+            data-tabs-nested-edit-id={String(tabElement.id || "")}
+            data-tab-nested-id={String(tabElement.id || "")}
+            className="w-full"
+            onDoubleClickCapture={(e) => {
+              /* Layout Mode: intercept & open element's config panel */
+              if (builderMode !== "Layout Mode") return;
+              e.preventDefault();
+              e.stopPropagation();
+              openTabsNestedElementEditor(tabsHostId, tabId, tabElement);
+            }}
+          >
           <Element
             element={tabElement}
             openOffcavanas={openOffcavanas}
@@ -4386,7 +6946,8 @@ const Content = ({
               openListBoxItemImageEdit(getFresh(), itemIndex)
             }
           />
-        </div>
+          </div>
+        </TabNestedElementSelectionBoundary>
       );
     },
     [
@@ -4430,10 +6991,6 @@ const Content = ({
   }, [builderMode, setLayout]);
   useEffect(() => {
     if(builderMode !== "Layout Mode"){
-      setDisableConDrag(true);
-      setDisableEleDrag(true);
-      setDisableColDrag(true);
-      setDisableSpnDrag(true);
       setIsDraggingLayout(false);
       setActiveID(null);
       setActiveItem(null);
@@ -4463,15 +7020,14 @@ const Content = ({
   }, [preview]); // ยกเลิก Ghost จำลองตำแหน่ง layout ใหม่เมื่อไม่มีการวางเกิดขึ้น
 
   useEffect(() => {
-    if (!preview || !handleDropElement()) return;
     const onDropCapture = (e) => {
-      handleDrop(e);
+      windowDropHandlerRef.current?.(e);
     };
     window.addEventListener("drop", onDropCapture, { capture: true });
     return () => {
       window.removeEventListener("drop", onDropCapture, { capture: true });
     };
-  }, [layouts, preview,handleDropElement()]);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return undefined;
@@ -4726,7 +7282,8 @@ const Content = ({
     return newFont;
   }; // แปลง Font Tailwind ให้เป็น Font CSS
 
-  const updateHoverPosition = (x, y) => {
+  const updateHoverPosition = (x, y, inputAt = 0) => {
+    const updateStartedAt = builderHoverPerfEnabled ? performance.now() : 0;
     const el = document.elementFromPoint(x, y);
     const control = el?.closest(`[data-drop="BTN"],[data-drop="COLUMN-BTN"]`);
     const column = el?.closest(`[data-drop="COLUMN"]`);
@@ -4735,66 +7292,129 @@ const Content = ({
     // MiniSpan ถูกถอดออกแล้ว: กันการจับ SPAN ซ้ำจน logic เข้า nested ผิด
     const nestedSpan = null;
     const element = el?.closest(`[data-drop="ELEMENT"]`);
+    const sectionDomId = section?.getAttribute("id") || "";
+    const splitHalf = el?.closest("[data-split-secid]");
+    const sectionId =
+      splitHalf?.getAttribute("data-split-secid") || sectionDomId;
+    const splitRowId =
+      splitHalf && sectionDomId && sectionDomId !== sectionId
+        ? sectionDomId
+        : "";
+    const columnId = layoutColumnKeyFromDomColumnId(
+      column?.getAttribute("id") || ""
+    );
+    const publish = (target) => {
+      const changed = structuralOptionStoreRef.current.publishHover(
+        target,
+        inputAt
+      );
+      if (builderHoverPerfEnabled) {
+        const perf = ensureHoverPerfSession();
+        perf.updateCount += 1;
+        const elapsed = performance.now() - updateStartedAt;
+        perf.updateTotalMs += elapsed;
+        perf.updateMaxMs = Math.max(perf.updateMaxMs, elapsed);
+      }
+      return changed;
+    };
 
     if (control) {
       const spanOwner = control.closest(`[data-drop="SPAN"]`);
       if (spanOwner) {
-        setHover(spanOwner.getAttribute("id"));
+        const spanDomId = spanOwner.getAttribute("id");
+        publish({
+          kind: "span",
+          id: spanDomIdToSpanKey(spanDomId) ?? spanDomId?.split("/").pop(),
+          columnId,
+          sectionId,
+          splitRowId,
+        });
         return "spn-btn";
       }
       const columnOwner = control.closest(`[data-drop="COLUMN"]`);
       if (columnOwner) {
         const colKey = layoutColumnKeyFromDomColumnId(columnOwner.getAttribute("id"));
         if (colKey) {
-          setHover(colKey);
+          publish({
+            kind: "column",
+            id: colKey,
+            columnId: colKey,
+            sectionId,
+            splitRowId,
+          });
           return "col-btn";
         }
       }
     }
 
     if (!section && !column && !element) {
-      setHover(null);
+      publish(null);
       return;
     }
 
     if (nestedSpan) {
       let msid = nestedSpan.getAttribute("id");
-      setHover(msid);
+      publish({
+        kind: "span",
+        id: nestedSpanDomIdToKey(msid) ?? msid?.split("/").pop(),
+        columnId,
+        sectionId,
+        splitRowId,
+      });
       return "mspn";
     }
 
     if (span && column) {
       // ให้ More Option ของคอลัมน์ที่กดค้างอยู่ต่อได้ ถ้ายังอยู่ในคอลัมน์เดิม
       // และเคลียร์เฉพาะกรณี pointer ไปอยู่ span ของคอลัมน์อื่น
-      const columnDomId = column.getAttribute("id");
-      const spanOwnerColKey = layoutColumnKeyFromDomColumnId(columnDomId);
+      const spanOwnerColKey = columnId;
+      const pinnedColumnOptionId =
+        structuralOptionStoreRef.current.getState().pinnedColumnId;
       if (
         pinnedColumnOptionId &&
         spanOwnerColKey &&
         pinnedColumnOptionId !== spanOwnerColKey
       ) {
-        setPinnedColumnOptionId(null);
+        structuralOptionStoreRef.current.setPinned("column", null);
       }
-      let sid = span.getAttribute("id");
-      setHover(sid);
+      const spanDomId = span.getAttribute("id");
+      publish({
+        kind: "span",
+        id: spanDomIdToSpanKey(spanDomId) ?? spanDomId?.split("/").pop(),
+        columnId,
+        sectionId,
+        splitRowId,
+      });
       return "spn";
     } else if (section && column) {
-      const columnDomId = column.getAttribute("id");
-      const colKey = layoutColumnKeyFromDomColumnId(columnDomId);
+      const colKey = columnId;
       if (colKey) {
-        setHover(colKey);
+        publish({
+          kind: "column",
+          id: colKey,
+          columnId: colKey,
+          sectionId,
+          splitRowId,
+        });
         return "col";
       }
-      const secId = section.getAttribute("id");
-      setHover(secId);
+      publish({
+        kind: "section",
+        id: sectionId,
+        sectionId,
+        splitRowId,
+      });
       return "sec";
     } else if (section && !column && !element) {
-      const id = section.getAttribute("id");
-      // For split row wrappers, find the specific half the cursor is over
-      const splitHalf = el?.closest("[data-split-secid]");
-      setHover(splitHalf ? splitHalf.getAttribute("data-split-secid") : id);
+      publish({
+        kind: "section",
+        id: sectionId,
+        sectionId,
+        splitRowId,
+      });
       return "sec";
     }
+    publish(null);
   };
 
   const setDragRef = (el) => {
@@ -4845,136 +7465,16 @@ const Content = ({
     return { conID: layouts[conI].container.id, colID };
   };
 
-  const updateDND = (x, y) => {
-    const el = document.elementFromPoint(x, y);
-    const section = el?.closest(`[data-drop="SECTION"]`);
-    const column = el?.closest(`[data-drop="COLUMN"]`);
-    const element = el?.closest(`[data-drop="ELEMENT"]`);
-    const span = el?.closest(`[data-drop="SPAN"]`);
-    const nestedSpan = el?.closest(`[data-drop="SPAN"]`);
-
-    if (!section) {
-      setDisableConDrag(true);
-      setDisableEleDrag(true);
-      return;
-    }
-
-    if (section && !column && !element) {
-      setDisableConDrag(false);
-      setDisableEleDrag(true);
-    } else if (section && column && !element && !span) {
-      const conID = section.id;
-      if (isNull(conID)) return;
-      const colID = column.id;
-      if (isNull(colID)) return;
-      let conI = layouts.findIndex((l) => l.container.id === conID);
-      if (conI === -1) {
-        // split section: section.id is the splitRowId → resolve via column
-        const bareColID = colID.includes("/") ? colID.split("/")[1] : colID;
-        conI = layouts.findIndex((l) => l.columns?.some((c) => c.id === bareColID));
-      }
-      if (conI === -1) return;
-      const colKey = layoutColumnKeyFromDomColumnId(colID);
-      const colI = layouts[conI].columns.findIndex((c) => c.id === colKey);
-      if (colI === -1) return;
-      const isHasElements = layouts[conI].columns[colI].elements.length > 0;
-      if (!isHasElements) {
-        setDisableConDrag(false);
-        setDisableEleDrag(true);
-      } else if (isHasElements) {
-        setDisableConDrag(true);
-        setDisableEleDrag(true);
-      }
-    } else if (section && column && !element && span) {
-      /* ช่องว่าง/กริด Span ไม่มี ELEMENT — ให้ลาก Section/Split ผ่านได้ (ไม่ให้สาขาข้างบนค้าง) */
-      setDisableConDrag(false);
-      setDisableEleDrag(true);
-    } else if (section && column && element) {
-      const conID = section.id;
-      if (isNull(conID)) return;
-      const colID = column.id;
-      if (isNull(colID)) return;
-      let conI = layouts.findIndex((l) => l.container.id === conID);
-      if (conI === -1) {
-        // split section: section.id is the splitRowId → resolve via column
-        const bareColID = colID.includes("/") ? colID.split("/")[1] : colID;
-        conI = layouts.findIndex((l) => l.columns?.some((c) => c.id === bareColID));
-      }
-      if (conI === -1) return;
-      let colI;
-      let isHasElements;
-      if (span) {
-        const colIDPath = layoutColumnKeyFromDomColumnId(colID);
-        colI = layouts[conI].columns.findIndex((c) => c.id === colIDPath);
-        if (colI === -1) return;
-        const spnID = spanDomIdToSpanKey(span.id) ?? span.id;
-        if (nestedSpan) {
-          const [_sec, _col, spnIDPath] = spnID.split("/");
-          const spnI = layouts[conI].columns[colI].spans.findIndex(
-            (s) => s.id === spnIDPath
-          );
-          if (spnI === -1) return;
-          const nestID = nestedSpan.id;
-          const nestI = layouts[conI].columns[colI].spans[
-            spnI
-          ].nestedSpans.findIndex((ms) => ms.id === nestID);
-          if (nestI === -1) return;
-          isHasElements =
-            layouts[conI].columns[colI].spans[spnI].nestedSpans[nestI].elements
-              .length > 0;
-        } else {
-          const spnI = layouts[conI].columns[colI].spans.findIndex(
-            (s) => s.id === spnID
-          );
-          if (spnI === -1) return;
-          isHasElements =
-            layouts[conI].columns[colI].spans[spnI].elements.length > 0;
-        }
-      } else {
-        const colKey = layoutColumnKeyFromDomColumnId(colID);
-        colI = layouts[conI].columns.findIndex((c) => c.id === colKey);
-        if (colI === -1) return;
-        isHasElements = layouts[conI].columns[colI].elements.length > 0;
-      }
-      if (!isHasElements) {
-        setDisableConDrag(false);
-        setDisableEleDrag(true);
-      } else if (isHasElements) {
-        setDisableConDrag(true);
-        setDisableEleDrag(false);
-      }
-    } else if (
-      (section && column && element && span) ||
-      (section && column && element && span && nestedSpan)
-    ) {
-      setDisableConDrag(false);
-      setDisableEleDrag(true);
-    }
-  };
-
-  const scheduleDND = (e) => {
-    if (!isLayoutMode) return;
-    if (isDraggingLayout) {
-      setDisableConDrag(false);
-      setDisableEleDrag(false);
-      setDisableSpnDrag(false);
-      return;
-    }
-    const { clientX, clientY } = e;
-    if (dndRef.current) return;
-    dndRef.current = requestAnimationFrame(() => {
-      dndRef.current = null;
-      updateDND(clientX, clientY);
-    });
-  };
-
   const scheduleBTNUpdate = (e) => {
     if (!isLayoutMode) return;
+    // ปุ่ม option/hover ไม่ได้ใช้ตัดสิน drop target และมี DOM scan ค่อนข้างหนัก
+    if (inlineSortableRenderersRef.current.dragActive) return;
     const { clientX, clientY } = e;
+    const inputAt = builderHoverPerfEnabled ? performance.now() : 0;
     if (btnGroupRef.current) return;
     btnGroupRef.current = requestAnimationFrame(() => {
       btnGroupRef.current = null;
-      return updateHoverPosition(clientX, clientY);
+      return updateHoverPosition(clientX, clientY, inputAt);
     });
   };
 
@@ -5166,22 +7666,21 @@ const Content = ({
     if (!element.id) return;
     let id,latestEleID,data
     const getID = ()=>{
-      const clone = lodash.cloneDeep(layouts)
       if(spnI !== null){
         if(nestI !== null){
-          
-          data = clone[conI].columns[colI].spans[spnI].nestedSpans[nestI]
+
+          data = layouts[conI].columns[colI].spans[spnI].nestedSpans[nestI]
           console.log(data);
           id = data.id.replace("Span-","")
           console.log(id);
         }else{
-          data = clone[conI].columns[colI].spans[spnI]
-          
+          data = layouts[conI].columns[colI].spans[spnI]
+
           id = data.id.replace("Span-","")
-          
+
         }
       }else{
-        data = clone[conI].columns[colI]
+        data = layouts[conI].columns[colI]
         id = data.id.replace("Col-","")
       }
       latestEleID = data.latestEleID
@@ -5342,7 +7841,7 @@ const Content = ({
           }
         }
       }
-      
+
       setPage((prev) => {
         return { ...prev, latestID: prev.latestID + 1 };
       });
@@ -5374,6 +7873,9 @@ const Content = ({
       dropMotionTimerRef.current = null;
     }, 180);
     dropCommitGuardRef.current = { token: dragToken.current, at: now };
+    if (sidebarNativeDragPerfRef.current?.active) {
+      sidebarNativeDragPerfRef.current.lastAction = "drop";
+    }
 
     const rawDroppingElem = handleDropElement();
     const isCanvasElementMove =
@@ -5463,18 +7965,54 @@ const Content = ({
     if (dropTargetRef.current.type === "SECTION") dropNewSection();
     else dropNewElement();
   };
+  windowDropHandlerRef.current =
+    (preview || sidebarPortalPreviewRef.current) && handleDropElement()
+      ? handleDrop
+      : null;
 
   const handleDuring = (e) => {
     if (!isLayoutMode) return;
     e.preventDefault();
+    const nativeEvent = e?.nativeEvent ?? e;
+    if (lastHandledDragOverEventRef.current === nativeEvent) return;
+    lastHandledDragOverEventRef.current = nativeEvent;
+    const dragoverStartedAt = performance.now();
     autoScrollCanvasForPointer(e.clientY);
-    const rawElement = lodash.cloneDeep(handleDropElement());
     const isCanvasElementMove =
       activeDragRef.current?.data?.current?.type === "ELEMENT";
+    const rawElement = handleDropElement();
+    if (!isCanvasElementMove && rawElement && !rawElement.container) {
+      startSidebarNativeDragPerf();
+      const activePerf = sidebarNativeDragPerfRef.current;
+      if (activePerf?.dragoverCount === 0) {
+        activePerf.startedAt = dragoverStartedAt;
+      }
+    }
+    const finishDragoverMeasurement = ({ cacheHit = false } = {}) => {
+      const perf = sidebarNativeDragPerfRef.current;
+      if (!perf?.active) return;
+      const elapsed = performance.now() - dragoverStartedAt;
+      perf.dragoverCount += 1;
+      perf.dragoverTotalMs += elapsed;
+      perf.dragoverMaxMs = Math.max(perf.dragoverMaxMs, elapsed);
+      if (cacheHit) perf.previewCacheHits += 1;
+    };
+    const cached = incomingDragPreviewRef.current;
+    if (
+      cached.source === rawElement &&
+      cached.pageLatestID === page.latestID &&
+      cached.isCanvasElementMove === isCanvasElementMove &&
+      cached.preview
+    ) {
+      scheduleHoverUpdate(e, cached.type, cached.preview);
+      finishDragoverMeasurement({ cacheHit: true });
+      return;
+    }
     const element = isCanvasElementMove
-      ? rawElement
+      ? lodash.cloneDeep(rawElement)
       : stripIncomingInlineRowGroupIds(rawElement);
-    if (!element) {
+    if (!element || typeof element !== "object") {
+      finishDragoverMeasurement();
       clearGhost();
       return;
     }
@@ -5490,7 +8028,15 @@ const Content = ({
           return g;
         }),
       };
+      incomingDragPreviewRef.current = {
+        source: rawElement,
+        pageLatestID: page.latestID,
+        isCanvasElementMove,
+        preview: ghostSec,
+        type: "SECTION",
+      };
       scheduleHoverUpdate(e, "SECTION", ghostSec);
+      finishDragoverMeasurement();
       return;
     }
     if (element.container) {
@@ -5508,12 +8054,27 @@ const Content = ({
           }
         }
       }
-     
+      incomingDragPreviewRef.current = {
+        source: rawElement,
+        pageLatestID: page.latestID,
+        isCanvasElementMove,
+        preview: element,
+        type: "SECTION",
+      };
       scheduleHoverUpdate(e, "SECTION", element);
 
+      finishDragoverMeasurement();
       return;
     }
+    incomingDragPreviewRef.current = {
+      source: rawElement,
+      pageLatestID: page.latestID,
+      isCanvasElementMove,
+      preview: element,
+      type: "ELEMENT",
+    };
     scheduleHoverUpdate(e, "ELEMENT", element);
+    finishDragoverMeasurement();
   };
 
   const sanitizeElementDropIndex = (indexObj) => {
@@ -5541,21 +8102,61 @@ const Content = ({
       : { ...indexObj, eleI: snapped };
   };
 
-  const setDrop = (i, t, b = false) => {
+  const setDrop = (
+    i,
+    t,
+    b = false,
+    { immediateRender = false } = {}
+  ) => {
     const safeIndex =
       t === "ELEMENT" && i && typeof i === "object"
         ? sanitizeElementDropIndex(i)
         : i;
     dropTargetRef.current = { index: safeIndex, type: t, isLast: b };
+    const nextRenderKey =
+      safeIndex && typeof safeIndex === "object"
+        ? [
+            t,
+            safeIndex.conI,
+            safeIndex.colI,
+            safeIndex.spnI ?? "",
+            safeIndex.nestI ?? "",
+            safeIndex.eleI ?? "",
+            safeIndex.tabEleID ?? "",
+            safeIndex.tabId ?? "",
+            safeIndex.tabEleI ?? "",
+            b ? 1 : 0,
+          ].join(":")
+        : `${t ?? ""}:${safeIndex ?? ""}:${b ? 1 : 0}`;
+    const updateDropRenderState = () => {
+      setDropRenderKey((prev) => (prev === nextRenderKey ? prev : nextRenderKey));
+    };
+    const isScopedElementMove =
+      useScopedColumnDnd &&
+      activeDragRef.current?.data?.current?.type === "ELEMENT";
+    if (immediateRender || t == null || isScopedElementMove) {
+      updateDropRenderState();
+    }
+    else startTransition(updateDropRenderState);
     if (t === "ELEMENT" && i && typeof i === "object") {
-      setElementDropHighlight({
-        conI: safeIndex.conI,
-        colI: safeIndex.colI,
-        spnI: safeIndex.spnI ?? null,
-        nestI: safeIndex.nestI ?? null,
+      const updateHighlight = () => setElementDropHighlight((prev) => {
+        const next = {
+          conI: safeIndex.conI,
+          colI: safeIndex.colI,
+          spnI: safeIndex.spnI ?? null,
+          nestI: safeIndex.nestI ?? null,
+        };
+        return prev?.conI === next.conI &&
+          prev?.colI === next.colI &&
+          prev?.spnI === next.spnI &&
+          prev?.nestI === next.nestI
+          ? prev
+          : next;
       });
+      if (isScopedElementMove) updateHighlight();
+      else startTransition(updateHighlight);
     } else {
-      setElementDropHighlight(null);
+      setElementDropHighlight((prev) => (prev === null ? prev : null));
     }
     if (t === "ELEMENT") {
       dropHoldUntilRef.current = Date.now() + 180;
@@ -5564,6 +8165,899 @@ const Content = ({
       resetEleInsertSnapState();
       resetTabInlineRowSnapState();
     }
+  };
+
+  const scopedElementTargetKey = (dropElement) => {
+    const index = dropElement?.index;
+    if (
+      dropElement?.type !== "ELEMENT" ||
+      !Number.isInteger(index?.conI) ||
+      !Number.isInteger(index?.colI) ||
+      !Number.isInteger(index?.eleI)
+    ) {
+      return "";
+    }
+    return [
+      index.conI,
+      index.colI,
+      index.spnI ?? "",
+      index.nestI ?? "",
+      index.eleI,
+    ].join(":");
+  };
+
+  const cancelScopedElementFlipNode = (node) => {
+    const registry = scopedElementFlipRef.current;
+    const state = registry.states.get(node);
+    if (!state) return;
+    state.cancel();
+  };
+
+  const cancelAllScopedElementFlipAnimations = () => {
+    const activeNodes = [...scopedElementFlipRef.current.activeNodes];
+    for (const node of activeNodes) cancelScopedElementFlipNode(node);
+  };
+
+  const scopedElementFlipSiblings = (parents) => {
+    const nodes = new Set();
+    const activeElementId = String(
+      activeDragRef.current?.data?.current?.element?.id ||
+        activeDragRef.current?.id ||
+        ""
+    );
+    for (const parent of parents) {
+      if (parent?.nodeType !== 1) continue;
+      for (const node of parent.children) {
+        if (
+          node?.nodeType !== 1 ||
+          node === scopedElementPlaceholderRef.current ||
+          node === ghostRef.current ||
+          node.hasAttribute("data-scoped-element-placeholder") ||
+          node.getAttribute("data-drop") !== "ELEMENT" ||
+          node.classList.contains("column-area")
+        ) {
+          continue;
+        }
+        const rawId = node.getAttribute("id") || "";
+        const elementId = rawId.split("/").pop() || "";
+        if (
+          !elementId ||
+          elementId === "__null__" ||
+          elementId.startsWith("ele-") ||
+          (activeElementId && elementId === activeElementId)
+        ) {
+          continue;
+        }
+        nodes.add(node);
+      }
+    }
+    return nodes;
+  };
+
+  const captureScopedElementFlipRects = (parents) => {
+    const startedAt = performance.now();
+    const rects = new Map();
+    for (const node of scopedElementFlipSiblings(parents)) {
+      rects.set(node, node.getBoundingClientRect());
+    }
+    return {
+      rects,
+      elapsed: performance.now() - startedAt,
+    };
+  };
+
+  const animateScopedElementFlip = (beforeRects, afterRects) => {
+    const changed = [];
+    for (const [node, before] of beforeRects) {
+      const after = afterRects.get(node);
+      if (!after || !node.isConnected) continue;
+      const x = before.left - after.left;
+      const y = before.top - after.top;
+      if (Math.abs(x) < 0.5 && Math.abs(y) < 0.5) continue;
+      changed.push({ node, before, x, y });
+    }
+    if (changed.length === 0) return { nodeCount: 0, writeMs: 0 };
+
+    const writeStartedAt = performance.now();
+    const registry = scopedElementFlipRef.current;
+    const prepared = [];
+    for (const item of changed) {
+      const { node, before } = item;
+      const inlineTranslate = node.style.translate;
+      const inlineTransition = node.style.transition;
+
+      // Individual `translate` is independent from dnd-kit's `transform`.
+      // Account for any element-owned translate while deriving the inverse.
+      node.style.transition = "none";
+      const computedTranslate = getComputedStyle(node).translate;
+      let x = item.x;
+      let y = item.y;
+      if (computedTranslate && computedTranslate !== "none") {
+        node.style.translate = "none";
+        const untranslated = node.getBoundingClientRect();
+        x = before.left - untranslated.left;
+        y = before.top - untranslated.top;
+      }
+      node.style.translate = `${x}px ${y}px`;
+      prepared.push({
+        node,
+        inlineTranslate,
+        inlineTransition,
+      });
+    }
+
+    // Commit every inverse first, then flush once so the transitions start
+    // together even when two different columns/sections are affected.
+    prepared[0]?.node.getBoundingClientRect();
+
+    for (const item of prepared) {
+      const { node, inlineTranslate, inlineTransition } = item;
+      const flipTransition =
+        "translate 180ms cubic-bezier(0.2, 0, 0, 1)";
+      node.style.transition =
+        inlineTransition && inlineTransition !== "none"
+          ? `${inlineTransition}, ${flipTransition}`
+          : flipTransition;
+      node.style.translate = inlineTranslate;
+
+      let timer = null;
+      const finish = (restoreFromCurrentVisual = false) => {
+        if (registry.states.get(node)?.finish !== finish) return;
+        node.removeEventListener("transitionend", onTransitionEnd);
+        if (timer != null) clearTimeout(timer);
+        if (restoreFromCurrentVisual) {
+          node.style.transition = "none";
+          node.style.translate = inlineTranslate;
+          // Ensure restoring the prior transition cannot animate stale FLIP.
+          node.getBoundingClientRect();
+        }
+        node.style.transition = inlineTransition;
+        registry.states.delete(node);
+        registry.activeNodes.delete(node);
+      };
+      const onTransitionEnd = (event) => {
+        if (event.target === node && event.propertyName === "translate") {
+          finish(false);
+        }
+      };
+      const cancel = () => finish(true);
+      timer = setTimeout(() => finish(false), 240);
+      node.addEventListener("transitionend", onTransitionEnd);
+      registry.states.set(node, { cancel, finish });
+      registry.activeNodes.add(node);
+    }
+
+    return {
+      nodeCount: prepared.length,
+      writeMs: performance.now() - writeStartedAt,
+    };
+  };
+
+  const mutateScopedElementPlaceholderWithFlip = (
+    parents,
+    mutate,
+    animate = true
+  ) => {
+    const uniqueParents = [...new Set(parents.filter(Boolean))];
+    if (!animate) {
+      cancelAllScopedElementFlipAnimations();
+      const writeStartedAt = performance.now();
+      mutate();
+      return performance.now() - writeStartedAt;
+    }
+
+    const beforeCapture = captureScopedElementFlipRects(uniqueParents);
+    for (const node of beforeCapture.rects.keys()) {
+      cancelScopedElementFlipNode(node);
+    }
+
+    const mutationStartedAt = performance.now();
+    mutate();
+    const mutationWriteMs = performance.now() - mutationStartedAt;
+    const afterCapture = captureScopedElementFlipRects(uniqueParents);
+    const animation = animateScopedElementFlip(
+      beforeCapture.rects,
+      afterCapture.rects
+    );
+
+    const perf = dndPerfRef.current;
+    if (perf?.active) {
+      const captureMs = beforeCapture.elapsed + afterCapture.elapsed;
+      const flipWriteMs = mutationWriteMs + animation.writeMs;
+      perf.scopedFlipCaptureCount += 2;
+      perf.scopedFlipCaptureTotalMs += captureMs;
+      perf.scopedFlipCaptureMaxMs = Math.max(
+        perf.scopedFlipCaptureMaxMs,
+        beforeCapture.elapsed,
+        afterCapture.elapsed
+      );
+      perf.scopedFlipWriteCount += 1;
+      perf.scopedFlipWriteTotalMs += flipWriteMs;
+      perf.scopedFlipWriteMaxMs = Math.max(
+        perf.scopedFlipWriteMaxMs,
+        flipWriteMs
+      );
+      if (animation.nodeCount > 0) {
+        perf.scopedFlipAnimationBatches += 1;
+        perf.scopedFlipNodeCount += animation.nodeCount;
+      }
+    }
+    return mutationWriteMs;
+  };
+
+  const clearScopedElementPlaceholder = ({ animate = true } = {}) => {
+    const commit = scopedElementPlaceholderCommitRef.current;
+    if (commit.frame != null) {
+      cancelAnimationFrame(commit.frame);
+      commit.frame = null;
+    }
+    commit.pending = null;
+    if (!animate) cancelAllScopedElementFlipAnimations();
+    scopedElementPlaceholderTargetKeyRef.current = "";
+    const node = scopedElementPlaceholderRef.current;
+    if (node?.parentNode) {
+      const oldParent = node.parentNode;
+      const writeMs = mutateScopedElementPlaceholderWithFlip(
+        [oldParent],
+        () => oldParent.removeChild(node),
+        animate
+      );
+      const perf = dndPerfRef.current;
+      if (perf?.active) {
+        perf.scopedPlaceholderRemovals += 1;
+        perf.scopedPlaceholderWriteTotalMs += writeMs;
+        perf.scopedPlaceholderWriteMaxMs = Math.max(
+          perf.scopedPlaceholderWriteMaxMs,
+          writeMs
+        );
+      }
+    }
+    scopedElementPlaceholderRef.current = null;
+  };
+
+  const findExactElementBucketMarker = (rawId) => {
+    if (typeof document === "undefined" || !rawId) return null;
+    const id = String(rawId);
+    const escaped =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(id)
+        : id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    // Split columns can duplicate this id on their structural COLUMN shell.
+    // Constrain by data-drop so insertion always targets the element bucket.
+    return document.querySelector(
+      `[data-drop="ELEMENT"][id="${escaped}"]`
+    );
+  };
+
+  const renderScopedElementPlaceholder = (dropElement) => {
+    if (typeof document === "undefined") return;
+    const targetKey = scopedElementTargetKey(dropElement);
+    if (!targetKey) {
+      clearScopedElementPlaceholder();
+      return;
+    }
+
+    const commit = scopedElementPlaceholderCommitRef.current;
+    const node = scopedElementPlaceholderRef.current;
+    if (
+      targetKey === scopedElementPlaceholderTargetKeyRef.current &&
+      node?.isConnected &&
+      commit.pending == null
+    ) {
+      const perf = dndPerfRef.current;
+      if (perf?.active) perf.scopedPlaceholderSkippedDuplicates += 1;
+      return;
+    }
+
+    // Keep only the newest visual commit. dropTargetRef is updated synchronously
+    // by the caller, so a release before this frame still drops at the latest intent.
+    commit.pending = {
+      dropElement: {
+        type: dropElement.type,
+        index: { ...dropElement.index },
+        isLast: Boolean(dropElement.isLast),
+      },
+      targetKey,
+    };
+    if (commit.frame != null) return;
+
+    commit.frame = requestAnimationFrame(() => {
+      commit.frame = null;
+      const pending = commit.pending;
+      commit.pending = null;
+      if (!pending) return;
+
+      const latestTargetKey = scopedElementTargetKey(dropTargetRef.current);
+      if (!latestTargetKey || latestTargetKey !== pending.targetKey) return;
+      const currentNode = scopedElementPlaceholderRef.current;
+      if (
+        pending.targetKey === scopedElementPlaceholderTargetKeyRef.current &&
+        currentNode?.isConnected
+      ) {
+        const perf = dndPerfRef.current;
+        if (perf?.active) perf.scopedPlaceholderSkippedDuplicates += 1;
+        return;
+      }
+
+      const resolveStartedAt = performance.now();
+      const index = pending.dropElement.index;
+      const bucketInfo = getBucketByDropIndex(
+        layoutsRef.current,
+        index.conI,
+        index.colI,
+        index?.spnI ?? null,
+        index?.nestI ?? null
+      );
+      const bucket = bucketInfo?.elements;
+      if (!Array.isArray(bucket)) return;
+
+      const boundary = Math.max(0, Math.min(bucket.length, index.eleI));
+      const beforeNode =
+        boundary < bucket.length
+          ? findDropElementNodeByEleId(bucket[boundary]?.id)
+          : null;
+      const afterNode =
+        boundary > 0
+          ? findDropElementNodeByEleId(bucket[boundary - 1]?.id)
+          : null;
+
+      // Empty buckets render a synthetic sortable marker. It provides the exact
+      // insertion parent without guessing at column/span wrapper structure.
+      const section = layoutsRef.current[index.conI];
+      const column = section?.columns?.[index.colI];
+      const span = Number.isInteger(index?.spnI)
+        ? column?.spans?.[index.spnI]
+        : null;
+      const nestedSpan =
+        span && Number.isInteger(index?.nestI)
+          ? span?.nestedSpans?.[index.nestI]
+          : null;
+      const emptyMarkerId = [
+        section?.container?.id,
+        column?.id,
+        span?.id,
+        nestedSpan?.id,
+      ]
+        .filter(Boolean)
+        .join("/");
+      const emptyMarker =
+        bucket.length === 0 && emptyMarkerId
+          ? findExactElementBucketMarker(emptyMarkerId)
+          : null;
+      const parent =
+        beforeNode?.parentNode ||
+        afterNode?.parentNode ||
+        emptyMarker?.parentNode ||
+        null;
+      const referenceNode =
+        beforeNode || afterNode?.nextSibling || emptyMarker || null;
+      const resolveMs = performance.now() - resolveStartedAt;
+      if (!parent) return;
+
+      let placeholder = currentNode;
+      const isMount = !placeholder;
+      if (!placeholder) {
+        const activeRect =
+          activeDragRef.current?.rect?.current?.initial ||
+          activeDragRef.current?.rect?.current?.translated;
+        const height = Math.max(
+          44,
+          Math.min(180, Number(activeRect?.height) || 44)
+        );
+        placeholder = document.createElement("div");
+        placeholder.setAttribute("data-scoped-element-placeholder", "true");
+        placeholder.setAttribute("aria-hidden", "true");
+        Object.assign(placeholder.style, {
+          width: "100%",
+          height: `${height}px`,
+          minHeight: `${height}px`,
+          marginBottom: "8px",
+          boxSizing: "border-box",
+          border: "0",
+          background: "transparent",
+          pointerEvents: "none",
+          flexShrink: "0",
+        });
+      }
+
+      const oldParent = placeholder.parentNode;
+      const writeMs = mutateScopedElementPlaceholderWithFlip(
+        [oldParent, parent],
+        () => parent.insertBefore(placeholder, referenceNode),
+        true
+      );
+      scopedElementPlaceholderRef.current = placeholder;
+      scopedElementPlaceholderTargetKeyRef.current = pending.targetKey;
+
+      const perf = dndPerfRef.current;
+      if (perf?.active) {
+        if (isMount) perf.scopedPlaceholderMounts += 1;
+        else perf.scopedPlaceholderMoves += 1;
+        perf.scopedPlaceholderResolveTotalMs += resolveMs;
+        perf.scopedPlaceholderResolveMaxMs = Math.max(
+          perf.scopedPlaceholderResolveMaxMs,
+          resolveMs
+        );
+        perf.scopedPlaceholderWriteTotalMs += writeMs;
+        perf.scopedPlaceholderWriteMaxMs = Math.max(
+          perf.scopedPlaceholderWriteMaxMs,
+          writeMs
+        );
+      }
+    });
+  };
+
+  const sidebarPreviewIdentity = (previewValue) => {
+    if (!previewValue || typeof previewValue !== "object") return "none";
+    const identities = sidebarPreviewIdentityRef.current;
+    let id = identities.ids.get(previewValue);
+    if (!id) {
+      id = identities.nextId++;
+      identities.ids.set(previewValue, id);
+    }
+    return id;
+  };
+
+  const sidebarNewElementTargetKey = (dropElement, previewValue = null) => {
+    const index = dropElement?.index;
+    if (
+      (dropElement?.type !== "ELEMENT" &&
+        dropElement?.type !== "TAB-ELEMENT") ||
+      !index ||
+      !Number.isInteger(index.conI) ||
+      !Number.isInteger(index.colI) ||
+      !Number.isInteger(index.eleI)
+    ) {
+      return "";
+    }
+    return [
+      dropElement.type,
+      index.conI,
+      index.colI,
+      index.spnI ?? "",
+      index.nestI ?? "",
+      index.eleI,
+      index.tabEleID ?? "",
+      index.tabId ?? "",
+      index.tabEleI ?? "",
+      index.inlineRowId ?? "",
+      index.inlineGroupId ?? "",
+      index.inlineRowStart ?? "",
+      index.inlineRowEnd ?? "",
+      dropElement.isLast ? 1 : 0,
+      sidebarPreviewIdentity(previewValue),
+    ].join(":");
+  };
+
+  const getSidebarNewElementTargetBucket = (dropElement) => {
+    const index = dropElement?.index;
+    if (!index) return null;
+    const bucketInfo = getBucketByDropIndex(
+      layoutsRef.current,
+      index.conI,
+      index.colI,
+      index?.spnI ?? null,
+      index?.nestI ?? null
+    );
+    const outerElements = bucketInfo?.elements;
+    if (!Array.isArray(outerElements)) return null;
+    if (dropElement.type !== "TAB-ELEMENT") {
+      return { elements: outerElements, boundary: index.eleI };
+    }
+    const tabHost =
+      outerElements.find((item) => item?.id === index.tabEleID) ||
+      outerElements[index.eleI];
+    const tabItems =
+      tabHost?.type === "tabs"
+        ? tabHost.tabsItems
+        : tabHost?.type === "acc"
+          ? tabHost.accordionItems
+          : tabHost?.type === "post"
+            ? [{ id: "post-main", elements: tabHost.postElements }]
+            : tabHost?.type === "dts"
+              ? tabHost.dataSliderItems
+              : tabHost?.type === "ctg"
+                ? mergeCatagoriesElement(tabHost).catagoriesItems
+                : null;
+    const tab = Array.isArray(tabItems)
+      ? tabItems.find((item) => String(item?.id) === String(index.tabId))
+      : null;
+    return Array.isArray(tab?.elements)
+      ? { elements: tab.elements, boundary: index.tabEleI }
+      : null;
+  };
+
+  const resolveSidebarNewElementTargetLocation = (dropElement) => {
+    const target = getSidebarNewElementTargetBucket(dropElement);
+    if (!target) return null;
+    const boundary = Math.max(
+      0,
+      Math.min(target.elements.length, Number(target.boundary) || 0)
+    );
+    const chunks = chunkColumnElementsForInlineRows(target.elements);
+    const resolveChunkNode = (chunk) => {
+      if (!chunk) return null;
+      if (chunk.kind === "single") {
+        return findDropElementNodeByEleId(chunk.item?.id);
+      }
+      const nodes = chunk.items
+        .map((item) => findDropElementNodeByEleId(item?.id))
+        .filter(Boolean);
+      if (nodes.length === 0) return null;
+      const sharedParent = nodes[0].parentElement;
+      return sharedParent && nodes.every((node) => node.parentElement === sharedParent)
+        ? sharedParent
+        : nodes[0];
+    };
+    const beforeChunk = chunks.find((chunk) => chunk.startIndex === boundary);
+    const afterChunk = [...chunks]
+      .reverse()
+      .find((chunk) => {
+        const length = chunk.kind === "single" ? 1 : chunk.items.length;
+        return chunk.startIndex + length === boundary;
+      });
+    const beforeNode =
+      resolveChunkNode(beforeChunk) ||
+      (boundary < target.elements.length
+        ? findDropElementNodeByEleId(target.elements[boundary]?.id)
+        : null);
+    const afterNode =
+      resolveChunkNode(afterChunk) ||
+      (boundary > 0
+        ? findDropElementNodeByEleId(target.elements[boundary - 1]?.id)
+        : null);
+    const neighborParent = beforeNode?.parentElement || afterNode?.parentElement;
+    if (neighborParent) {
+      return {
+        parent: neighborParent,
+        referenceNode: beforeNode || afterNode?.nextSibling || null,
+      };
+    }
+
+    const index = dropElement?.index;
+    if (dropElement?.type === "TAB-ELEMENT") {
+      const hostNode = findDropElementNodeByEleId(index?.tabEleID);
+      const tabContents = hostNode?.querySelectorAll?.(
+        '[data-drop="TAB-CONTENT"]'
+      );
+      for (const node of tabContents || []) {
+        if (
+          String(node.getAttribute("data-tab-element-id") || "") ===
+            String(index.tabEleID) &&
+          String(node.getAttribute("data-tab-id") || "") === String(index.tabId)
+        ) {
+          const parent = node.firstElementChild || node;
+          return { parent, referenceNode: null };
+        }
+      }
+      return null;
+    }
+
+    const section = layoutsRef.current[index?.conI];
+    const column = section?.columns?.[index?.colI];
+    const span = Number.isInteger(index?.spnI)
+      ? column?.spans?.[index.spnI]
+      : null;
+    const nestedSpan =
+      span && Number.isInteger(index?.nestI)
+        ? span.nestedSpans?.[index.nestI]
+        : null;
+    const emptyMarkerId = [
+      section?.container?.id,
+      column?.id,
+      span?.id,
+      nestedSpan?.id,
+    ]
+      .filter(Boolean)
+      .join("/");
+    const emptyMarker = emptyMarkerId
+      ? findExactElementBucketMarker(emptyMarkerId)
+      : null;
+    return emptyMarker?.parentElement
+      ? { parent: emptyMarker.parentElement, referenceNode: emptyMarker }
+      : null;
+  };
+
+  const captureSidebarNewElementFlipRects = (
+    parents,
+    fallbackSectionIndexes = []
+  ) => {
+    const startedAt = performance.now();
+    const rects = new Map();
+    for (const node of scopedElementFlipSiblings(
+      [...new Set(parents.filter(Boolean))]
+    )) {
+      rects.set(node, node.getBoundingClientRect());
+    }
+
+    // A missing bucket parent is unusual (typically an empty custom tab
+    // renderer). Preserve animation correctness there with the old section
+    // scan instead of making the common path pay for all section descendants.
+    const roots = new Set();
+    for (const sectionIndex of fallbackSectionIndexes) {
+      if (!Number.isInteger(sectionIndex)) continue;
+      const sectionId = layoutsRef.current?.[sectionIndex]?.container?.id;
+      const sectionNode = sectionId ? document.getElementById(sectionId) : null;
+      const root =
+        sectionNode?.closest?.('[data-drop="SECTION"]') ||
+        sectionNode ||
+        contained.current?.[sectionIndex] ||
+        null;
+      if (root) roots.add(root);
+    }
+    for (const root of roots) {
+      const nodes = [];
+      if (root?.matches?.('[data-drop="ELEMENT"]')) nodes.push(root);
+      root
+        ?.querySelectorAll?.('[data-drop="ELEMENT"]')
+        .forEach((node) => nodes.push(node));
+      for (const node of nodes) {
+        if (
+          !node?.isConnected ||
+          node === ghostRef.current ||
+          ghostRef.current?.contains?.(node) ||
+          node.classList?.contains("preview") ||
+          node.classList?.contains("column-area") ||
+          node.hasAttribute?.("data-scoped-element-placeholder")
+        ) {
+          continue;
+        }
+        const rawId = node.getAttribute?.("id") || "";
+        const elementId = rawId.split("/").pop() || "";
+        if (
+          !elementId ||
+          elementId === "__null__" ||
+          elementId.startsWith("ele-")
+        ) {
+          continue;
+        }
+        rects.set(node, node.getBoundingClientRect());
+      }
+    }
+    return {
+      rects,
+      elapsed: performance.now() - startedAt,
+    };
+  };
+
+  const ensureSidebarPreviewHost = (previewValue) => {
+    if (typeof document === "undefined") return null;
+    let host = sidebarPreviewHostRef.current;
+    if (!host) {
+      host = document.createElement("div");
+      host.setAttribute("data-sidebar-element-preview-host", "true");
+      host.className = `w-full mb-2 opacity-70 ${ghostInsertAnimClass}`.trim();
+      host.ondragover = preventNativeSidebarPreviewDragOver;
+      sidebarPreviewHostRef.current = host;
+    }
+    host.id = String(previewValue?.id || "");
+    ghostRef.current = host;
+    return host;
+  };
+
+  function preventNativeSidebarPreviewDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  const commitSidebarPreviewHostMove = (pending) => {
+    if (!pending) return;
+    const host = sidebarPreviewHostRef.current;
+    if (!host) return;
+    const previousConI = Number.isInteger(pending.previousDrop?.index?.conI)
+      ? pending.previousDrop.index.conI
+      : null;
+    const nextConI = Number.isInteger(pending.dropElement?.index?.conI)
+      ? pending.dropElement.index.conI
+      : null;
+    const oldParent = host.parentElement;
+    const location = pending.dropElement
+      ? resolveSidebarNewElementTargetLocation(pending.dropElement)
+      : null;
+    const nextParent = location?.parent || null;
+    const fallbackSections = [];
+    if (previousConI != null && !oldParent) fallbackSections.push(previousConI);
+    if (nextConI != null && !nextParent) fallbackSections.push(nextConI);
+    const beforeCapture = captureSidebarNewElementFlipRects(
+      [oldParent, nextParent],
+      fallbackSections
+    );
+    for (const node of beforeCapture.rects.keys()) {
+      cancelScopedElementFlipNode(node);
+    }
+
+    const moveStartedAt = performance.now();
+    if (nextParent) {
+      const referenceNode =
+        location.referenceNode?.parentNode === nextParent
+          ? location.referenceNode
+          : null;
+      nextParent.insertBefore(host, referenceNode);
+    } else if (host.parentNode) {
+      host.parentNode.removeChild(host);
+    }
+    const moveMs = performance.now() - moveStartedAt;
+    const newParent = host.parentElement;
+    const afterCapture = captureSidebarNewElementFlipRects(
+      [oldParent, nextParent, newParent],
+      fallbackSections
+    );
+    animateScopedElementFlip(beforeCapture.rects, afterCapture.rects);
+
+    const perf = sidebarNativeDragPerfRef.current;
+    if (perf?.active) {
+      perf.flipCaptureCount += 2;
+      perf.flipCapturedNodeCount +=
+        beforeCapture.rects.size + afterCapture.rects.size;
+      perf.flipCaptureTotalMs += beforeCapture.elapsed + afterCapture.elapsed;
+      perf.flipCaptureMaxMs = Math.max(
+        perf.flipCaptureMaxMs,
+        beforeCapture.elapsed,
+        afterCapture.elapsed
+      );
+      if (nextParent) {
+        perf.hostMoveCount += 1;
+        perf.hostMoveTotalMs += moveMs;
+        perf.hostMoveMaxMs = Math.max(perf.hostMoveMaxMs, moveMs);
+      } else if (oldParent) {
+        perf.hostDetachCount += 1;
+      }
+    }
+  };
+
+  const scheduleSidebarPreviewHostMove = (dropElement, previousDrop, sync = false) => {
+    const commit = sidebarPreviewMoveRef.current;
+    commit.pending = {
+      dropElement: dropElement
+        ? {
+            type: dropElement.type,
+            index: { ...dropElement.index },
+            isLast: Boolean(dropElement.isLast),
+          }
+        : null,
+      previousDrop,
+    };
+    if (sync) {
+      if (commit.frame != null) cancelAnimationFrame(commit.frame);
+      commit.frame = null;
+      const pending = commit.pending;
+      commit.pending = null;
+      commitSidebarPreviewHostMove(pending);
+      return;
+    }
+    if (commit.frame != null) return;
+    commit.frame = requestAnimationFrame(() => {
+      commit.frame = null;
+      const pending = commit.pending;
+      commit.pending = null;
+      if (!pending) return;
+      const pendingKey = sidebarNewElementTargetKey(pending.dropElement, null);
+      if (pendingKey !== sidebarNewElementFlipRef.current.targetKey) return;
+      commitSidebarPreviewHostMove(pending);
+    });
+  };
+
+  const clearSidebarPortalPreview = () => {
+    const commit = sidebarPreviewMoveRef.current;
+    if (commit.frame != null) cancelAnimationFrame(commit.frame);
+    commit.frame = null;
+    commit.pending = null;
+    const host = sidebarPreviewHostRef.current;
+    const root = sidebarPreviewRootRef.current;
+    sidebarPreviewRootRef.current = null;
+    root?.unmount();
+    if (host) {
+      host.ondragover = null;
+      if (host.parentNode) host.parentNode.removeChild(host);
+    }
+    if (ghostRef.current === host) ghostRef.current = null;
+    sidebarPreviewHostRef.current = null;
+    sidebarPortalPreviewRef.current = null;
+    sidebarNewElementFlipRef.current.previousConI = null;
+    sidebarNewElementFlipRef.current.preview = null;
+    sidebarNewElementFlipRef.current.targetKey = "";
+    windowDropHandlerRef.current = null;
+    inlineSortableRenderersRef.current.dragActive = false;
+  };
+  clearSidebarPortalPreviewRef.current = clearSidebarPortalPreview;
+
+  const commitSidebarNewElementPreview = (nextPreview, dropElement = null) => {
+    const state = sidebarNewElementFlipRef.current;
+    const previousDrop = dropTargetRef.current;
+    const nextTargetKey = sidebarNewElementTargetKey(dropElement, null);
+    const previewChanged =
+      Boolean(nextPreview) && sidebarPortalPreviewRef.current !== nextPreview;
+    if (!previewChanged && state.targetKey === nextTargetKey) {
+      const perf = sidebarNativeDragPerfRef.current;
+      if (perf?.active) perf.duplicateTargetSkips += 1;
+      return;
+    }
+
+    // Drop semantics never wait for the visual rAF.
+    dropTargetRef.current = dropElement
+      ? {
+          index:
+            dropElement.type === "ELEMENT"
+              ? sanitizeElementDropIndex({ ...dropElement.index })
+              : { ...dropElement.index },
+          type: dropElement.type,
+          isLast: Boolean(dropElement.isLast),
+        }
+      : { index: null, type: null, isLast: false };
+    if (dropElement?.type === "ELEMENT") {
+      dropHoldUntilRef.current = Date.now() + 180;
+    } else if (!dropElement) {
+      dropHoldUntilRef.current = 0;
+      resetEleInsertSnapState();
+      resetTabInlineRowSnapState();
+    }
+
+    state.previousConI = Number.isInteger(previousDrop?.index?.conI)
+      ? previousDrop.index.conI
+      : null;
+    state.preview = nextPreview || state.preview;
+    state.targetKey = nextTargetKey;
+
+    if (!nextPreview) {
+      scheduleSidebarPreviewHostMove(null, previousDrop);
+      return;
+    }
+
+    const host = ensureSidebarPreviewHost(nextPreview);
+    if (!host) return;
+    const isFirstMount = sidebarPreviewRootRef.current == null;
+
+    if (previewChanged) {
+      const commitStartedAt = performance.now();
+      let root = sidebarPreviewRootRef.current;
+      if (!root) {
+        root = createRoot(host);
+        sidebarPreviewRootRef.current = root;
+      }
+      sidebarPortalPreviewRef.current = nextPreview;
+      flushSync(() => {
+        root.render(
+          <ElementPreview
+            element={nextPreview}
+            isSidebarPortalPreview
+          />
+        );
+      });
+      const commitMs = performance.now() - commitStartedAt;
+      const perf = sidebarNativeDragPerfRef.current;
+      if (perf?.active) {
+        if (isFirstMount) {
+          perf.isolatedPreviewMountCount += 1;
+          perf.isolatedPreviewMountTotalMs += commitMs;
+          perf.isolatedPreviewMountMaxMs = Math.max(
+            perf.isolatedPreviewMountMaxMs,
+            commitMs
+          );
+          perf.portalMountCommitCount += 1;
+          perf.portalMountCommitTotalMs += commitMs;
+          perf.portalMountCommitMaxMs = Math.max(
+            perf.portalMountCommitMaxMs,
+            commitMs
+          );
+        } else {
+          perf.previewCommitCount += 1;
+          perf.previewCommitTotalMs += commitMs;
+          perf.previewCommitMaxMs = Math.max(perf.previewCommitMaxMs, commitMs);
+        }
+        if (perf.firstPreviewDelayMs == null) {
+          perf.firstPreviewDelayMs = performance.now() - perf.startedAt;
+        }
+      }
+    }
+    windowDropHandlerRef.current = handleDropElement() ? handleDrop : null;
+    inlineSortableRenderersRef.current.dragActive = true;
+    scheduleSidebarPreviewHostMove(
+      dropTargetRef.current,
+      previousDrop,
+      isFirstMount
+    );
+    const perf = sidebarNativeDragPerfRef.current;
+    if (perf?.active) perf.targetChangeCount += 1;
   };
 
   const autoScrollCanvasForPointer = (clientY) => {
@@ -5680,6 +9174,13 @@ const Content = ({
   };
 
   const clearGhost = () => {
+    markContentDndLifecycle("post-drop-cleanup");
+    finishSidebarNativeDragPerf("clear");
+    // The palette template ref can outlive native dragend; it is drop data,
+    // not proof that a drag is still active.
+    inlineSortableRenderersRef.current.dragActive = false;
+    structuralOptionStoreRef.current.setSuppressed(false);
+    clearScopedElementPlaceholder({ animate: false });
     if (hoverRef.current) {
       cancelAnimationFrame(hoverRef.current);
       hoverRef.current = null;
@@ -5687,8 +9188,25 @@ const Content = ({
 
     dragToken.current += 1;
 
+    clearSidebarPortalPreview();
     setPreview(null);
-    setDrop(null, null);
+    sidebarNewElementFlipRef.current.previousConI = null;
+    sidebarNewElementFlipRef.current.preview = null;
+    sidebarNewElementFlipRef.current.targetKey = "";
+    const isScopedElementCleanup =
+      useScopedColumnDnd &&
+      activeDragRef.current?.data?.current?.type === "ELEMENT";
+    if (isScopedElementCleanup) {
+      // Cross-column intent is ref/DOM driven. Updating dropRenderKey here
+      // forces an otherwise unchanged 35-section canvas to render after drop.
+      dropTargetRef.current = { index: null, type: null, isLast: false };
+      dropHoldUntilRef.current = 0;
+      setElementDropHighlight((prev) => (prev === null ? prev : null));
+      resetEleInsertSnapState();
+      resetTabInlineRowSnapState();
+    } else {
+      setDrop(null, null);
+    }
     carouselColWarnedRef.current = false;
     setCarouselColToastOpen(false);
     listImageColWarnedRef.current = false;
@@ -5703,11 +9221,21 @@ const Content = ({
     postInPostWarnedRef.current = false;
     setPostInPostToastOpen(false);
     blockedDropToastRef.current = null;
+    activeItemRef.current = null;
     resetListRunSnapState();
     resetEleInsertSnapState();
     resetTabInlineRowSnapState();
     elementHoverIntentRef.current = { key: "", startedAt: 0 };
     sidebarPreviewIntentRef.current = { key: "", startedAt: 0, x: 0, y: 0 };
+    incomingDragPreviewRef.current = {
+      source: null,
+      pageLatestID: null,
+      isCanvasElementMove: false,
+      preview: null,
+      type: null,
+    };
+    lastHandledDragOverEventRef.current = null;
+    resetDropElementGeometryCache();
   };
 
   const findColumn = (x, y) => {
@@ -5902,10 +9430,19 @@ const Content = ({
     overTabNestedItem,
     mouseX,
     mouseY,
-    element
+    element,
+    previewCollector = null
   ) => {
     const blockedTabDropTarget = { blocked: true };
     blockedDropToastRef.current = null;
+    const queuePreview = (value) => {
+      if (previewCollector) {
+        previewCollector.hasValue = true;
+        previewCollector.value = value;
+        return;
+      }
+      setPreview(value);
+    };
     const isCanvasElementMove =
       activeDragRef.current?.data?.current?.type === "ELEMENT";
     const conI = layouts.findIndex((l) => l.container.id === conID);
@@ -6191,7 +9728,7 @@ const Content = ({
               mouseY,
               midById
             );
-            setPreview(element);
+            queuePreview(element);
             return {
               index: {
                 conI,
@@ -6276,7 +9813,7 @@ const Content = ({
         mouseY,
         midById
       );
-      setPreview(element);
+      queuePreview(element);
       return {
         index: {
           conI,
@@ -6322,7 +9859,7 @@ const Content = ({
             : overMiniSpan?.getBoundingClientRect?.();
         if (!rectMspn) return;
         if (mouseY < rectMspn.top || mouseY > rectMspn.bottom) return;
-        setPreview(element);
+        queuePreview(element);
         if (!eleMspn.length) {
           return {
             index: { conI, colI, spnI, nestI, eleI: 0 },
@@ -6362,7 +9899,7 @@ const Content = ({
           }
           const firstNode = findDropElementNodeByEleId(eleMspn[0]?.id);
           if (firstNode) {
-            const firstRect = firstNode.getBoundingClientRect();
+            const firstRect = getCachedDropElementRect(firstNode);
             if (mouseY <= firstRect.top + firstRect.height / 2) {
               return { index: { conI, colI, spnI, nestI, eleI: 0 }, type: "ELEMENT", isLast: false };
             }
@@ -6410,7 +9947,7 @@ const Content = ({
         if (tabDropTarget) return tabDropTarget;
         const rectSpn = overSpan.getBoundingClientRect();
         if (mouseY < rectSpn.top || mouseY > rectSpn.bottom) return;
-        setPreview(element);
+        queuePreview(element);
 
         if (!eleSpn.length) {
           return {
@@ -6452,7 +9989,7 @@ const Content = ({
           }
           const firstNode = findDropElementNodeByEleId(eleSpn[0]?.id);
           if (firstNode) {
-            const firstRect = firstNode.getBoundingClientRect();
+            const firstRect = getCachedDropElementRect(firstNode);
             if (mouseY <= firstRect.top + firstRect.height / 2) {
               return { index: { conI, colI, spnI, eleI: 0 }, type: "ELEMENT", isLast: false };
             }
@@ -6508,7 +10045,7 @@ const Content = ({
       const tabDropTarget = buildTabDropTarget(elements);
       if (tabDropTarget?.blocked) return null;
       if (tabDropTarget) return tabDropTarget;
-      setPreview(element);
+      queuePreview(element);
 
       if (!elements.length) {
         return {
@@ -6551,7 +10088,7 @@ const Content = ({
         }
         const firstNode = findDropElementNodeByEleId(elements[0]?.id);
         if (firstNode) {
-          const firstRect = firstNode.getBoundingClientRect();
+          const firstRect = getCachedDropElementRect(firstNode);
           if (mouseY <= firstRect.top + firstRect.height / 2) {
             return { index: { conI, colI, eleI: 0 }, type: "ELEMENT", isLast: false };
           }
@@ -6595,9 +10132,18 @@ const Content = ({
     }
   };
 
-  const updateHoverFromPoint = (x, y, type, element) => {
+  const updateHoverFromPointImpl = (x, y, type, element) => {
+    // Rect เปลี่ยนได้จาก ghost/scroll แต่ node map ใช้ต่อได้จน DOM remount
+    resetDropElementRectCache();
     const set_2_null = () => {
       if (type === "ELEMENT" && Date.now() < dropHoldUntilRef.current) return;
+      const isSidebarNewElement =
+        type === "ELEMENT" &&
+        activeDragRef.current?.data?.current?.type !== "ELEMENT";
+      if (isSidebarNewElement) {
+        commitSidebarNewElementPreview(null);
+        return;
+      }
       setPreview(null);
       setDrop(null, null);
     };
@@ -6740,6 +10286,9 @@ const Content = ({
       const tabNestedItem = findTabNestedItem(x, y);
       const span = findSpan(x, y);
       const nestedSpan = findMiniSpan(x, y);
+      const isCanvasElementMove =
+        activeDragRef.current?.data?.current?.type === "ELEMENT";
+      const previewCollector = {};
       const dropElement = setDropForElement(
         conID,
         colID,
@@ -6751,7 +10300,8 @@ const Content = ({
         tabNestedItem,
         x,
         y,
-        element
+        element,
+        previewCollector
       );
       if (dropElement) blockedDropToastRef.current = null;
       if (!dropElement) {
@@ -6771,8 +10321,7 @@ const Content = ({
             y
           );
           if (!canShowSidebarPreview) {
-            setPreview(null);
-            setDrop(null, null);
+            commitSidebarNewElementPreview(null);
             // Sidebar pass-through phase: do not keep/commit any drop target,
             // otherwise mini span can expand while no preview is shown.
             return;
@@ -6782,15 +10331,56 @@ const Content = ({
         }
       }
       if (
+        isSidebarElementDrag &&
         dropElement?.type === "ELEMENT" &&
         !shouldCommitElementDropTarget(dropElement.index, x, y)
       ) {
-        if (isSidebarElementDrag) {
-          setDrop(null, null);
-        }
+        commitSidebarNewElementPreview(null);
         return;
       }
-      setDrop({ ...dropElement?.index }, dropElement.type, dropElement.isLast);
+      if (isSidebarElementDrag) {
+        commitSidebarNewElementPreview(
+          previewCollector?.hasValue ? previewCollector.value : element,
+          dropElement
+        );
+      } else {
+        if (previewCollector?.hasValue) {
+          setPreview(previewCollector.value);
+        }
+        setDrop({ ...dropElement?.index }, dropElement.type, dropElement.isLast);
+      }
+    }
+  };
+
+  const updateHoverFromPoint = (x, y, type, element) => {
+    const perf = sidebarNativeDragPerfRef.current;
+    if (!perf?.active || type !== "ELEMENT") {
+      return updateHoverFromPointImpl(x, y, type, element);
+    }
+    const startedAt = performance.now();
+    const previousTargetKey = sidebarNewElementTargetKey(
+      dropTargetRef.current,
+      null
+    );
+    try {
+      return updateHoverFromPointImpl(x, y, type, element);
+    } finally {
+      const elapsed = performance.now() - startedAt;
+      perf.hoverUpdateCount += 1;
+      perf.hoverUpdateTotalMs += elapsed;
+      perf.hoverUpdateMaxMs = Math.max(perf.hoverUpdateMaxMs, elapsed);
+      const nextTargetKey = sidebarNewElementTargetKey(
+        dropTargetRef.current,
+        null
+      );
+      // Preview commits count target transitions. This additionally catches
+      // target ref changes made by blocked/pass-through branches.
+      if (
+        nextTargetKey !== previousTargetKey &&
+        sidebarNewElementFlipRef.current.targetKey !== nextTargetKey
+      ) {
+        perf.targetChangeCount += 1;
+      }
     }
   };
 
@@ -6806,8 +10396,69 @@ const Content = ({
     });
   };
 
+  const updateScopedElementIntentFromPoint = (x, y, element) => {
+    const intentStartedAt = performance.now();
+    const perf = dndPerfRef.current;
+    const previousTargetKey = scopedElementTargetKey(dropTargetRef.current);
+    const finishIntentMeasurement = () => {
+      if (!perf?.active) return;
+      const elapsed = performance.now() - intentStartedAt;
+      perf.scopedIntentCount += 1;
+      perf.scopedIntentTotalMs += elapsed;
+      perf.scopedIntentMaxMs = Math.max(perf.scopedIntentMaxMs, elapsed);
+    };
+    resetDropElementRectCache();
+    const column = findColumnFromStack(x, y) || findColumn(x, y);
+    const resolvedColPath = resolveLayoutColumnPathFromDom(column);
+    if (!column || !resolvedColPath?.conID || !resolvedColPath?.colID) {
+      dropTargetRef.current = { index: null, type: null, isLast: false };
+      if (perf?.active && previousTargetKey) perf.scopedTargetChanges += 1;
+      clearScopedElementPlaceholder();
+      finishIntentMeasurement();
+      return false;
+    }
+    const previewCollector = {};
+    const dropElement = setDropForElement(
+      resolvedColPath.conID,
+      resolvedColPath.colID,
+      column,
+      findSpan(x, y),
+      findMiniSpan(x, y),
+      findElement(x, y),
+      findTabContent(x, y),
+      findTabNestedItem(x, y),
+      x,
+      y,
+      element,
+      previewCollector
+    );
+    if (
+      !dropElement ||
+      dropElement?.blocked ||
+      dropElement?.type !== "ELEMENT"
+    ) {
+      dropTargetRef.current = { index: null, type: null, isLast: false };
+      if (perf?.active && previousTargetKey) perf.scopedTargetChanges += 1;
+      clearScopedElementPlaceholder();
+      finishIntentMeasurement();
+      return false;
+    }
+    dropTargetRef.current = {
+      index: sanitizeElementDropIndex({ ...dropElement.index }),
+      type: dropElement.type,
+      isLast: Boolean(dropElement.isLast),
+    };
+    const nextTargetKey = scopedElementTargetKey(dropTargetRef.current);
+    if (perf?.active && nextTargetKey !== previousTargetKey) {
+      perf.scopedTargetChanges += 1;
+    }
+    renderScopedElementPlaceholder(dropTargetRef.current);
+    finishIntentMeasurement();
+    return true;
+  };
+
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }) // กันคลิกพลาด
+    useSensor(PointerSensor, { activationConstraint: { distance: 2 } }) // ตอบสนองไวขึ้น แต่ยังกันคลิกพลาด
   );
 
   const containerIds = useMemo(() => {
@@ -6826,15 +10477,45 @@ const Content = ({
     return ids;
   }, [layouts]);
 
-  const measuring = {
-    droppable: {
-      strategy: MeasuringStrategy.Always, // ช่วยให้คำนวณตำแหน่งสด ใหม่ ลื่นขึ้น
-    },
-  };
+  const measuring = useMemo(
+    () => ({
+      droppable: {
+        strategy: MeasuringStrategy.WhileDragging,
+      },
+    }),
+    []
+  );
 
   const openModal = (data = null) => {
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
+    confirmModalUiCacheRef.current.active = true;
     if (data) {
       const { id, funct } = data;
+      if (
+        builderSectionPerfEnabled &&
+        id?.spnID &&
+        !id?.nestID &&
+        !id?.eleID
+      ) {
+        const currentLayouts = layoutsRef.current;
+        const targetLayout = Array.isArray(currentLayouts)
+          ? currentLayouts.find(
+              (layout) => layout?.container?.id === id.conID
+            )
+          : null;
+        const targetColumn = targetLayout?.columns?.find(
+          (column) => column?.id === id.colID
+        );
+        const perf = startSpanStructurePerfSession("OPEN_DELETE", {
+          startedAt,
+          sourceSpanId: id.spnID,
+          targetSpanId: id.spnID,
+          remainingSpanCount: Array.isArray(targetColumn?.spans)
+            ? targetColumn.spans.length
+            : null,
+        });
+        if (perf) perf.preparationMs = performance.now() - startedAt;
+      }
       setModal({ id, funct });
     } else {
       setModal(null);
@@ -6842,29 +10523,80 @@ const Content = ({
   };
 
   const PRESET_STORAGE_KEY = "wb:col-presets:v1";
+  const countPresetColumnElements = (column) => {
+    if (!column || typeof column !== "object") return 0;
+    const directCount = Array.isArray(column.elements)
+      ? column.elements.length
+      : 0;
+    const spanCount = Array.isArray(column.spans)
+      ? column.spans.reduce(
+          (total, span) =>
+            total + (Array.isArray(span?.elements) ? span.elements.length : 0),
+          0
+        )
+      : 0;
+    return directCount + spanCount;
+  };
+  const presetPayloadBytes = (value) => {
+    if (!builderSectionPerfEnabled || !value) return 0;
+    if (typeof TextEncoder === "function") {
+      return new TextEncoder().encode(value).byteLength;
+    }
+    return value.length;
+  };
 
   const openColumnPresetModal = (payload) => {
+    markPresetUiInteraction();
+    const perf = startPresetPerfSession("OPEN_SAVE", {
+      source: payload?.source?.colID || null,
+      target: payload?.source?.conID || null,
+    });
+    const startedAt = perf ? performance.now() : 0;
+    const capturedColumn =
+      payload?.column && typeof payload.column === "object"
+        ? lodash.cloneDeep(payload.column)
+        : null;
+    if (perf) {
+      perf.preparationMs = performance.now() - startedAt;
+      perf.copiedElementCount = countPresetColumnElements(capturedColumn);
+    }
     setColumnPresetModal({
       open: true,
       name: String(payload?.defaultName || "PRESET Column"),
       error: "",
-      payload: payload || null,
+      payload: payload
+        ? {
+            ...payload,
+            column: capturedColumn,
+            source: payload.source ? { ...payload.source } : null,
+          }
+        : null,
     });
   };
 
   const closeColumnPresetModal = () => {
+    markPresetUiInteraction();
     setColumnPresetModal((prev) => ({
       ...prev,
       open: false,
       error: "",
       payload: null,
     }));
-    setPinnedColumnOptionId(null);
+    structuralOptionStoreRef.current.setPinned("column", null);
   };
 
   const saveColumnPresetToLocalStorage = () => {
+    markPresetUiInteraction();
     const modalPayload = columnPresetModal?.payload;
     const currentColumn = modalPayload?.column;
+    const perf = startPresetPerfSession("SAVE", {
+      source: modalPayload?.source?.colID || null,
+      target: modalPayload?.source?.conID || null,
+    });
+    const preparationStartedAt = perf ? performance.now() : 0;
+    if (perf) {
+      perf.copiedElementCount = countPresetColumnElements(currentColumn);
+    }
     if (!currentColumn || typeof currentColumn !== "object") {
       setColumnPresetModal((prev) => ({ ...prev, error: "ไม่พบข้อมูลคอลัมน์" }));
       return;
@@ -6884,19 +10616,32 @@ const Content = ({
         ...(modalPayload?.source || {}),
       },
       payload: {
-        column: JSON.parse(JSON.stringify(currentColumn)),
+        column: currentColumn,
       },
     };
+    if (perf) perf.preparationMs = performance.now() - preparationStartedAt;
     try {
+      const readStartedAt = perf ? performance.now() : 0;
       const raw = localStorage.getItem(PRESET_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : null;
+      if (perf) perf.storageReadMs = performance.now() - readStartedAt;
       const next = {
         version: 1,
         presets: Array.isArray(parsed?.presets)
           ? [...parsed.presets, presetRecord]
           : [presetRecord],
       };
-      localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(next));
+      const serializeStartedAt = perf ? performance.now() : 0;
+      const serialized = JSON.stringify(next);
+      if (perf) {
+        perf.serializeMs = performance.now() - serializeStartedAt;
+        perf.payloadBytes = presetPayloadBytes(serialized);
+        perf.presetCount = next.presets.length;
+        perf.presetId = presetRecord.id;
+      }
+      const writeStartedAt = perf ? performance.now() : 0;
+      localStorage.setItem(PRESET_STORAGE_KEY, serialized);
+      if (perf) perf.storageWriteMs = performance.now() - writeStartedAt;
       closeColumnPresetModal();
       setPresetSavedToastOpen(true);
     } catch (_) {
@@ -6904,11 +10649,17 @@ const Content = ({
     }
   };
 
-  const readColumnPresetsFromStorage = () => {
+  const readColumnPresetsFromStorage = (perf = null) => {
     try {
+      const startedAt = perf ? performance.now() : 0;
       const raw = localStorage.getItem(PRESET_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : null;
       const list = Array.isArray(parsed?.presets) ? parsed.presets : [];
+      if (perf) {
+        perf.storageReadMs = performance.now() - startedAt;
+        perf.payloadBytes = presetPayloadBytes(raw);
+        perf.presetCount = list.length;
+      }
       return list;
     } catch (_) {
       return [];
@@ -6932,7 +10683,19 @@ const Content = ({
   };
 
   const openColumnPresetLoadModal = (payload) => {
-    const presets = readColumnPresetsFromStorage();
+    markPresetUiInteraction();
+    const perf = startPresetPerfSession("OPEN_LOAD", {
+      source: payload?.source?.colID || null,
+      target: payload?.source?.spnID || payload?.source?.conID || null,
+    });
+    const startedAt = perf ? performance.now() : 0;
+    const presets = readColumnPresetsFromStorage(perf);
+    if (perf) {
+      perf.preparationMs = Math.max(
+        0,
+        performance.now() - startedAt - perf.storageReadMs
+      );
+    }
     setPresetDeleteConfirmId(null);
     setColumnPresetLoadModal({
       open: true,
@@ -6944,20 +10707,35 @@ const Content = ({
   const deleteColumnPresetFromLocalStorage = (presetId) => {
     const targetId = String(presetId || "").trim();
     if (!targetId) return;
+    markPresetUiInteraction();
+    const perf = startPresetPerfSession("DELETE_PRESET", {
+      presetId: targetId,
+      target: columnPresetLoadModal?.source?.spnID ||
+        columnPresetLoadModal?.source?.colID ||
+        null,
+    });
     try {
+      const readStartedAt = perf ? performance.now() : 0;
       const raw = localStorage.getItem(PRESET_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : null;
+      if (perf) perf.storageReadMs = performance.now() - readStartedAt;
       const current = Array.isArray(parsed?.presets) ? parsed.presets : [];
       const nextPresets = current.filter(
         (preset) => String(preset?.id || "") !== targetId
       );
-      localStorage.setItem(
-        PRESET_STORAGE_KEY,
-        JSON.stringify({
-          version: 1,
-          presets: nextPresets,
-        })
-      );
+      const serializeStartedAt = perf ? performance.now() : 0;
+      const serialized = JSON.stringify({
+        version: 1,
+        presets: nextPresets,
+      });
+      if (perf) {
+        perf.serializeMs = performance.now() - serializeStartedAt;
+        perf.payloadBytes = presetPayloadBytes(serialized);
+        perf.presetCount = nextPresets.length;
+      }
+      const writeStartedAt = perf ? performance.now() : 0;
+      localStorage.setItem(PRESET_STORAGE_KEY, serialized);
+      if (perf) perf.storageWriteMs = performance.now() - writeStartedAt;
       setColumnPresetLoadModal((prev) => ({
         ...prev,
         presets: nextPresets,
@@ -6973,6 +10751,7 @@ const Content = ({
   };
 
   const closeColumnPresetLoadModal = () => {
+    markPresetUiInteraction();
     setPresetDeleteConfirmId(null);
     setColumnPresetLoadModal({
       open: false,
@@ -6980,7 +10759,7 @@ const Content = ({
       presets: [],
       error: "",
     });
-    setPinnedColumnOptionId(null);
+    structuralOptionStoreRef.current.setPinned("column", null);
   };
 
   const preparePresetColumnForTarget = (rawPresetColumn, targetColId) => {
@@ -7054,23 +10833,41 @@ const Content = ({
   };
 
   const applyColumnPresetToTarget = (presetRecord) => {
+    markPresetUiInteraction();
     const src = columnPresetLoadModal?.source;
+    const isSpanTarget = Boolean(src?.spnID);
+    const perf = startPresetPerfSession(
+      isSpanTarget ? "APPLY_SPAN" : "APPLY_COLUMN",
+      {
+        source: presetRecord?.source?.colID || null,
+        target: src?.spnID || src?.colID || null,
+        presetId: presetRecord?.id || null,
+      }
+    );
+    const preparationStartedAt = perf ? performance.now() : 0;
     if (!src?.conID || !src?.colID) {
       setColumnPresetLoadModal((prev) => ({ ...prev, error: "ไม่พบคอลัมน์เป้าหมาย" }));
       return;
     }
-    const secI = layouts.findIndex((l) => l.container?.id === src.conID);
+    const currentLayouts = layoutsRef.current;
+    const secI = currentLayouts.findIndex(
+      (l) => String(l?.container?.id || "") === String(src.conID)
+    );
     if (secI === -1) {
       setColumnPresetLoadModal((prev) => ({ ...prev, error: "ไม่พบ Section เป้าหมาย" }));
       return;
     }
-    const colI = layouts[secI]?.columns?.findIndex((c) => c.id === src.colID);
+    const targetSection = currentLayouts[secI];
+    const colI = targetSection?.columns?.findIndex(
+      (c) => String(c?.id || "") === String(src.colID)
+    );
     if (!Number.isInteger(colI) || colI < 0) {
       setColumnPresetLoadModal((prev) => ({ ...prev, error: "ไม่พบ Column เป้าหมาย" }));
       return;
     }
+    const targetColumn = targetSection.columns[colI];
     if (src?.spnID) {
-      const spnI = layouts[secI]?.columns?.[colI]?.spans?.findIndex(
+      const spnI = targetColumn?.spans?.findIndex(
         (s) => String(s?.id || "") === String(src.spnID)
       );
       if (!Number.isInteger(spnI) || spnI < 0) {
@@ -7078,9 +10875,26 @@ const Content = ({
         return;
       }
       const elements = extractPresetElementsForSpanTarget(presetRecord);
-      const nextLayouts = lodash.cloneDeep(layouts);
-      nextLayouts[secI].columns[colI].spans[spnI].elements = elements;
-      nextLayouts[secI].columns[colI].spans[spnI].latestEleID = elements.length;
+      const targetSpan = targetColumn.spans[spnI];
+      const nextSpan = {
+        ...targetSpan,
+        elements,
+        latestEleID: elements.length,
+      };
+      const nextSpans = [...targetColumn.spans];
+      nextSpans[spnI] = nextSpan;
+      const nextColumn = { ...targetColumn, spans: nextSpans };
+      const nextColumns = [...targetSection.columns];
+      nextColumns[colI] = nextColumn;
+      const nextSection = { ...targetSection, columns: nextColumns };
+      const nextLayouts = [...currentLayouts];
+      nextLayouts[secI] = nextSection;
+      if (perf) {
+        perf.preparationMs = performance.now() - preparationStartedAt;
+        perf.loadedElementCount = elements.length;
+      }
+      markScopedLayoutSnapshot(nextLayouts);
+      layoutsRef.current = nextLayouts;
       setLayout(nextLayouts);
       closeColumnPresetLoadModal();
       setPresetLoadedToastOpen(true);
@@ -7103,32 +10917,37 @@ const Content = ({
           id: makeElementId(item?.id),
         }));
 
-    const nextLayouts = lodash.cloneDeep(layouts);
-    const targetColumn = nextLayouts?.[secI]?.columns?.[colI];
     if (!targetColumn || typeof targetColumn !== "object") {
       setColumnPresetLoadModal((prev) => ({ ...prev, error: "ไม่พบ Column เป้าหมาย" }));
       return;
     }
 
     // โหลดเฉพาะ element ของ preset และคงค่า size/โครงสร้างของคอลัมน์เป้าหมายเดิม
+    let nextColumn;
+    let loadedElementCount = 0;
     if (targetColumn.isSpan && Array.isArray(targetColumn.spans)) {
       const presetSpans = Array.isArray(presetColumn?.spans) ? presetColumn.spans : [];
       const fallbackElements = rewriteElementList(presetColumn?.elements);
-      targetColumn.spans = targetColumn.spans.map((sp, idx) => {
+      const nextSpans = targetColumn.spans.map((sp, idx) => {
         const byIndexElements = rewriteElementList(presetSpans?.[idx]?.elements);
         const nextElements = byIndexElements.length
           ? byIndexElements
           : idx === 0
             ? fallbackElements
             : [];
+        loadedElementCount += nextElements.length;
         return {
           ...sp,
           elements: nextElements,
           latestEleID: nextElements.length,
         };
       });
-      targetColumn.latestEleID = 0;
-      targetColumn.elements = [];
+      nextColumn = {
+        ...targetColumn,
+        spans: nextSpans,
+        latestEleID: 0,
+        elements: [],
+      };
     } else {
       const mergedElements = rewriteElementList(
         Array.isArray(presetColumn?.elements) && presetColumn.elements.length
@@ -7139,12 +10958,27 @@ const Content = ({
               )
             : []
       );
-      targetColumn.elements = mergedElements;
-      targetColumn.latestEleID = mergedElements.length;
-      delete targetColumn.spans;
-      targetColumn.latestSpanID = 0;
+      loadedElementCount = mergedElements.length;
+      nextColumn = {
+        ...targetColumn,
+        elements: mergedElements,
+        latestEleID: mergedElements.length,
+        latestSpanID: 0,
+      };
+      delete nextColumn.spans;
     }
 
+    const nextColumns = [...targetSection.columns];
+    nextColumns[colI] = nextColumn;
+    const nextSection = { ...targetSection, columns: nextColumns };
+    const nextLayouts = [...currentLayouts];
+    nextLayouts[secI] = nextSection;
+    if (perf) {
+      perf.preparationMs = performance.now() - preparationStartedAt;
+      perf.loadedElementCount = loadedElementCount;
+    }
+    markScopedLayoutSnapshot(nextLayouts);
+    layoutsRef.current = nextLayouts;
     setLayout(nextLayouts);
     closeColumnPresetLoadModal();
     setPresetLoadedToastOpen(true);
@@ -7179,18 +11013,20 @@ const Content = ({
   };
 
   const updateContainer = (data, id) => {
-
-    console.log(id,data);
     /* ต้องใช้ updater — ถ้าใช้ layouts จาก closure จะทับ layout ล่าสุด (เช่น หลังโคลนคอลัมน์) เมื่อแผง Section ยิง onUpdate จาก setData sync */
     setLayout((prev) => {
-      const newLayouts = lodash.cloneDeep(prev);
-      const idx = newLayouts.findIndex((l) => l.container.id === id);
+      const idx = prev.findIndex((l) => l.container.id === id);
       if (idx === -1) return prev;
-      const merged = { ...newLayouts[idx].container, ...data };
-      newLayouts[idx].container = syncContainerLatestColId(merged, newLayouts[idx].columns);
+      const newLayouts = [...prev];
+      const currentLayout = prev[idx];
+      const merged = { ...currentLayout.container, ...data };
+      newLayouts[idx] = {
+        ...currentLayout,
+        container: syncContainerLatestColId(merged, currentLayout.columns),
+      };
 
       // sync paddingTop/paddingBottom/overlap ไปยัง paired split section
-      const splitRowId = newLayouts[idx].splitRowId;
+      const splitRowId = currentLayout.splitRowId;
       if (splitRowId) {
         const syncKeys = [
           "paddingTop", "paddingBottom","isFluid",
@@ -7200,36 +11036,53 @@ const Content = ({
         const syncFields = {};
         syncKeys.forEach((k) => { if (k in data) syncFields[k] = data[k]; });
         if (Object.keys(syncFields).length > 0) {
-          newLayouts.forEach((l, i) => {
+          prev.forEach((l, i) => {
             if (i !== idx && l.splitRowId === splitRowId) {
-              l.container = { ...l.container, ...syncFields };
+              newLayouts[i] = {
+                ...l,
+                container: { ...l.container, ...syncFields },
+              };
             }
           });
         }
       }
 
+      markScopedLayoutSnapshot(newLayouts);
       return newLayouts;
     });
   };
 
   const cloneContainer = (id) => {
-    const targetLayout = layouts.find((l) => l.container?.id === id);
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
+    if (typeof id !== "string" || !id) return;
+    const currentLayouts = layoutsRef.current;
+    if (!Array.isArray(currentLayouts)) return;
+    const targetIndex = currentLayouts.findIndex(
+      (layout) => layout?.container?.id === id
+    );
+    if (targetIndex === -1) return;
+    const targetLayout = currentLayouts[targetIndex];
+    const nextSectionId = page.latestID;
     if (targetLayout?.splitRowId) {
       // Clone all sections of the split row as a group
       const splitRowId = targetLayout.splitRowId;
-      const splitSections = layouts.filter((l) => l.splitRowId === splitRowId);
-      const lastIdx = layouts.findLastIndex((l) => l.splitRowId === splitRowId);
+      const splitSections = currentLayouts.filter(
+        (layout) => layout?.splitRowId === splitRowId
+      );
+      const lastIdx = currentLayouts.findLastIndex(
+        (layout) => layout?.splitRowId === splitRowId
+      );
+      if (splitSections.length === 0) return;
       if (lastIdx === -1) return;
-      const newLayouts = lodash.cloneDeep(layouts);
-      const newSplitRowId = `SplitRow-${page.latestID}`;
+      const newSplitRowId = `SplitRow-${nextSectionId}`;
       const clonedSections = splitSections.map((sec, si) => {
         const newSec = lodash.cloneDeep(sec);
-        const suffix = si === 0 ? "L" : "R";
-        newSec.container.id = `Sec-${page.latestID}${suffix}`;
+        const suffix = si === 0 ? "L" : si === 1 ? "R" : `R${si}`;
+        newSec.container.id = `Sec-${nextSectionId}${suffix}`;
         newSec.splitRowId = newSplitRowId;
         let latestColID = 0;
         newSec.columns?.forEach((col) => {
-          col.id = `Col-${page.latestID}${suffix}-${latestColID++}`;
+          col.id = `Col-${nextSectionId}${suffix}-${latestColID++}`;
           col.elements?.forEach((e) => {
             e.id = e.id.split("-")[0] + "-" + Math.ceil(Math.random() * 1e9).toString(36);
           });
@@ -7237,22 +11090,50 @@ const Content = ({
         newSec.container.latestColID = latestColID;
         return newSec;
       });
+      const newLayouts = [...currentLayouts];
       newLayouts.splice(lastIdx + 1, 0, ...clonedSections);
+      if (builderSectionPerfEnabled) {
+        const copiedCounts =
+          countCanvasLayoutStructureAndElements(splitSections);
+        clonePerfRef.current = {
+          type: "SPLIT",
+          source: String(splitRowId),
+          createdIds: {
+            splitRowId: newSplitRowId,
+            sectionIds: clonedSections.map((sec) => sec.container.id),
+            columnIds: clonedSections.flatMap((sec) =>
+              (sec.columns || []).map((col) => col.id)
+            ),
+          },
+          sourceElementCount: copiedCounts.elements,
+          weightedCopiedItemCount: copiedCounts.total,
+          preparationMs: performance.now() - startedAt,
+          startedAt,
+          clickToCommitWallMs: 0,
+          canvasCommits: 0,
+          canvasActualMs: 0,
+          canvasActualMaxMs: 0,
+          cacheHits: 0,
+          cacheMisses: 0,
+          cacheMissReasons: {},
+          logScheduled: false,
+        };
+      }
+      layoutsRef.current = newLayouts;
+      markScopedLayoutSnapshot(newLayouts);
       setLayout(newLayouts);
       setPage((prev) => ({ ...prev, latestID: prev.latestID + 1 }));
       return;
     }
-    const idx = layouts.findIndex((l) => l.container.id === id);
-    const newLayouts = lodash.cloneDeep(layouts);
-    const newLayout = lodash.cloneDeep(newLayouts[idx]);
-    newLayout.container.id = `Sec-${page.latestID}`;
+    const newLayout = lodash.cloneDeep(targetLayout);
+    newLayout.container.id = `Sec-${nextSectionId}`;
     if(newLayout?.columns){
       let latestColID = 0;
       newLayout.columns.map((col) => {
-        col.id = `Col-${page.latestID}-${latestColID++}`;
+        col.id = `Col-${nextSectionId}-${latestColID++}`;
         let latestSpanID = 0;
         if (col.isSpan) {
-          col.spans.map((s, i) => {
+          col.spans.map((s) => {
             const newID = col.id.replace("Col-", "");
             s.id = `Span-${newID}-${latestSpanID}`;
             s.hasNestedSpan = false;
@@ -7277,9 +11158,33 @@ const Content = ({
       });
       newLayout.container.latestColID = latestColID;
     }
-    
-   
-    newLayouts.splice(idx + 1, 0, newLayout);
+    const newLayouts = [...currentLayouts];
+    newLayouts.splice(targetIndex + 1, 0, newLayout);
+    if (builderSectionPerfEnabled) {
+      const copiedCounts = countCanvasLayoutStructureAndElements([targetLayout]);
+      clonePerfRef.current = {
+        type: "SECTION",
+        source: id,
+        createdIds: {
+          sectionIds: [newLayout.container.id],
+          columnIds: (newLayout.columns || []).map((col) => col.id),
+        },
+        sourceElementCount: copiedCounts.elements,
+        weightedCopiedItemCount: copiedCounts.total,
+        preparationMs: performance.now() - startedAt,
+        startedAt,
+        clickToCommitWallMs: 0,
+        canvasCommits: 0,
+        canvasActualMs: 0,
+        canvasActualMaxMs: 0,
+        cacheHits: 0,
+        cacheMisses: 0,
+        cacheMissReasons: {},
+        logScheduled: false,
+      };
+    }
+    layoutsRef.current = newLayouts;
+    markScopedLayoutSnapshot(newLayouts);
     setLayout(newLayouts);
 
     setPage((prev) => {
@@ -7287,35 +11192,214 @@ const Content = ({
     });
   };
 
-  const deleteContainer = (id) => {
-    const targetLayout = layouts.find((l) => l.container?.id === id);
-    if (!targetLayout) return;
-    let newLayouts;
-    if (targetLayout.splitRowId) {
-      // Remove all sections belonging to the same split row
-      newLayouts = lodash.cloneDeep(layouts).filter((l) => l.splitRowId !== targetLayout.splitRowId);
-    } else {
-      const idx = layouts.findIndex((l) => l.container.id === id);
-      if (idx === -1) return;
-      newLayouts = lodash.cloneDeep(layouts);
-      newLayouts.splice(idx, 1);
+  const collectDeletedStructureIds = (removedLayouts, includeElementIds) => {
+    const sectionIds = [];
+    const splitRowIds = new Set();
+    const columnIds = [];
+    const spanIds = [];
+    const elementIds = [];
+    for (const layout of removedLayouts) {
+      if (layout?.container?.id) sectionIds.push(String(layout.container.id));
+      if (layout?.splitRowId) splitRowIds.add(String(layout.splitRowId));
+      const columns = Array.isArray(layout?.columns) ? layout.columns : [];
+      for (const column of columns) {
+        if (column?.id) columnIds.push(String(column.id));
+        if (includeElementIds) {
+          const elements = Array.isArray(column?.elements) ? column.elements : [];
+          for (const element of elements) {
+            if (element?.id) elementIds.push(String(element.id));
+          }
+        }
+        const spans = Array.isArray(column?.spans) ? column.spans : [];
+        for (const span of spans) {
+          if (span?.id) spanIds.push(String(span.id));
+          if (includeElementIds) {
+            const elements = Array.isArray(span?.elements) ? span.elements : [];
+            for (const element of elements) {
+              if (element?.id) elementIds.push(String(element.id));
+            }
+          }
+          const nestedSpans = Array.isArray(span?.nestedSpans)
+            ? span.nestedSpans
+            : [];
+          for (const nestedSpan of nestedSpans) {
+            if (nestedSpan?.id) spanIds.push(String(nestedSpan.id));
+            if (includeElementIds) {
+              const elements = Array.isArray(nestedSpan?.elements)
+                ? nestedSpan.elements
+                : [];
+              for (const element of elements) {
+                if (element?.id) elementIds.push(String(element.id));
+              }
+            }
+          }
+        }
+      }
     }
-    setLayout(newLayouts);
+    return {
+      sectionIds,
+      splitRowIds: [...splitRowIds],
+      columnIds,
+      spanIds,
+      elementIds,
+    };
+  };
+
+  const clearDeletedStructuralOptions = (removedIds) => {
+    const optionState = structuralOptionStoreRef.current.getState();
+    const sectionIds = new Set(removedIds.sectionIds);
+    const splitRowIds = new Set(removedIds.splitRowIds);
+    const columnIds = new Set(removedIds.columnIds);
+    const spanIds = new Set(removedIds.spanIds);
+    const hoverTarget = optionState.hoverTarget;
+    if (
+      sectionIds.has(String(hoverTarget?.id || "")) ||
+      sectionIds.has(String(hoverTarget?.sectionId || "")) ||
+      splitRowIds.has(String(hoverTarget?.id || "")) ||
+      splitRowIds.has(String(hoverTarget?.splitRowId || "")) ||
+      columnIds.has(String(hoverTarget?.id || "")) ||
+      columnIds.has(String(hoverTarget?.columnId || "")) ||
+      spanIds.has(String(hoverTarget?.id || ""))
+    ) {
+      structuralOptionStoreRef.current.publishHover(null);
+    }
+    if (columnIds.has(String(optionState.pinnedColumnId || ""))) {
+      structuralOptionStoreRef.current.setPinned("column", null);
+    }
+    if (spanIds.has(String(optionState.pinnedSpanId || ""))) {
+      structuralOptionStoreRef.current.setPinned("span", null);
+    }
+  };
+
+  const beginDeletePerf = (
+    type,
+    source,
+    removedLayouts,
+    removedIds,
+    startedAt,
+    includesRemovedSection = true
+  ) => {
+    if (!builderSectionPerfEnabled) return;
+    const counts = countCanvasLayoutStructureAndElements(removedLayouts);
+    const syntheticSectionCount =
+      type === "COLUMN" && !includesRemovedSection ? counts.sections : 0;
+    deletePerfRef.current = {
+      type,
+      source: String(source),
+      removedIds,
+      removedCounts: {
+        sections: counts.sections - syntheticSectionCount,
+        columns: counts.columns,
+        spans: counts.spans,
+        nestedSpans: counts.nestedSpans,
+        elements: counts.elements,
+      },
+      removedElementCount: counts.elements,
+      weightedRemovedItemCount: counts.total - syntheticSectionCount,
+      preparationMs: performance.now() - startedAt,
+      startedAt,
+      clickToCommitWallMs: 0,
+      canvasCommits: 0,
+      canvasActualMs: 0,
+      canvasActualMaxMs: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      cacheMissReasons: {},
+      logScheduled: false,
+    };
+  };
+
+  const deleteContainer = (id) => {
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
+    if (typeof id !== "string" || !id) return;
+    const currentLayouts = layoutsRef.current;
+    if (!Array.isArray(currentLayouts)) return;
+    const targetIndex = currentLayouts.findIndex(
+      (layout) => layout?.container?.id === id
+    );
+    if (targetIndex === -1) return;
+    const targetLayout = currentLayouts[targetIndex];
+    const splitRowId = targetLayout?.splitRowId;
+    let nextLayouts;
+    let removedLayouts;
+    let deleteType;
+    let source;
+    if (splitRowId) {
+      removedLayouts = currentLayouts.filter(
+        (layout) => layout?.splitRowId === splitRowId
+      );
+      if (removedLayouts.length === 0) return;
+      nextLayouts = currentLayouts.filter(
+        (layout) => layout?.splitRowId !== splitRowId
+      );
+      deleteType = "SPLIT";
+      source = splitRowId;
+    } else {
+      removedLayouts = [targetLayout];
+      nextLayouts = [...currentLayouts];
+      nextLayouts.splice(targetIndex, 1);
+      deleteType = "SECTION";
+      source = id;
+    }
+    if (nextLayouts.length === currentLayouts.length) return;
+    const removedIds = collectDeletedStructureIds(
+      removedLayouts,
+      builderSectionPerfEnabled
+    );
+    clearDeletedStructuralOptions(removedIds);
+    const removedIndexes = [];
+    currentLayouts.forEach((layout, index) => {
+      if (
+        splitRowId
+          ? layout?.splitRowId === splitRowId
+          : index === targetIndex
+      ) {
+        removedIndexes.push(index);
+      }
+    });
+    for (let index = removedIndexes.length - 1; index >= 0; index -= 1) {
+      pendingDeleteRefGridOpsRef.current.push({
+        removeLayout: true,
+        layoutIndex: removedIndexes[index],
+      });
+    }
+    beginDeletePerf(
+      deleteType,
+      source,
+      removedLayouts,
+      removedIds,
+      startedAt
+    );
+    layoutsRef.current = nextLayouts;
+    markScopedLayoutSnapshot(nextLayouts);
+    setLayout(nextLayouts);
     if (id === offcanvasID) {
       openOffcavanas(null, null, null);
     }
   };
 
-  const updateColumn = (data, id, conID) => {
-    const newLayouts = [...layouts];
-    const IDX = newLayouts.findIndex((l) => l.container.id === conID);
+  const updateColumn = (data, id, conID, options = null) => {
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
+    const currentLayouts = layoutsRef.current;
+    if (!Array.isArray(currentLayouts)) return;
+    const IDX = currentLayouts.findIndex(
+      (layout) => layout?.container?.id === conID
+    );
     if (IDX === -1) return;
-    const newLayout = { ...newLayouts[IDX] };
-    const newColumns = [...newLayout.columns];
-    const idx = newColumns.findIndex((c) => c.id === id);
+    const currentLayout = currentLayouts[IDX];
+    if (!Array.isArray(currentLayout?.columns)) return;
+    const idx = currentLayout.columns.findIndex((column) => column?.id === id);
     if (idx === -1) return;
-    const prevColumn = newColumns[idx];
-    const newColumn = { ...data };
+    const prevColumn = currentLayout.columns[idx];
+    if (!prevColumn || typeof prevColumn !== "object") return;
+    const isSplitToggle = options?.columnSplitToggle === true;
+    const requestedIsSpan = Boolean(data?.isSpan);
+    const isShapeUpdate =
+      requestedIsSpan !== Boolean(prevColumn.isSpan);
+    if (isSplitToggle && !isShapeUpdate) return;
+    const newColumn = isSplitToggle
+      ? { ...prevColumn, isSpan: requestedIsSpan }
+      : { ...data };
     const colKey = String(id || "").replace("Col-", "");
     const sanitizeElementsForLayout = (list) =>
       Array.isArray(list)
@@ -7361,10 +11445,10 @@ const Content = ({
       latestNestedSpanID: 0,
     });
 
-    if (newColumn?.isSpan === true) {
-      if (!Array.isArray(newColumn.spans) || newColumn.spans.length === 0) {
+    if (isShapeUpdate && newColumn?.isSpan === true) {
+      if (isSplitToggle) {
         const seeded = sanitizeElementsForLayout(
-          lodash.cloneDeep(prevColumn?.elements)
+          lodash.cloneDeep(prevColumn.elements)
         );
         newColumn.spans = [
           makeSpanShell(`Span-${colKey}-0`, seeded),
@@ -7373,7 +11457,10 @@ const Content = ({
           makeSpanShell(`Span-${colKey}-3`, []),
         ];
         newColumn.latestSpanID = 4;
-      } else {
+      } else if (
+        Array.isArray(newColumn.spans) &&
+        newColumn.spans.length > 0
+      ) {
         newColumn.spans = newColumn.spans.map((sp, sidx) => {
           const spanElements = sanitizeElementsForLayout(
             lodash.cloneDeep(sp?.elements)
@@ -7393,14 +11480,32 @@ const Content = ({
           };
         });
         newColumn.latestSpanID = newColumn.spans.length;
+      } else {
+        const seeded = sanitizeElementsForLayout(
+          lodash.cloneDeep(prevColumn.elements)
+        );
+        newColumn.spans = [
+          makeSpanShell(`Span-${colKey}-0`, seeded),
+          makeSpanShell(`Span-${colKey}-1`, []),
+          makeSpanShell(`Span-${colKey}-2`, []),
+          makeSpanShell(`Span-${colKey}-3`, []),
+        ];
+        newColumn.latestSpanID = 4;
       }
       newColumn.elements = [];
       newColumn.latestEleID = 0;
-    } else if (prevColumn?.isSpan && Array.isArray(newColumn?.spans)) {
+    } else if (
+      isShapeUpdate &&
+      prevColumn?.isSpan &&
+      Array.isArray(isSplitToggle ? prevColumn.spans : newColumn?.spans)
+    ) {
       const mergedElements = [];
-      for (const sp of newColumn.spans) {
+      const sourceSpans = isSplitToggle ? prevColumn.spans : newColumn.spans;
+      for (const sp of sourceSpans) {
         if (Array.isArray(sp?.elements) && sp.elements.length > 0) {
-          mergedElements.push(...sanitizeElementsForLayout(sp.elements));
+          mergedElements.push(
+            ...sanitizeElementsForLayout(lodash.cloneDeep(sp.elements))
+          );
         }
       }
       newColumn.elements = mergedElements;
@@ -7408,7 +11513,11 @@ const Content = ({
       delete newColumn.spans;
       newColumn.latestSpanID = 0;
     }
-    if (newColumn?.isSpan === true && Array.isArray(newColumn?.spans)) {
+    if (
+      isShapeUpdate &&
+      newColumn?.isSpan === true &&
+      Array.isArray(newColumn?.spans)
+    ) {
       newColumn.spans = newColumn.spans.map((sp) => ({
         ...sp,
         hasNestedSpan: false,
@@ -7496,25 +11605,80 @@ const Content = ({
     }
     postColWarnedRef.current = false;
     setPostColToastOpen(false);
+    if (
+      !isShapeUpdate &&
+      newColumn &&
+      typeof newColumn === "object"
+    ) {
+      const nextKeys = Object.keys(newColumn);
+      const previousKeys = Object.keys(prevColumn);
+      if (
+        nextKeys.length === previousKeys.length &&
+        nextKeys.every((key) => Object.is(newColumn[key], prevColumn[key]))
+      ) {
+        return;
+      }
+    }
+    const newColumns = [...currentLayout.columns];
     newColumns[idx] = newColumn;
-    newLayout.columns = newColumns;
+    const newLayout = { ...currentLayout, columns: newColumns };
+    const newLayouts = [...currentLayouts];
     newLayouts[IDX] = newLayout;
+    if (builderSectionPerfEnabled && isSplitToggle) {
+      const fromSpanCount = Array.isArray(prevColumn.spans)
+        ? prevColumn.spans.length
+        : 0;
+      const toSpanCount = Array.isArray(newColumn.spans)
+        ? newColumn.spans.length
+        : 0;
+      const movedElementCount = newColumn.isSpan
+        ? newColumn.spans?.[0]?.elements?.length || 0
+        : newColumn.elements?.length || 0;
+      columnSplitPerfRef.current = {
+        operation: newColumn.isSpan ? "SPLIT" : "UNSPLIT",
+        sourceColumn: { containerId: conID, columnId: id },
+        targetColumn: { containerId: conID, columnId: id },
+        fromSpanCount,
+        toSpanCount,
+        movedElementCount,
+        preparationMs: performance.now() - startedAt,
+        startedAt,
+        clickToCommitWallMs: 0,
+        canvasCommits: 0,
+        canvasActualMs: 0,
+        canvasActualMaxMs: 0,
+        cacheHits: 0,
+        cacheMisses: 0,
+        cacheMissReasons: {},
+        logScheduled: false,
+      };
+    }
+    layoutsRef.current = newLayouts;
+    markScopedLayoutSnapshot(newLayouts);
     setLayout(newLayouts);
   };
 
   const cloneColumn = (id) => {
-    const { conID, colID } = id;
-    let IDX;
-    const newLayouts = lodash.cloneDeep(layouts);
-    IDX = newLayouts.findIndex((l) => l.container.id === conID);
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
+    const { conID, colID } = id || {};
+    if (!conID || !colID) return;
+    const currentLayouts = layoutsRef.current;
+    if (!Array.isArray(currentLayouts)) return;
+    const IDX = currentLayouts.findIndex(
+      (layout) => layout?.container?.id === conID
+    );
     if (IDX === -1) return;
-    const newLayout = lodash.cloneDeep(newLayouts[IDX]);
-    const newColumns = lodash.cloneDeep(newLayout.columns);
-    const idx = newColumns.findIndex((c) => c.id == colID);
+    const currentLayout = currentLayouts[IDX];
+    if (!Array.isArray(currentLayout?.columns)) return;
+    const idx = currentLayout.columns.findIndex((column) => column?.id == colID);
     if (idx === -1) return;
-    const newColumn = lodash.cloneDeep(newColumns[idx]);
-    const idPaths = newLayout.container.id.split("-");
+    const sourceColumn = currentLayout.columns[idx];
+    if (!sourceColumn || typeof sourceColumn !== "object") return;
+    const newColumn = lodash.cloneDeep(sourceColumn);
+    const newColumns = [...currentLayout.columns];
+    const idPaths = String(currentLayout.container?.id || "").split("-");
     const sectionKey = idPaths[1];
+    if (!sectionKey) return;
     let maxColSuffix = -1;
     for (const col of newColumns) {
       const p = String(col.id).split("-");
@@ -7551,12 +11715,13 @@ const Content = ({
     }
 
     newColumns.splice(idx + 1, 0, newColumn);
-    newLayout.columns = newColumns;
-    newLayout.container = syncContainerLatestColId(
-      newLayout.container,
-      newLayout.columns
-    );
-    newLayouts.splice(IDX, 1, newLayout);
+    const newLayout = {
+      ...currentLayout,
+      columns: newColumns,
+      container: syncContainerLatestColId(currentLayout.container, newColumns),
+    };
+    const newLayouts = [...currentLayouts];
+    newLayouts[IDX] = newLayout;
 
     /* ให้ ref grid ตรงกับคอลัมน์หลังแทรก — ไม่งั้น index เยื้อง (deleteColumn มี splice แต่ clone ไม่มี คอลัมน์ใหม่จะหาย/ทับ ref) */
     if (!columned.current[IDX]) columned.current[IDX] = [];
@@ -7566,77 +11731,247 @@ const Content = ({
     if (!nestedSpaned.current[IDX]) nestedSpaned.current[IDX] = [];
     nestedSpaned.current[IDX].splice(idx + 1, 0, []);
 
+    if (builderSectionPerfEnabled) {
+      const copiedCounts = countCanvasLayoutStructureAndElements([
+        { columns: [sourceColumn] },
+      ]);
+      clonePerfRef.current = {
+        type: "COLUMN",
+        source: `${conID}/${colID}`,
+        createdIds: {
+          columnIds: [newColumn.id],
+          spanIds: (newColumn.spans || []).map((span) => span.id),
+        },
+        sourceElementCount: copiedCounts.elements,
+        weightedCopiedItemCount:
+          copiedCounts.total - copiedCounts.sections,
+        preparationMs: performance.now() - startedAt,
+        startedAt,
+        clickToCommitWallMs: 0,
+        canvasCommits: 0,
+        canvasActualMs: 0,
+        canvasActualMaxMs: 0,
+        cacheHits: 0,
+        cacheMisses: 0,
+        cacheMissReasons: {},
+        logScheduled: false,
+      };
+    }
+    layoutsRef.current = newLayouts;
+    markScopedLayoutSnapshot(newLayouts);
     setLayout(newLayouts);
   };
 
   const deleteColumn = (id) => {
-    const { conID, colID } = id;
-    const newLayouts = [...layouts];
-    const IDX = newLayouts.findIndex((l) => l.container.id === conID);
-    const newLayout = { ...newLayouts[IDX] };
-    const newColumns = [...newLayout.columns];
-    const idx = newColumns.findIndex((c) => c.id === colID);
-    newColumns.splice(idx, 1);
-    columned.current[IDX].splice(idx, 1);
-    if (newColumns.length === 0) {
-      newLayouts.splice(IDX, 1);
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
+    const { conID, colID } = id || {};
+    if (!conID || !colID) return;
+    const currentLayouts = layoutsRef.current;
+    if (!Array.isArray(currentLayouts)) return;
+    const layoutIndex = currentLayouts.findIndex(
+      (layout) => layout?.container?.id === conID
+    );
+    if (layoutIndex === -1) return;
+    const currentLayout = currentLayouts[layoutIndex];
+    if (!Array.isArray(currentLayout?.columns)) return;
+    const columnIndex = currentLayout.columns.findIndex(
+      (column) => column?.id === colID
+    );
+    if (columnIndex === -1) return;
+    const removedColumn = currentLayout.columns[columnIndex];
+    const nextColumns = [...currentLayout.columns];
+    nextColumns.splice(columnIndex, 1);
+    const nextLayout = { ...currentLayout, columns: nextColumns };
+    const nextLayouts = [...currentLayouts];
+    const removesWholeSection = nextColumns.length === 0;
+    if (removesWholeSection) {
+      // Preserve the established split behavior: remove only this half.
+      nextLayouts.splice(layoutIndex, 1);
     } else {
-      newLayout.columns = newColumns;
-      newLayouts.splice(IDX, 1, newLayout);
+      nextLayouts[layoutIndex] = nextLayout;
     }
+    const removedLayouts = removesWholeSection
+      ? [currentLayout]
+      : [{ columns: [removedColumn] }];
+    const removedIds = collectDeletedStructureIds(
+      removedLayouts,
+      builderSectionPerfEnabled
+    );
+    clearDeletedStructuralOptions(removedIds);
+    pendingDeleteRefGridOpsRef.current.push({
+      removeLayout: removesWholeSection,
+      layoutIndex,
+      columnIndex,
+    });
+    beginDeletePerf(
+      "COLUMN",
+      `${conID}/${colID}`,
+      removedLayouts,
+      removedIds,
+      startedAt,
+      removesWholeSection
+    );
 
-    setLayout(newLayouts);
+    layoutsRef.current = nextLayouts;
+    markScopedLayoutSnapshot(nextLayouts);
+    setLayout(nextLayouts);
   };
 
   const updateSpan = (data, id, conID, colID) => {
-    const newLayouts = lodash.cloneDeep(layouts);
-      const IDX = newLayouts.findIndex((l) => l.container.id === conID);
-      const idx = newLayouts[IDX].columns.findIndex((c) => c.id === colID);
-      const sidx = newLayouts[IDX].columns[idx].spans.findIndex(
-        (s) => s.id === id
-      );
-      const newSpans = newLayouts[IDX].columns[idx].spans;
-      newSpans[sidx] = data;
+    const newLayouts = [...layouts];
+    const IDX = newLayouts.findIndex((l) => l.container.id === conID);
+    if (IDX === -1) return;
+    const currentLayout = newLayouts[IDX];
+    const idx = currentLayout.columns.findIndex((c) => c.id === colID);
+    if (idx === -1) return;
+    const currentColumn = currentLayout.columns[idx];
+    const sidx = currentColumn.spans.findIndex((s) => s.id === id);
+    if (sidx === -1) return;
+    const newSpans = [...currentColumn.spans];
+    newSpans[sidx] = data;
+    const newColumns = [...currentLayout.columns];
+    newColumns[idx] = { ...currentColumn, spans: newSpans };
+    newLayouts[IDX] = { ...currentLayout, columns: newColumns };
+    markScopedLayoutSnapshot(newLayouts);
     setLayout(newLayouts);
   };
 
   const cloneSpan = (id) => {
-    const { conID, colID, spnID } = id;
-    const newLayouts = lodash.cloneDeep(layouts);
-    const IDX = newLayouts.findIndex((l) => l.container.id === conID);
-    const newLayout = newLayouts[IDX];
-    const idx = newLayout.columns.findIndex((c) => c.id === colID);
-    const newColumn = newLayout.columns[idx];
-    const newSpans = newColumn.spans;
-    const sidx = newColumn.spans.findIndex((s) => s.id === spnID);
-    const newSpan = lodash.cloneDeep(newColumn.spans[sidx]);
-    const idPaths = newSpan.id.split("-");
-    newSpan.id = `Span-${idPaths[1]}-${idPaths[2]}-${newColumn.latestSpanID}`;
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
+    const { conID, colID, spnID } = id || {};
+    if (!conID || !colID || !spnID) return;
+    const currentLayouts = layoutsRef.current;
+    if (!Array.isArray(currentLayouts)) return;
+    const layoutIndex = currentLayouts.findIndex(
+      (layout) => layout?.container?.id === conID
+    );
+    if (layoutIndex === -1) return;
+    const currentLayout = currentLayouts[layoutIndex];
+    if (!Array.isArray(currentLayout?.columns)) return;
+    const columnIndex = currentLayout.columns.findIndex(
+      (column) => column?.id === colID
+    );
+    if (columnIndex === -1) return;
+    const currentColumn = currentLayout.columns[columnIndex];
+    if (!Array.isArray(currentColumn?.spans)) return;
+    const spanIndex = currentColumn.spans.findIndex(
+      (span) => span?.id === spnID
+    );
+    if (spanIndex === -1) return;
+    const sourceSpan = currentColumn.spans[spanIndex];
+    const newSpan = lodash.cloneDeep(sourceSpan);
+    const sourceId = String(sourceSpan.id);
+    const sourceSuffixMatch = sourceId.match(/^(.*)-(\d+)$/);
+    const spanIdPrefix = sourceSuffixMatch
+      ? sourceSuffixMatch[1]
+      : `Span-${String(currentColumn.id).replace(/^Col-/, "")}`;
+    const usedSpanIds = new Set(
+      currentColumn.spans.map((span) => String(span?.id || ""))
+    );
+    let maxUsedSuffix = -1;
+    currentColumn.spans.forEach((span) => {
+      const match = String(span?.id || "").match(/^(.*)-(\d+)$/);
+      if (match?.[1] === spanIdPrefix) {
+        maxUsedSuffix = Math.max(maxUsedSuffix, Number(match[2]));
+      }
+    });
+    let nextSpanCounter = Math.max(
+      Number.isFinite(Number(currentColumn.latestSpanID))
+        ? Number(currentColumn.latestSpanID)
+        : 0,
+      maxUsedSuffix + 1
+    );
+    let nextSpanId = `${spanIdPrefix}-${nextSpanCounter}`;
+    while (usedSpanIds.has(nextSpanId)) {
+      nextSpanCounter += 1;
+      nextSpanId = `${spanIdPrefix}-${nextSpanCounter}`;
+    }
+    newSpan.id = nextSpanId;
     newSpan.hasNestedSpan = false;
     newSpan.nestedSpans = [];
     newSpan.latestNestedSpanID = 0;
-    newColumn.latestSpanID += 1;
-    newSpan.latestEleID = newSpan.elements.length
-    newSpan.elements.map((e,i) => {
+    const copiedElements = Array.isArray(newSpan.elements)
+      ? newSpan.elements
+      : [];
+    newSpan.elements = copiedElements;
+    newSpan.latestEleID = copiedElements.length;
+    copiedElements.forEach((e, i) => {
       const type = e.id.split("-")[0];
       e.id = `${type}-${newSpan.id.replace("Span-","")}-${i}`;
     });
-    newSpans.splice(sidx + 1, 0, newSpan);
-    setLayout(newLayouts);
+    const nextSpans = [...currentColumn.spans];
+    nextSpans.splice(spanIndex + 1, 0, newSpan);
+    const nextColumn = {
+      ...currentColumn,
+      spans: nextSpans,
+      latestSpanID: nextSpanCounter + 1,
+    };
+    const nextColumns = [...currentLayout.columns];
+    nextColumns[columnIndex] = nextColumn;
+    const nextLayouts = [...currentLayouts];
+    nextLayouts[layoutIndex] = { ...currentLayout, columns: nextColumns };
+    if (!spaned.current[layoutIndex]) spaned.current[layoutIndex] = [];
+    if (!Array.isArray(spaned.current[layoutIndex][columnIndex])) {
+      spaned.current[layoutIndex][columnIndex] = [];
+    }
+    spaned.current[layoutIndex][columnIndex].splice(spanIndex + 1, 0, null);
+    if (!nestedSpaned.current[layoutIndex]) {
+      nestedSpaned.current[layoutIndex] = [];
+    }
+    if (!Array.isArray(nestedSpaned.current[layoutIndex][columnIndex])) {
+      nestedSpaned.current[layoutIndex][columnIndex] = [];
+    }
+    nestedSpaned.current[layoutIndex][columnIndex].splice(
+      spanIndex + 1,
+      0,
+      []
+    );
+    const perf = startSpanStructurePerfSession("ADD", {
+      startedAt,
+      sourceSpanId: spnID,
+      targetSpanId: spnID,
+      createdSpanId: newSpan.id,
+      copiedElementCount: copiedElements.length,
+      remainingSpanCount: nextSpans.length,
+    });
+    if (perf) perf.preparationMs = performance.now() - startedAt;
+    layoutsRef.current = nextLayouts;
+    markScopedLayoutSnapshot(nextLayouts);
+    setLayout(nextLayouts);
   };
 
   const deleteSpan = (id) => {
-    const { conID, colID, spnID } = id;
-    const newLayouts = lodash.cloneDeep(layouts);
-    const IDX = newLayouts.findIndex((l) => l.container.id === conID);
-    const newLayout = newLayouts[IDX];
-    const idx = newLayout.columns.findIndex((c) => c.id === colID);
-    const newColumn = newLayout.columns[idx];
-    const newSpans = newColumn.spans;
-    const sidx = newColumn.spans.findIndex((s) => s.id === spnID);
-    newSpans.splice(sidx, 1);
-    if (newSpans.length === 1) {
-      const lastSpan = newSpans[0];
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
+    const { conID, colID, spnID } = id || {};
+    if (!conID || !colID || !spnID) return;
+    const currentLayouts = layoutsRef.current;
+    if (!Array.isArray(currentLayouts)) return;
+    const layoutIndex = currentLayouts.findIndex(
+      (layout) => layout?.container?.id === conID
+    );
+    if (layoutIndex === -1) return;
+    const currentLayout = currentLayouts[layoutIndex];
+    if (!Array.isArray(currentLayout?.columns)) return;
+    const columnIndex = currentLayout.columns.findIndex(
+      (column) => column?.id === colID
+    );
+    if (columnIndex === -1) return;
+    const currentColumn = currentLayout.columns[columnIndex];
+    if (!Array.isArray(currentColumn?.spans)) return;
+    const spanIndex = currentColumn.spans.findIndex(
+      (span) => span?.id === spnID
+    );
+    if (spanIndex === -1) return;
+    const removedSpan = currentColumn.spans[spanIndex];
+    const nextSpans = currentColumn.spans.filter(
+      (_, index) => index !== spanIndex
+    );
+    if (nextSpans.length === 0) return;
+    const collapseToColumn = nextSpans.length === 1;
+    let nextColumn;
+    let movedElementCount = 0;
+    if (collapseToColumn) {
+      const lastSpan = nextSpans[0];
       const {
         backgroundColor,
         backgroundColorGradient,
@@ -7652,7 +11987,8 @@ const Content = ({
         paddingX,
         paddingY,
       } = lastSpan;
-      const fields = {
+      nextColumn = {
+        ...currentColumn,
         backgroundColor,
         backgroundColorGradient,
         borderColor,
@@ -7666,75 +12002,242 @@ const Content = ({
         opacityColorGradient,
         paddingX,
         paddingY,
+        isSpan: false,
       };
-      for (let field in fields) {
-        newColumn[field] = fields[field];
-      }
-      delete newColumn.spans;
-      delete newColumn.latestSpanID;
-      newColumn.isSpan = false;
+      delete nextColumn.spans;
+      delete nextColumn.latestSpanID;
+      movedElementCount = Array.isArray(elements) ? elements.length : 0;
+    } else {
+      nextColumn = { ...currentColumn, spans: nextSpans };
     }
-    setLayout(newLayouts);
+    const nextColumns = [...currentLayout.columns];
+    nextColumns[columnIndex] = nextColumn;
+    const nextLayouts = [...currentLayouts];
+    nextLayouts[layoutIndex] = { ...currentLayout, columns: nextColumns };
+    const removedSpanIds = collapseToColumn
+      ? [spnID, nextSpans[0]?.id].filter(Boolean)
+      : [spnID];
+    clearDeletedStructuralOptions({
+      sectionIds: [],
+      splitRowIds: [],
+      columnIds: [],
+      spanIds: removedSpanIds,
+      elementIds: [],
+    });
+    pendingDeleteRefGridOpsRef.current.push({
+      removeSpan: true,
+      collapseToColumn,
+      layoutIndex,
+      columnIndex,
+      spanIndex,
+    });
+    const perf = startSpanStructurePerfSession(
+      collapseToColumn ? "COLLAPSE_TO_COLUMN" : "DELETE",
+      {
+        startedAt,
+        sourceSpanId: spnID,
+        targetSpanId: spnID,
+        removedSpanId: spnID,
+        removedElementCount: Array.isArray(removedSpan?.elements)
+          ? removedSpan.elements.length
+          : 0,
+        movedElementCount,
+        remainingSpanCount: nextSpans.length,
+      }
+    );
+    if (perf) perf.preparationMs = performance.now() - startedAt;
+    layoutsRef.current = nextLayouts;
+    markScopedLayoutSnapshot(nextLayouts);
+    setLayout(nextLayouts);
   };
 
 
   const deleteElement = useCallback(
     (id) => {
+      const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
       const layoutSnap = layoutsRef.current;
       if (!id || !Array.isArray(layoutSnap) || layoutSnap.length === 0) return;
       const { conID, colID, spnID, nestID, eleID } = id;
       if (conID == null || colID == null || eleID == null) return;
 
-      const newLayouts = lodash.cloneDeep(layoutSnap);
-      const IDX = newLayouts.findIndex((l) => l?.container?.id === conID);
+      const matchesId = (entry, targetId) => {
+        const target = String(targetId);
+        return (
+          (entry?.id != null && String(entry.id) === target) ||
+          (entry?._id != null && String(entry._id) === target)
+        );
+      };
+      const IDX = layoutSnap.findIndex(
+        (layout) =>
+          matchesId(layout?.container, conID) || matchesId(layout, conID)
+      );
       if (IDX === -1) return;
-      const layout = newLayouts[IDX];
+      const layout = layoutSnap[IDX];
       const cols = layout?.columns;
       if (!Array.isArray(cols) || cols.length === 0) return;
-      const idx = cols.findIndex((c) => c.id === colID);
+      const idx = cols.findIndex((column) => matchesId(column, colID));
       if (idx === -1) return;
 
-      let newElements;
-      if (spnID) {
-        const spans = cols[idx].spans;
+      const currentColumn = cols[idx];
+      let currentElements;
+      let targetType = "COLUMN";
+      let nextColumn;
+      if (spnID != null) {
+        const spans = currentColumn.spans;
         if (!Array.isArray(spans)) return;
-        const sidx = spans.findIndex((s) => s.id === spnID);
+        const sidx = spans.findIndex((span) => matchesId(span, spnID));
         if (sidx === -1) return;
+        const currentSpan = spans[sidx];
         if (nestID != null) {
-          const nestedSpans = spans[sidx].nestedSpans;
+          const nestedSpans = currentSpan.nestedSpans;
           if (!Array.isArray(nestedSpans)) return;
           const msidx = nestedSpans.findIndex(
-            (ms) => String(ms?.id ?? "") === String(nestID)
+            (nestedSpan) => matchesId(nestedSpan, nestID)
           );
           if (msidx === -1) return;
-          newElements = nestedSpans[msidx].elements;
-          if (!Array.isArray(newElements)) return;
+          currentElements = nestedSpans[msidx].elements;
+          if (!Array.isArray(currentElements)) return;
+          targetType = "NESTED_SPAN";
+          nextColumn = {
+            ...currentColumn,
+            spans: [...spans],
+          };
+          const nextSpan = {
+            ...currentSpan,
+            nestedSpans: [...nestedSpans],
+          };
+          nextColumn.spans[sidx] = nextSpan;
+          nextSpan.nestedSpans[msidx] = {
+            ...nestedSpans[msidx],
+          };
         } else {
-          newElements = spans[sidx].elements;
-          if (!Array.isArray(newElements)) return;
+          currentElements = currentSpan.elements;
+          if (!Array.isArray(currentElements)) return;
+          targetType = "SPAN";
+          nextColumn = {
+            ...currentColumn,
+            spans: [...spans],
+          };
+          nextColumn.spans[sidx] = { ...currentSpan };
         }
       } else {
-        newElements = cols[idx].elements;
-        if (!Array.isArray(newElements)) return;
+        currentElements = currentColumn.elements;
+        if (!Array.isArray(currentElements)) return;
+        nextColumn = { ...currentColumn };
       }
 
-      const i = newElements.findIndex(
-        (e) =>
-          String(e.id) === String(eleID) || String(e._id ?? "") === String(eleID)
+      const i = currentElements.findIndex((element) =>
+        matchesId(element, eleID)
       );
       if (i === -1) return;
 
-      newElements.splice(i, 1);
+      const groupKeys = [
+        "buttonRowGroupId",
+        "iconRowGroupId",
+        "listRowGroupId",
+        "counterRowGroupId",
+      ];
+      // The orphan cleanup helper deletes properties, so every surviving
+      // element must be a new object even though nested element data is shared.
+      const newElements = currentElements
+        .filter((_, elementIndex) => elementIndex !== i)
+        .map((element) => ({ ...element }));
+      const beforeGroupPropertyCount = newElements.reduce(
+        (count, element) =>
+          count +
+          groupKeys.reduce(
+            (keyCount, key) =>
+              keyCount + (element?.[key] != null ? 1 : 0),
+            0
+          ),
+        0
+      );
       stripOrphanInlineRowGroupIds(newElements);
+      const afterGroupPropertyCount = newElements.reduce(
+        (count, element) =>
+          count +
+          groupKeys.reduce(
+            (keyCount, key) =>
+              keyCount + (element?.[key] != null ? 1 : 0),
+            0
+          ),
+        0
+      );
 
-      setLayout(newLayouts);
+      if (targetType === "NESTED_SPAN") {
+        const nextSpans = nextColumn.spans;
+        const nextSpan = nextSpans.find((span) => matchesId(span, spnID));
+        const nextNestedSpan = nextSpan.nestedSpans.find((nestedSpan) =>
+          matchesId(nestedSpan, nestID)
+        );
+        nextNestedSpan.elements = newElements;
+      } else if (targetType === "SPAN") {
+        const nextSpan = nextColumn.spans.find((span) =>
+          matchesId(span, spnID)
+        );
+        nextSpan.elements = newElements;
+      } else {
+        nextColumn.elements = newElements;
+      }
 
-      setSelectID({ status: "", ids: {} });
+      const nextColumns = [...cols];
+      nextColumns[idx] = nextColumn;
+      const nextLayouts = [...layoutSnap];
+      nextLayouts[IDX] = { ...layout, columns: nextColumns };
+      if (builderSectionPerfEnabled) {
+        const sessionId = nextElementDeletePerfSessionIdRef.current++;
+        elementDeletePerfSessionsRef.current.set(sessionId, {
+          id: sessionId,
+          targetType,
+          targetPath: {
+            containerId: conID,
+            columnId: colID,
+            spanId: spnID ?? null,
+            nestedSpanId: nestID ?? null,
+            elementId: eleID,
+          },
+          preparationMs: performance.now() - startedAt,
+          startedAt,
+          clickToCommitWallMs: 0,
+          canvasCommits: 0,
+          canvasActualMs: 0,
+          canvasMaxMs: 0,
+          cacheHits: 0,
+          cacheMisses: 0,
+          cacheMissReasons: {},
+          columnRenderCacheHits: 0,
+          columnRenderCacheMisses: 0,
+          columnRenderCacheMissReasons: {},
+          rebuiltColumnCount: 0,
+          bucketSizeBefore: currentElements.length,
+          bucketSizeAfter: newElements.length,
+          orphanGroupCleanupCount: Math.max(
+            0,
+            beforeGroupPropertyCount - afterGroupPropertyCount
+          ),
+        });
+      }
+      layoutsRef.current = nextLayouts;
+      markScopedLayoutSnapshot(nextLayouts);
+      setLayout(nextLayouts);
+      setSelectID(
+        (previous) =>
+          previous?.status || previous?.ids?.eleID != null
+            ? { status: "", ids: {} }
+            : previous,
+        { elementSelectionCache: true }
+      );
       if (eleID === offcanvasID) {
         openOffcavanas(null, null, null);
       }
     },
-    [setLayout, offcanvasID, openOffcavanas]
+    [
+      builderSectionPerfEnabled,
+      setLayout,
+      setSelectID,
+      offcanvasID,
+      openOffcavanas,
+    ]
   );
 
 
@@ -7777,20 +12280,67 @@ const Content = ({
     deleteTabNestedElement,
   ]);
 
+  const beginSizeChangePerf = (
+    type,
+    target,
+    fromSize,
+    toSize,
+    startedAt,
+    validationMs
+  ) => {
+    if (!builderSectionPerfEnabled) return;
+    sizeChangePerfRef.current = {
+      type,
+      target,
+      fromSize,
+      toSize,
+      startedAt,
+      validationMs,
+      clickToCommitWallMs: 0,
+      canvasCommits: 0,
+      canvasActualMs: 0,
+      canvasActualMaxMs: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      cacheMissReasons: {},
+      logScheduled: false,
+    };
+  };
+
   const changeSizeColumn = (id, symbol) => {
-    const { conID, colID } = id;
-    const newLayouts = [...layouts];
-    const IDX = newLayouts.findIndex((l) => l.container.id === conID);
-    const newColumns = newLayouts[IDX].columns;
-    const idx = newColumns.findIndex((c) => c.id === colID);
-    const currentSize = newColumns[idx].size;
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
+    const { conID, colID } = id || {};
+    if (!conID || !colID) return;
+    if (symbol !== "+" && symbol !== "-") return;
+    const currentLayouts = layoutsRef.current;
+    if (!Array.isArray(currentLayouts)) return;
+    const containerIndex = currentLayouts.findIndex(
+      (layout) => layout?.container?.id === conID
+    );
+    if (containerIndex < 0) return;
+    const currentSection = currentLayouts[containerIndex];
+    const currentColumns = currentSection?.columns;
+    if (!Array.isArray(currentColumns)) return;
+    const columnIndex = currentColumns.findIndex(
+      (column) => column?.id === colID
+    );
+    if (columnIndex < 0) return;
+    const currentColumn = currentColumns[columnIndex];
+    const currentSize = Number(currentColumn?.size);
+    if (
+      !Number.isInteger(currentSize) ||
+      currentSize < 1 ||
+      currentSize > 12
+    ) {
+      return;
+    }
+    let nextSize = currentSize;
     if (symbol === "+" && currentSize < 12) {
-      newColumns[idx].size = currentSize + 1;
+      nextSize = currentSize + 1;
       postColWarnedRef.current = false;
       setPostColToastOpen(false);
     } else if (symbol === "-") {
-      let nextSize = currentSize;
-      if (newColumns[idx].isSpan) {
+      if (currentColumn.isSpan) {
         if (currentSize - 1 < 3) {
           setAlert(true);
         }
@@ -7798,81 +12348,143 @@ const Content = ({
       } else {
         nextSize = Math.max(currentSize - 1, 1);
       }
-      if (!canColumnSizeContainListImageMinWidthElements(newColumns[idx], nextSize)) {
+      if (!canColumnSizeContainListImageMinWidthElements(currentColumn, nextSize)) {
         listImageColWarnedRef.current = false;
         setListImageColToastOpen(false);
         requestAnimationFrame(() => setListImageColToastOpen(true));
         return;
       }
-      if (!canColumnSizeContainImageHoverMinWidthElements(newColumns[idx], nextSize)) {
+      if (!canColumnSizeContainImageHoverMinWidthElements(currentColumn, nextSize)) {
         carouselColWarnedRef.current = false;
         setCarouselColToastOpen(false);
         requestAnimationFrame(() => setCarouselColToastOpen(true));
         return;
       }
-      if (!canColumnSizeContainAccordionMinWidthElements(newColumns[idx], nextSize)) {
+      if (!canColumnSizeContainAccordionMinWidthElements(currentColumn, nextSize)) {
         carouselColWarnedRef.current = false;
         setCarouselColToastOpen(false);
         requestAnimationFrame(() => setCarouselColToastOpen(true));
         return;
       }
-      if (!canColumnSizeContainTabsMinWidthElements(newColumns[idx], nextSize)) {
+      if (!canColumnSizeContainTabsMinWidthElements(currentColumn, nextSize)) {
         postColWarnedRef.current = false;
         setPostColToastOpen(false);
         requestAnimationFrame(() => setPostColToastOpen(true));
         return;
       }
-      if (!canColumnSizeContainBetweenMinWidthElements(newColumns[idx], nextSize)) {
+      if (!canColumnSizeContainBetweenMinWidthElements(currentColumn, nextSize)) {
         carouselColWarnedRef.current = false;
         setCarouselColToastOpen(false);
         requestAnimationFrame(() => setCarouselColToastOpen(true));
         return;
       }
-      if (!canColumnSizeContainTableMinWidthElements(newColumns[idx], nextSize)) {
+      if (!canColumnSizeContainTableMinWidthElements(currentColumn, nextSize)) {
         carouselColWarnedRef.current = false;
         setCarouselColToastOpen(false);
         requestAnimationFrame(() => setCarouselColToastOpen(true));
         return;
       }
-      if (!canColumnSizeContainCarouselMinWidthElements(newColumns[idx], nextSize)) {
+      if (!canColumnSizeContainCarouselMinWidthElements(currentColumn, nextSize)) {
         carouselColWarnedRef.current = false;
         setCarouselColToastOpen(false);
         requestAnimationFrame(() => setCarouselColToastOpen(true));
         return;
       }
-      if (!canColumnSizeContainPostMinWidthElements(newColumns[idx], nextSize)) {
+      if (!canColumnSizeContainPostMinWidthElements(currentColumn, nextSize)) {
         postColWarnedRef.current = false;
         setPostColToastOpen(false);
         requestAnimationFrame(() => setPostColToastOpen(true));
         return;
       }
-      newColumns[idx].size = nextSize;
       postColWarnedRef.current = false;
       setPostColToastOpen(false);
     }
-    setLayout(newLayouts);
+    if (nextSize === currentSize) return;
+
+    const validationMs = builderSectionPerfEnabled
+      ? performance.now() - startedAt
+      : 0;
+    const nextColumns = [...currentColumns];
+    nextColumns[columnIndex] = { ...currentColumn, size: nextSize };
+    const nextLayouts = [...currentLayouts];
+    nextLayouts[containerIndex] = {
+      ...currentSection,
+      columns: nextColumns,
+    };
+    beginSizeChangePerf(
+      "COLUMN",
+      `${conID}/${colID}`,
+      currentSize,
+      nextSize,
+      startedAt,
+      validationMs
+    );
+    layoutsRef.current = nextLayouts;
+    markScopedLayoutSnapshot(nextLayouts);
+    setLayout(nextLayouts);
   };
 
   const changeSizeSpan = (id, symbol) => {
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
     const { conID, colID, spnID } = id || {};
     if (!conID || !colID || !spnID) return;
     if (symbol !== "+" && symbol !== "-") return;
-    const newLayouts = lodash.cloneDeep(layouts);
-    const containerIndex = newLayouts.findIndex((l) => l.container.id === conID);
+    const currentLayouts = layoutsRef.current;
+    if (!Array.isArray(currentLayouts)) return;
+    const containerIndex = currentLayouts.findIndex(
+      (layout) => layout?.container?.id === conID
+    );
     if (containerIndex < 0) return;
-    const columnIndex = newLayouts[containerIndex].columns.findIndex((c) => c.id === colID);
+    const currentSection = currentLayouts[containerIndex];
+    const currentColumns = currentSection?.columns;
+    if (!Array.isArray(currentColumns)) return;
+    const columnIndex = currentColumns.findIndex(
+      (column) => column?.id === colID
+    );
     if (columnIndex < 0) return;
-    const spans = newLayouts[containerIndex].columns[columnIndex].spans;
-    if (!Array.isArray(spans) || spans.length === 0) return;
-    const spanIndex = spans.findIndex((s) => s.id === spnID);
+    const currentColumn = currentColumns[columnIndex];
+    const currentSpans = currentColumn?.spans;
+    if (!Array.isArray(currentSpans) || currentSpans.length === 0) return;
+    const spanIndex = currentSpans.findIndex((span) => span?.id === spnID);
     if (spanIndex < 0) return;
-    const currentSize = Number(spans[spanIndex]?.size) || 6;
-    if (symbol === "+") {
-      spans[spanIndex].size = Math.min(currentSize + 1, 12);
-    } else {
-      spans[spanIndex].size = Math.max(currentSize - 1, 1);
+    const currentSpan = currentSpans[spanIndex];
+    const currentSize = Number(currentSpan?.size);
+    if (
+      !Number.isInteger(currentSize) ||
+      currentSize < 1 ||
+      currentSize > 12
+    ) {
+      return;
     }
-    setLayout(newLayouts);
+    const nextSize =
+      symbol === "+"
+        ? Math.min(currentSize + 1, 12)
+        : Math.max(currentSize - 1, 1);
+    if (nextSize === currentSize) return;
+
+    const validationMs = builderSectionPerfEnabled
+      ? performance.now() - startedAt
+      : 0;
+    const nextSpans = [...currentSpans];
+    nextSpans[spanIndex] = { ...currentSpan, size: nextSize };
+    const nextColumns = [...currentColumns];
+    nextColumns[columnIndex] = { ...currentColumn, spans: nextSpans };
+    const nextLayouts = [...currentLayouts];
+    nextLayouts[containerIndex] = {
+      ...currentSection,
+      columns: nextColumns,
+    };
+    beginSizeChangePerf(
+      "SPAN",
+      `${conID}/${colID}/${spnID}`,
+      currentSize,
+      nextSize,
+      startedAt,
+      validationMs
+    );
+    layoutsRef.current = nextLayouts;
+    markScopedLayoutSnapshot(nextLayouts);
+    setLayout(nextLayouts);
   };
 
 
@@ -7897,50 +12509,122 @@ const Content = ({
     )
   }
 
-  const changeSpanPosition = (index, ids, symbol) => {
-    const { conID, colID } = ids;
-    const newLayouts = lodash.cloneDeep(layouts);
-    const containerIndex = newLayouts.findIndex(
-      (l) => l.container.id === conID
+  const beginArrowReorderPerf = (type, source, target, startedAt) => {
+    if (!builderSectionPerfEnabled) return;
+    arrowReorderPerfRef.current = {
+      type,
+      source: String(source ?? ""),
+      target: String(target ?? ""),
+      startedAt,
+      clickToCommitWallMs: 0,
+      canvasCommits: 0,
+      canvasActualMs: 0,
+      canvasActualMaxMs: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      cacheMissReasons: {},
+      scopedLayoutCacheActive: false,
+      elementCanvasDragRenderActive: false,
+      sidebarPreviewRenderActive: false,
+      logScheduled: false,
+    };
+  };
+
+  const changeSpanPosition = (_index, ids, symbol) => {
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
+    const { conID, colID, spnID } = ids || {};
+    if (!conID || !colID || !spnID) return;
+    if (symbol !== "-" && symbol !== "+") return;
+    const currentLayouts = layoutsRef.current;
+    if (!Array.isArray(currentLayouts)) return;
+    const containerIndex = currentLayouts.findIndex(
+      (layout) => layout?.container?.id === conID
     );
-    const columnIndex = newLayouts[containerIndex].columns.findIndex(
-      (c) => c.id === colID
+    if (containerIndex < 0) return;
+    const currentSection = currentLayouts[containerIndex];
+    const currentColumns = currentSection?.columns;
+    if (!Array.isArray(currentColumns)) return;
+    const columnIndex = currentColumns.findIndex(
+      (column) => column?.id === colID
     );
-    const newSpans = newLayouts[containerIndex].columns[columnIndex].spans;
-    if (
-      (symbol === "-" && index === 0) ||
-      (symbol === "+" && index === newSpans.length - 1)
-    )
-      return;
-    const [span] = newSpans.splice(index, 1);
-    if (symbol === "-") {
-      newSpans.splice(index - 1, 0, span);
-    } else if (symbol === "+") {
-      newSpans.splice(index + 1, 0, span);
-    }
-    setLayout(newLayouts);
+    if (columnIndex < 0) return;
+    const currentColumn = currentColumns[columnIndex];
+    const currentSpans = currentColumn?.spans;
+    if (!Array.isArray(currentSpans) || currentSpans.length <= 1) return;
+    const requestedIndex = Number(_index);
+    const spanIndex =
+      Number.isInteger(requestedIndex) &&
+      requestedIndex >= 0 &&
+      requestedIndex < currentSpans.length &&
+      currentSpans[requestedIndex]?.id === spnID
+        ? requestedIndex
+        : currentSpans.findIndex((span) => span?.id === spnID);
+    if (spanIndex < 0) return;
+    const targetIndex = symbol === "-" ? spanIndex - 1 : spanIndex + 1;
+    if (targetIndex < 0 || targetIndex >= currentSpans.length) return;
+
+    const nextSpans = [...currentSpans];
+    [nextSpans[spanIndex], nextSpans[targetIndex]] = [
+      nextSpans[targetIndex],
+      nextSpans[spanIndex],
+    ];
+    const nextColumns = [...currentColumns];
+    nextColumns[columnIndex] = { ...currentColumn, spans: nextSpans };
+    const nextLayouts = [...currentLayouts];
+    nextLayouts[containerIndex] = { ...currentSection, columns: nextColumns };
+    beginArrowReorderPerf(
+      "SPAN",
+      spnID,
+      currentSpans[targetIndex]?.id,
+      startedAt
+    );
+    layoutsRef.current = nextLayouts;
+    markScopedLayoutSnapshot(nextLayouts);
+    setLayout(nextLayouts);
   };
 
 
   const changeColumnPositionByArrow = (ids, symbol) => {
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
     const { conID, colID } = ids || {};
     if (!conID || !colID) return;
+    if (symbol !== "-" && symbol !== "+") return;
     const currentLayouts = layoutsRef.current;
-    const containerIndex = currentLayouts.findIndex((l) => l.container.id === conID);
+    if (!Array.isArray(currentLayouts)) return;
+    const containerIndex = currentLayouts.findIndex(
+      (layout) => layout?.container?.id === conID
+    );
     if (containerIndex === -1) return;
-    const cols = currentLayouts[containerIndex]?.columns;
+    const currentSection = currentLayouts[containerIndex];
+    const cols = currentSection?.columns;
     if (!Array.isArray(cols) || cols.length <= 1) return;
-    const index = cols.findIndex((c) => c.id === colID);
+    const index = cols.findIndex((column) => column?.id === colID);
     if (index === -1) return;
-    if ((symbol === "-" && index === 0) || (symbol === "+" && index === cols.length - 1)) return;
-    const newLayouts = lodash.cloneDeep(currentLayouts);
-    const newCols = newLayouts[containerIndex].columns;
-    const [column] = newCols.splice(index, 1);
-    newCols.splice(symbol === "-" ? index - 1 : index + 1, 0, column);
-    setLayout(newLayouts);
+    const targetIndex = symbol === "-" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= cols.length) return;
+
+    const nextColumns = [...cols];
+    [nextColumns[index], nextColumns[targetIndex]] = [
+      nextColumns[targetIndex],
+      nextColumns[index],
+    ];
+    const nextLayouts = [...currentLayouts];
+    nextLayouts[containerIndex] = {
+      ...currentSection,
+      columns: nextColumns,
+    };
+    beginArrowReorderPerf(
+      "COLUMN",
+      colID,
+      cols[targetIndex]?.id,
+      startedAt
+    );
+    markScopedLayoutSnapshot(nextLayouts);
+    setLayout(nextLayouts);
   };
 
   const changeContainerPositionByArrow = (id, symbol) => {
+    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
     if (!id || (symbol !== "-" && symbol !== "+")) return;
     const currentLayouts = layoutsRef.current;
     if (!Array.isArray(currentLayouts) || currentLayouts.length <= 1) return;
@@ -7977,6 +12661,17 @@ const Content = ({
     reorderedRows.splice(targetIndex, 0, moved);
 
     const nextLayouts = reorderedRows.flatMap((row) => row.items);
+    const rowIdentity = (row) =>
+      row?.kind === "split"
+        ? row.sid
+        : row?.items?.[0]?.container?.id;
+    beginArrowReorderPerf(
+      moved.kind === "split" ? "SPLIT" : "SECTION",
+      rowIdentity(moved),
+      rowIdentity(rows[targetIndex]),
+      startedAt
+    );
+    markScopedLayoutSnapshot(nextLayouts);
     setLayout(nextLayouts);
   };
 
@@ -7991,10 +12686,6 @@ const Content = ({
     changeColumnPosition: changeColumnPositionByArrow,
   }
 
-  const onDragDisable = {
-    onDragDisableCol:()=>setDisableColDrag(true),onDragDisableSpn:()=>setDisableSpnDrag(true)
-  }
-
   const clone ={
     cloneCon:cloneContainer,
     cloneCol:cloneColumn,
@@ -8007,68 +12698,254 @@ const Content = ({
     removeSpn:deleteSpan,
   }
 
-  const SortableSplitRowItem = ({ id, renderChildren }) => {
-    const {
-      setNodeRef,
-      attributes,
-      listeners,
-      setActivatorNodeRef,
-      transform,
-      transition,
-      isDragging,
-    } = useSortable({
-      id,
-      data: { type: "SECTION" },
-      animateLayoutChanges: noLayoutAnimWhileSorting,
-      disabled: !isLayoutMode || disableConDrag,
-    });
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition: isDragging ? undefined : transition,
-      opacity: isDragging ? 0.7 : 1,
-      willChange: "transform",
-      touchAction: "none",
-    };
+  const renderStructuralSplitRowItem = ({
+    id,
+    renderChildren,
+    domBridge,
+    structuralOption,
+  }) => {
+    const sectionIndex = layouts.findIndex((layout) => layout?.splitRowId === id);
+    const splitNodeKey = `split:${id}`;
+    const splitLayouts = layouts.filter((layout) => layout?.splitRowId === id);
+    const offscreenEligible =
+      offscreenSectionExperimentEnabled &&
+      splitLayouts.length > 0 &&
+      splitLayouts.every(isOffscreenSectionEligible);
+    const bridge = domBridge.current;
     return (
       <div
-        ref={setNodeRef}
-        {...attributes}
-        style={style}
+        ref={
+          offscreenSectionExperimentEnabled && offscreenEligible
+            ? (node) =>
+                registerOffscreenSectionNode(
+                  splitNodeKey,
+                  node,
+                  bridge.nodeRef,
+                  offscreenEligible
+                )
+            : bridge.nodeRef
+        }
+        style={offscreenStyleForSection(splitNodeKey, offscreenEligible)}
         data-drop="SECTION"
+        data-section-index={sectionIndex}
         id={id}
         className="container-area relative flex w-full"
       >
-        {renderChildren({ listeners, setActivatorNodeRef })}
+        {renderChildren({ structuralOption })}
       </div>
     );
   };
+  inlineSortableRenderersRef.current.splitRow = renderStructuralSplitRowItem;
 
-  const SortableContainerItem = ({ id, elementData,heros, children}) => {
+  const columnPathAtPointer = (pointer) => {
+    const x = Number(pointer?.x);
+    const y = Number(pointer?.y);
+    if (
+      typeof document === "undefined" ||
+      !Number.isFinite(x) ||
+      !Number.isFinite(y)
+    ) {
+      return null;
+    }
+    const column = findColumnFromStack(x, y) || findColumn(x, y);
+    return resolveLayoutColumnPathFromDom(column);
+  };
+
+  const pointerFromScopedDragMove = (event) => {
+    const startX = Number(dragMetaRef.current?.startX);
+    const startY = Number(dragMetaRef.current?.startY);
+    const deltaX = Number(event?.delta?.x);
+    const deltaY = Number(event?.delta?.y);
+    if (
+      Number.isFinite(startX) &&
+      Number.isFinite(startY) &&
+      Number.isFinite(deltaX) &&
+      Number.isFinite(deltaY)
+    ) {
+      return { x: startX + deltaX, y: startY + deltaY };
+    }
+    return sectionReorderPointerRef.current;
+  };
+
+  const scopedColumnCollisionDetection = (args) => {
+    const pointer = args?.pointerCoordinates;
+    if (pointer) sectionReorderPointerRef.current = pointer;
+    const sourceData = args?.active?.data?.current;
+    if (sourceData?.type === "ELEMENT" && pointer) {
+      const pointedColumn = columnPathAtPointer(pointer);
+      if (
+        pointedColumn?.conID !== String(sourceData.conID || "") ||
+        pointedColumn?.colID !== String(sourceData.colID || "")
+      ) {
+        // A column context owns only its own element/span subtree.
+        // Cross-column targeting is resolved imperatively from the pointer.
+        return [];
+      }
+    }
+    return collisionByType(args);
+  };
+
+  const beginDragInteraction = () => {
+    inlineSortableRenderersRef.current.dragActive = true;
+    structuralOptionStoreRef.current.setSuppressed(true);
+  };
+
+  const renderScopedColumnDnd = (containerId, columnId, children) => {
+    if (!useScopedColumnDnd) return children;
+    const ownerKey = `${containerId}/${columnId}`;
+    return (
+      <DndContext
+        sensors={sensors}
+        autoScroll
+        measuring={measuring}
+        collisionDetection={scopedColumnCollisionDetection}
+        onDragStart={(e) => {
+          if (builderMode !== "Layout Mode") return;
+          const isElementDrag = e.active?.data?.current?.type === "ELEMENT";
+          startDndPerf(e.active, isElementDrag ? "COLUMN" : "CANVAS");
+          beginDragInteraction(e.active);
+          scopedColumnDragOwnerRef.current = isElementDrag ? ownerKey : "";
+          addClass();
+          drag(e);
+          if (!isElementDrag) setIsDraggingLayout(true);
+        }}
+        onDragMove={(e) => {
+          if (builderMode !== "Layout Mode") return;
+          markContentDndLifecycle("active-move");
+          const moveStartedAt = performance.now();
+          const perf = dndPerfRef.current;
+          if (perf?.active && perf.firstMoveDelayMs == null) {
+            perf.firstMoveDelayMs = moveStartedAt - perf.startedAt;
+          }
+          if (perf?.active) perf.phase = "active-move";
+
+          const sourceData = e.active?.data?.current;
+          const pointer = pointerFromScopedDragMove(e);
+          const usedEventPointer = pointer !== sectionReorderPointerRef.current;
+          if (usedEventPointer) {
+            // Collision detection is not guaranteed to run before every move
+            // callback once this context returns no cross-column collisions.
+            sectionReorderPointerRef.current = pointer;
+          }
+          const pointerX = Number(pointer?.x);
+          const pointerY = Number(pointer?.y);
+          const pointedColumn = columnPathAtPointer(pointer);
+          const isElementDrag = sourceData?.type === "ELEMENT";
+          if (perf?.active && isElementDrag) {
+            if (usedEventPointer) perf.scopedEventPointerCount += 1;
+            else perf.scopedCollisionPointerFallbackCount += 1;
+          }
+          const isInsideSourceColumn =
+            pointedColumn?.conID === String(sourceData?.conID || "") &&
+            pointedColumn?.colID === String(sourceData?.colID || "");
+
+          if (
+            isElementDrag &&
+            !isInsideSourceColumn &&
+            activeItemRef.current &&
+            Number.isFinite(pointerX) &&
+            Number.isFinite(pointerY)
+          ) {
+            if (perf?.active) perf.lastAction = "cross-column-intent";
+            updateScopedElementIntentFromPoint(
+              pointerX,
+              pointerY,
+              activeItemRef.current
+            );
+          } else {
+            if (perf?.active) {
+              perf.lastAction = isElementDrag
+                ? "within-column-move"
+                : "structure-move";
+            }
+            clearScopedElementPlaceholder();
+            if (isElementDrag && dropTargetRef.current?.type === "ELEMENT") {
+              dropTargetRef.current = {
+                index: null,
+                type: null,
+                isLast: false,
+              };
+            }
+            during(e);
+          }
+
+          if (perf?.active) {
+            const elapsed = performance.now() - moveStartedAt;
+            perf.moveCount += 1;
+            perf.moveTotalMs += elapsed;
+            perf.moveMaxMs = Math.max(perf.moveMaxMs, elapsed);
+          }
+        }}
+        onDragEnd={(e) => {
+          if (builderMode !== "Layout Mode") return;
+          markContentDndLifecycle("drop");
+          if (dndPerfRef.current?.active) {
+            dndPerfRef.current.lastAction = "drop";
+          }
+          const dropStartedAt = performance.now();
+          drop(e);
+          if (dndPerfRef.current?.active) {
+            dndPerfRef.current.dropCommitMs =
+              performance.now() - dropStartedAt;
+          }
+          markContentDndLifecycle("drop-handler-complete");
+          clearGhost();
+          scopedColumnDragOwnerRef.current = "";
+          inlineSortableRenderersRef.current.dragActive = false;
+          setIsDraggingLayout(false);
+          removeClass();
+          finishDndPerf("drop");
+        }}
+        onDragCancel={() => {
+          clearGhost();
+          scopedColumnDragOwnerRef.current = "";
+          activeInlineDragGroupRef.current = null;
+          inlineSortableRenderersRef.current.dragActive = false;
+          setIsDraggingLayout(false);
+          removeClass();
+          finishDndPerf("cancel");
+        }}
+      >
+        {children}
+        {typeof document !== "undefined"
+          ? createPortal(
+              <DragOverlay
+                dropAnimation={null}
+                adjustScale={false}
+                style={{ pointerEvents: "none" }}
+              >
+                <ScopedElementDragPreview
+                  activeItemRef={activeItemRef}
+                  ownerRef={scopedColumnDragOwnerRef}
+                  ownerKey={ownerKey}
+                  renderPreview={(element) => (
+                    <div style={{ opacity: 0.37 }}>
+                      <ElementPreview element={element} isDragOverlay />
+                    </div>
+                  )}
+                />
+              </DragOverlay>,
+              document.body
+            )
+          : null}
+      </DndContext>
+    );
+  };
+
+  const renderStructuralContainerItem = ({
+    id,
+    elementData,
+    heros,
+    children,
+    domBridge,
+    structuralOption,
+  }) => {
     const index = layouts.findIndex((l) => l.container?.id == id);
-
-    const {
-      setNodeRef,
-      attributes,
-      listeners,
-      setActivatorNodeRef,
-      transform,
-      transition,
-      isDragging,
-    } = useSortable({
-      id,
-      data: { type: "SECTION" },
-      animateLayoutChanges: noLayoutAnimWhileSorting,
-      disabled: !isLayoutMode || disableConDrag,
-    });
-
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition: isDragging ? undefined : transition,
-      opacity: isDragging ? 0.7 : 1,
-      willChange: "transform",
-      touchAction: "none",
-      cursor: "grab",
-    };
+    const layout = layouts[index];
+    const sectionNodeKey = `section:${id}`;
+    const offscreenEligible =
+      offscreenSectionExperimentEnabled && isOffscreenSectionEligible(layout);
+    const bridge = domBridge.current;
 
     
 
@@ -8155,10 +13032,20 @@ const Content = ({
       };
       return (
         <div
-        ref={setNodeRef}
-        {...attributes}
-        style={style}
+        ref={
+          offscreenSectionExperimentEnabled && offscreenEligible
+            ? (node) =>
+                registerOffscreenSectionNode(
+                  sectionNodeKey,
+                  node,
+                  bridge.nodeRef,
+                  offscreenEligible
+                )
+            : bridge.nodeRef
+        }
+        style={offscreenStyleForSection(sectionNodeKey, offscreenEligible)}
         data-drop="SECTION"
+        data-section-index={index}
         id={id}
         className="container-area relative"
       >
@@ -8179,8 +13066,9 @@ const Content = ({
             }}
           >
             
-             {hover === id && !activeID && (
-              <div className="relative z-20" onMouseEnter={() => setHover(id)}>
+             {structuralOption?.hovered &&
+              structuralRenderRevision.controlsVisible && (
+              <div className="relative z-20">
                 <OptionButtonGroup
                   element={[elementData,heros]}
                   clone={cloneContainer}
@@ -8229,10 +13117,8 @@ const Content = ({
 
 
       const showOption =
-        (hover === id || pinnedColumnOptionId === id) &&
-        !activeID &&
-        device === "Desktop" &&
-        builderMode === "Layout Mode";
+        (structuralOption?.hovered || structuralOption?.pinned) &&
+        structuralRenderRevision.controlsVisible;
 
 
 
@@ -8240,10 +13126,20 @@ const Content = ({
 
       return (
         <div
-          ref={setNodeRef}
-          {...attributes}
-          style={style}
+          ref={
+            offscreenSectionExperimentEnabled && offscreenEligible
+              ? (node) =>
+                  registerOffscreenSectionNode(
+                    sectionNodeKey,
+                    node,
+                    bridge.nodeRef,
+                    offscreenEligible
+                  )
+              : bridge.nodeRef
+          }
+          style={offscreenStyleForSection(sectionNodeKey, offscreenEligible)}
           data-drop="SECTION"
+          data-section-index={index}
           id={id}
           className={`container-area ${
             isPreview && !previewAuditMode && index > 0 ? "preview-feed-in" : ""
@@ -8253,12 +13149,7 @@ const Content = ({
               contained.current[index] = el || null;
             }} borderT={layouts.length > 1 && index !== 0 && !(preview && dropTargetRef.current?.type === "SECTION" && dropTargetRef.current?.index === index) ?"border-t-[0px]" :""} theme={theme}  handleDuring={(e)=>{
               handleDuring(e)
-            }} showOption={showOption} funct={{clone,remove}} layouts={layouts} onUpdate={updateContainer} modal={openModal} scheduleDND={(e)=>{
-              scheduleDND(e)
-            }} openOffcavanas={openOffcavanas} changePosition={changePosition}
-            sectionDndHandle={null}
-            onSectionDragEnable={undefined}
-            onSectionDragDisable={undefined}
+            }} showOption={showOption} funct={{clone,remove}} layouts={layouts} onUpdate={updateContainer} modal={openModal} openOffcavanas={openOffcavanas} changePosition={changePosition}
             >
               {children}
             </Container> 
@@ -8268,8 +13159,16 @@ const Content = ({
 
     
   };
+  inlineSortableRenderersRef.current.container = renderStructuralContainerItem;
 
-  const SortableColumnItem = ({ id, containerId, elementData, children }) => {
+  const renderStructuralColumnItem = ({
+    id,
+    containerId,
+    elementData,
+    children,
+    domBridge,
+    structuralOption,
+  }) => {
     const hugeElementType = [
       "img",
       "bnr",
@@ -8294,28 +13193,12 @@ const Content = ({
       verticalDividerBorderStyle,
       columnDividerVerticalLengthPct,
     } = getSectionColumnDividerVisual(layouts, IDX, theme);
-    const {
-      attributes,
-      listeners,
-      setActivatorNodeRef,
-      setNodeRef,
-      transform,
-      transition,
-      isDragging,
-    } = useSortable({
+    const bridge = domBridge.current;
+    const scopedColumnChildren = renderScopedColumnDnd(
+      containerId,
       id,
-      data: { type: "COLUMN", conID: containerId },
-      animateLayoutChanges: noLayoutAnimWhileSorting,
-      disabled: true,
-    });
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition: isDragging ? undefined : transition,
-      opacity: isDragging ? 0.7 : 1,
-      willChange: "transform",
-      touchAction: "none",
-      cursor: "default",
-    };
+      children
+    );
 
     const {
       size,
@@ -8438,33 +13321,14 @@ const Content = ({
       const ids = {conID:containerId, colID: id}
 
 
-      const hoverColumnKey = (() => {
-        const raw = String(hover || "");
-        if (!raw) return "";
-        return raw.includes("/") ? raw.split("/").pop() : raw;
-      })();
-      const hoverInsideThisColumn = (() => {
-        if (!hover || !elementData?.isSpan || !Array.isArray(elementData?.spans)) return false;
-        const spKey = spanDomIdToSpanKey(hover) ?? hover;
-        const msKey = nestedSpanDomIdToKey(hover);
-        return elementData.spans.some((sp) => {
-          if (sp?.id === hover || sp?.id === spKey) return true;
-          return (
-            Array.isArray(sp?.nestedSpans) &&
-            sp.nestedSpans.some((ms) => ms?.id === hover || ms?.id === msKey)
-          );
-        });
-      })();
-      const isPinnedThisColumn = pinnedColumnOptionId === id;
+      const hoverInsideThisColumn = Boolean(
+        structuralOption?.descendantHovered
+      );
+      const isPinnedThisColumn = Boolean(structuralOption?.pinned);
       const showOption =
-        (hover === id ||
-          hover === `${containerId}/${id}` ||
-          hoverColumnKey === id ||
-          isPinnedThisColumn) &&
+        (structuralOption?.hovered || isPinnedThisColumn) &&
         (!hoverInsideThisColumn || isPinnedThisColumn) &&
-        !activeID &&
-        device === "Desktop" &&
-        builderMode === "Layout Mode";
+        structuralRenderRevision.controlsVisible;
       const elevateColumnLayer = showOption || hoverInsideThisColumn;
 
     const cellShellClass = (() => {
@@ -8485,11 +13349,8 @@ const Content = ({
 
     return (
       <div
-        ref={setNodeRef}
-        {...attributes}
-        {...(isSpan ? listeners : {})}
+        ref={bridge.nodeRef}
         style={{
-          ...style,
           ...columnDividerColorStyle,
           ...(elevateColumnLayer ? { zIndex: 200 } : {}),
         }}
@@ -8561,21 +13422,17 @@ const Content = ({
                 layouts={layouts}
                 onUpdate={updateColumn}
                 modal={openModal}
-                scheduleDND={(e) => {
-                  scheduleDND(e);
-                }}
                 openOffcavanas={openOffcavanas}
                 changeSize={changeSize}
                 changePosition={changePosition}
-                dndHandle={{ listeners, setActivatorNodeRef }}
-                onDragAble={() => setDisableColDrag(false)}
-                onDragDisable={onDragDisable}
-                isColumnPresetModalPinned={pinnedColumnOptionId === id}
+                isColumnPresetModalPinned={isPinnedThisColumn}
                 onColumnPresetModalToggle={(isOpen) => {
-                  setPinnedColumnOptionId((prev) => {
-                    if (isOpen) return id;
-                    return prev === id ? null : prev;
-                  });
+                  const pinnedId =
+                    structuralOptionStoreRef.current.getState().pinnedColumnId;
+                  structuralOptionStoreRef.current.setPinned(
+                    "column",
+                    isOpen ? id : pinnedId === id ? null : pinnedId
+                  );
                 }}
                 onOpenPresetModal={openColumnPresetModal}
                 onOpenPresetLoadModal={openColumnPresetLoadModal}
@@ -8585,7 +13442,7 @@ const Content = ({
                 removeLeftBorder={noColumnGap && !isColumnRowStart}
                 removeRightBorder={noColumnGap && rightNeighborIsSpan}
               >
-                {children}
+                {scopedColumnChildren}
               </Column>
             </div>
           </>
@@ -8606,21 +13463,17 @@ const Content = ({
             layouts={layouts}
             onUpdate={updateColumn}
             modal={openModal}
-            scheduleDND={(e) => {
-              scheduleDND(e);
-            }}
             openOffcavanas={openOffcavanas}
             changeSize={changeSize}
             changePosition={changePosition}
-            dndHandle={{ listeners, setActivatorNodeRef }}
-            onDragAble={() => setDisableColDrag(false)}
-            onDragDisable={onDragDisable}
-            isColumnPresetModalPinned={pinnedColumnOptionId === id}
+            isColumnPresetModalPinned={isPinnedThisColumn}
             onColumnPresetModalToggle={(isOpen) => {
-              setPinnedColumnOptionId((prev) => {
-                if (isOpen) return id;
-                return prev === id ? null : prev;
-              });
+              const pinnedId =
+                structuralOptionStoreRef.current.getState().pinnedColumnId;
+              structuralOptionStoreRef.current.setPinned(
+                "column",
+                isOpen ? id : pinnedId === id ? null : pinnedId
+              );
             }}
             onOpenPresetModal={openColumnPresetModal}
             onOpenPresetLoadModal={openColumnPresetLoadModal}
@@ -8630,19 +13483,22 @@ const Content = ({
             removeLeftBorder={noColumnGap && !isColumnRowStart}
             removeRightBorder={noColumnGap && rightNeighborIsSpan}
           >
-            {children}
+            {scopedColumnChildren}
           </Column>
         )}
       </div>
     );
   };
+  inlineSortableRenderersRef.current.column = renderStructuralColumnItem;
 
-  const SortableSpanItem = ({
+  const renderStructuralSpanItem = ({
     id,
     containerId,
     columnId,
     elementData,
     children,
+    domBridge,
+    structuralOption,
   }) => {
     const hugeElementType = [
       "img",
@@ -8685,33 +13541,7 @@ const Content = ({
     };
     const spanSizeClass = `col-span-${responsiveSpanSize(elementData?.size)}`;
 
-    const {
-      attributes,
-      listeners,
-      setNodeRef,
-      setActivatorNodeRef,
-      transform,
-      transition,
-      isDragging,
-    } = useSortable({
-      id,
-      data: {
-        type: "SPAN",
-        conID: containerId,
-        colID: columnId,
-      },
-      disabled: !isLayoutMode || disableSpnDrag,
-      animateLayoutChanges: noLayoutAnimWhileSorting,
-    });
-
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition: isDragging ? undefined : transition,
-      opacity: isDragging ? 0.7 : 1,
-      willChange: "transform",
-      touchAction: "none",
-      cursor: "default",
-    };
+    const bridge = domBridge.current;
 
     const eleLength =
       sidx > -1 ? layouts[IDX].columns[idx].spans[sidx].elements.length : 0;
@@ -8790,12 +13620,9 @@ const Content = ({
             spnID: id,
           }
 
-          const spanHoverKey = spanDomIdToSpanKey(hover) ?? hover;
           const showOption =
-            (hover === id || spanHoverKey === id || pinnedSpanOptionId === id) &&
-            !activeID &&
-            device === "Desktop" &&
-            builderMode === "Layout Mode";
+            (structuralOption?.hovered || structuralOption?.pinned) &&
+            structuralRenderRevision.controlsVisible;
           const ghostDropIndex =
             preview &&
             dropTargetRef.current?.type === "ELEMENT" &&
@@ -8821,25 +13648,35 @@ const Content = ({
 
     return (
       <div
-        ref={setNodeRef}
-        style={{ ...style, ...(showOption ? { zIndex: 100 } : {}) }}
+        ref={bridge.nodeRef}
+        style={{
+          ...(showOption ? { zIndex: 100 } : {}),
+        }}
         className={`w-full min-w-0 ${spanSizeClass}`}
         id={`${containerId}/${columnId}/${id}`}
         data-drop="SPAN"
         onMouseMove={(e) => {
           if (isPreview) return;
           scheduleBTNUpdate(e);
-          scheduleDND(e);
         }}
         onMouseLeave={(e) => {
           const next = e.relatedTarget;
           const stillInsideThisSpan =
             Boolean(next) &&
             typeof next === "object" &&
+            typeof next.nodeType === "number" &&
             e.currentTarget.contains(next);
           if (stillInsideThisSpan) return;
-          if (hover === id) setHover(null);
-          if (pinnedSpanOptionId === id) setPinnedSpanOptionId(null);
+          const optionState = structuralOptionStoreRef.current.getState();
+          if (
+            optionState.hoverTarget?.kind === "span" &&
+            optionState.hoverTarget?.id === id
+          ) {
+            structuralOptionStoreRef.current.publishHover(null);
+          }
+          if (optionState.pinnedSpanId === id) {
+            structuralOptionStoreRef.current.setPinned("span", null);
+          }
         }}
       >
         <div
@@ -8857,9 +13694,6 @@ const Content = ({
                   element={{ spanData: elementData, conID: containerId, colID: columnId }}
                   clone={clone}
                   remove={remove}
-                  scheduleDND={(e) => {
-                    scheduleDND(e);
-                  }}
                   openOffcavanas={openOffcavanas}
                   ids={ids}
                   onUpdate={updateSpan}
@@ -8867,16 +13701,15 @@ const Content = ({
                   offcavanas="Span"
                   changeSize={changeSize}
                   changePosition={changePosition}
-                  dndHandle={{ listeners, setActivatorNodeRef }}
-                  onDragAble={() => setDisableSpnDrag(false)}
-                  onDragDisable={onDragDisable}
-                  isSpanMorePinned={pinnedSpanOptionId === id}
+                  isSpanMorePinned={Boolean(structuralOption?.pinned)}
                   onOpenPresetLoadModal={openColumnPresetLoadModal}
                   onSpanMoreToggle={(isOpen) => {
-                    setPinnedSpanOptionId((prev) => {
-                      if (isOpen) return id;
-                      return prev === id ? null : prev;
-                    });
+                    const pinnedId =
+                      structuralOptionStoreRef.current.getState().pinnedSpanId;
+                    structuralOptionStoreRef.current.setPinned(
+                      "span",
+                      isOpen ? id : pinnedId === id ? null : pinnedId
+                    );
                   }}
                 />
               </div>
@@ -8912,21 +13745,81 @@ const Content = ({
       </div>
     );
   };
+  inlineSortableRenderersRef.current.span = renderStructuralSpanItem;
 
+  inlineSortableRenderersRef.current.onStructuralShellRender = (kind) => {
+    if (!builderSectionPerfEnabled && !builderHoverPerfEnabled) return;
+    const counts = structuralRenderCountsRef.current.shell;
+    counts[kind] = (counts[kind] || 0) + 1;
+  };
+  inlineSortableRenderersRef.current.onStructuralHeavyRender = (kind) => {
+    if (!builderSectionPerfEnabled && !builderHoverPerfEnabled) return;
+    const counts = structuralRenderCountsRef.current.heavy;
+    counts[kind] = (counts[kind] || 0) + 1;
+  };
+  inlineSortableRenderersRef.current.onStructuralOptionVisible = (
+    _kind,
+    _id,
+    publishedAt
+  ) => {
+    const perf = hoverPerfRef.current;
+    if (!builderHoverPerfEnabled || !perf || !publishedAt) return;
+    perf.optionVisibleDelayMaxMs = Math.max(
+      perf.optionVisibleDelayMaxMs,
+      performance.now() - publishedAt
+    );
+  };
+  inlineSortableRenderersRef.current.onElementSelectionBoundaryRender = () => {
+    if (!builderSectionPerfEnabled) return;
+    elementSelectionPerfSessionsRef.current.forEach((session) => {
+      session.selectedBoundaryRenderCount += 1;
+    });
+  };
+  inlineSortableRenderersRef.current.structuralRenderRevision =
+    structuralRenderRevision;
 
-  const SortableElementItem = ({
-    id,
+  if (inlineSortableRenderersRef.current.dragActive) {
+    if (
+      !inlineSortableRenderersRef.current.elementRenderRevision ||
+      inlineSortableRenderersRef.current.elementRenderRevision ===
+        STABLE_ELEMENT_RENDER_REVISION
+    ) {
+      inlineSortableRenderersRef.current.elementRenderRevision = {};
+    }
+  } else {
+    inlineSortableRenderersRef.current.elementRenderRevision =
+      STABLE_ELEMENT_RENDER_REVISION;
+  }
+  inlineSortableRenderersRef.current.getElementSortableConfig = ({
     containerId,
-    columnId,
-    elementData,
-    children,
-    spanId = null,
-    nestedSpanId = null,
-    /** list ในแถว listRow: แสดงเส้นคั่นแนวตั้งหลังรายการนี้ (ยกเว้นตัวสุดท้ายในแถว) */
-    listInlineDividerAfter = false,
-    /** listRow: mr หลังชุดนี้คู่กับชุดถัดไป (gap-x ใช้ 0 แล้วคุมด้วยคลาสนี้) */
-    listInlineRowTrailingClassName = "",
   }) => {
+    const splitTransition =
+      layouts.find((l) => l?.container?.id === containerId)?.splitRowId
+        ? { duration: 200, easing: "ease" }
+        : undefined;
+    return {
+      // Keep element DnD active in Layout Mode.
+      animateLayoutChanges: noLayoutAnimWhileSorting,
+      disabled: !isLayoutMode,
+      transition: splitTransition,
+    };
+  };
+  inlineSortableRenderersRef.current.onElementSortableDragStart = () => {
+    if (selectID.status && selectID.ids?.eleID) {
+      setSelectID({ ids: {}, status: "" });
+    }
+  };
+  inlineSortableRenderersRef.current.getElementSortableSnapshot = (
+    {
+      id,
+      containerId,
+      columnId,
+      elementData,
+      spanId = null,
+      nestedSpanId = null,
+    },
+    { attributes, listeners, transform, transition, isDragging }
+  ) => {
     const splitTransition =
       layouts.find((l) => l?.container?.id === containerId)?.splitRowId
         ? { duration: 200, easing: "ease" }
@@ -8934,28 +13827,6 @@ const Content = ({
     const splitTransitionCss = splitTransition
       ? `transform ${splitTransition.duration}ms ${splitTransition.easing}`
       : undefined;
-    const {
-      attributes,
-      listeners,
-      setNodeRef,
-      transform,
-      transition,
-      isDragging,
-    } = useSortable({
-      id,
-      data: {
-        type: "ELEMENT",
-        conID: containerId,
-        colID: columnId,
-        spnID: spanId,
-        nestID: nestedSpanId,
-      },
-      animateLayoutChanges: noLayoutAnimWhileSorting,
-      // Keep element DnD always active in Layout Mode.
-      // Hover-based disableEleDrag can become stale in span buckets and block drag start.
-      disabled: !isLayoutMode,
-      transition: splitTransition,
-    });
     const { type } = elementData;
     const btnFullCol =
       (type === "btn" || type === "btnG") &&
@@ -8982,48 +13853,10 @@ const Content = ({
         : formLayoutCols === 3
           ? `calc((100% - ${FORM_ROW_GAP_PX * 2}px) / 3)`
           : "100%";
-    const [hoverElement, setHoverElement] = useState(false);
-
-    const IDX = layouts.findIndex((l) => l.container.id === containerId);
-    const idx = layouts[IDX].columns.findIndex((c) => c.id === columnId);
-    let sidx,msidx
-    if(spanId){
-      sidx = layouts[IDX].columns[idx].spans.findIndex((s) => s.id === spanId);
-    }if(nestedSpanId){
-      msidx = layouts[IDX].columns[idx].spans[sidx].nestedSpans.findIndex((ms) => ms.id === nestedSpanId);
-    }
-    const isElement = layouts[IDX].columns[idx].elements.length > 1;
-
-    const eleBucket = nestedSpanId
-      ? layouts[IDX].columns[idx].spans[sidx].nestedSpans[msidx].elements
-      : spanId
-        ? layouts[IDX].columns[idx].spans[sidx].elements
-        : layouts[IDX].columns[idx].elements;
-    const curIx = eleBucket.findIndex((e) => e.id === id);
-    const nextEl = curIx >= 0 ? eleBucket[curIx + 1] : undefined;
-
     const inListRowGroup =
       type === "list" &&
       typeof elementData?.listRowGroupId === "string" &&
       elementData.listRowGroupId.trim() !== "";
-    const nextInSameListRow =
-      nextEl?.type === "list" &&
-      typeof nextEl?.listRowGroupId === "string" &&
-      typeof elementData?.listRowGroupId === "string" &&
-      String(nextEl.listRowGroupId).trim() !== "" &&
-      String(elementData.listRowGroupId).trim() !== "" &&
-      String(nextEl.listRowGroupId).trim() ===
-        String(elementData.listRowGroupId).trim();
-    /** List iCons ในแถวเดียวกัน: ไม่ใช้เส้นคั่นแนวนอนระหว่างช่อง (ใช้เส้นแนวตั้งแทน) — List Item ยังมีเส้นด้านล่างเหมือนเดิม */
-    const suppressHorizontalBetweenSameListRow =
-      Boolean(nextInSameListRow) &&
-      elementData?.listIconsElement === true &&
-      nextEl?.listIconsElement === true;
-    const isLastList =
-      nextEl?.type !== "list" ||
-      Boolean(suppressHorizontalBetweenSameListRow);
-
-    /** กว้าง auto เฉพาะในแถว — ตัวเดี่ยวให้เต็มความกว้างเพื่อจัดซ้าย/กลาง/ขวาเหมือนโหมดแก้ไข */
     const tightSortableWidth =
       ((type === "btn" || type === "btnG") &&
         !btnFullCol &&
@@ -9032,10 +13865,37 @@ const Content = ({
       (type === "ctn" && inCounterRowGroup) ||
       (type === "list" && inListRowGroup) ||
       inFormRowGroup;
+
+    const IDX = layouts.findIndex((l) => l.container.id === containerId);
+    const idx = layouts[IDX].columns.findIndex((c) => c.id === columnId);
+    let sidx;
+    let msidx;
+    if (spanId) {
+      sidx = layouts[IDX].columns[idx].spans.findIndex((s) => s.id === spanId);
+    }
+    if (nestedSpanId) {
+      msidx = layouts[IDX].columns[idx].spans[sidx].nestedSpans.findIndex(
+        (ms) => ms.id === nestedSpanId
+      );
+    }
+    const eleBucket = nestedSpanId
+      ? layouts[IDX].columns[idx].spans[sidx].nestedSpans[msidx].elements
+      : spanId
+        ? layouts[IDX].columns[idx].spans[sidx].elements
+        : layouts[IDX].columns[idx].elements;
+    const curIx = eleBucket.findIndex((e) => e.id === id);
+    const hasActiveElementDrag =
+      Boolean(activeID?.eleID) ||
+      (useScopedColumnDnd &&
+        activeDragRef.current?.data?.current?.type === "ELEMENT");
+    const elementDragLayoutActive =
+      isDraggingLayout ||
+      (useScopedColumnDnd &&
+        inlineSortableRenderersRef.current.dragActive);
     const dragDropIndex = dropTargetRef.current?.index;
     const isElementDropPreview =
-      Boolean(activeID?.eleID) &&
-      isDraggingLayout &&
+      hasActiveElementDrag &&
+      elementDragLayoutActive &&
       preview &&
       dropTargetRef.current?.type === "ELEMENT" &&
       dragDropIndex &&
@@ -9058,10 +13918,6 @@ const Content = ({
       Number.isInteger(curIx) && curIx >= 0
         ? getInlineRowGroupBounds(eleBucket, curIx)
         : null;
-    const isInlineGroupLead =
-      inlineGroupBounds && Number.isInteger(curIx)
-        ? curIx === inlineGroupBounds.start
-        : false;
     const previewShiftDown =
       samePreviewBucket &&
       !isDragging &&
@@ -9071,20 +13927,17 @@ const Content = ({
       !inlineGroupBounds &&
       curIx >= previewInsertAt;
     const previewShiftPx = previewShiftDown ? 56 : 0;
-    const activeInlineDragGroup = activeInlineDragGroupRef.current;
     const isInlineGroupDrag = false;
     const suppressSortableTransform =
-      Boolean(activeID?.eleID) &&
-      isDraggingLayout &&
+      hasActiveElementDrag &&
+      elementDragLayoutActive &&
       Boolean(preview) &&
       !isInlineGroupDrag;
-    // Keep the dragging element's layout slot visible (Data Slider-like behavior)
-    // so users can see insertion space while reordering in column areas.
     const hideSourceWhileDragging =
       builderMode === "Layout Mode" &&
-      isDraggingLayout &&
+      elementDragLayoutActive &&
       isDragging &&
-      Boolean(activeID?.eleID);
+      hasActiveElementDrag;
     const isInlineGroupedDragMember = false;
     const collapseDraggingSlot =
       hideSourceWhileDragging && samePreviewBucket;
@@ -9092,7 +13945,8 @@ const Content = ({
       !suppressSortableTransform && transform
         ? CSS.Transform.toString(transform)
         : undefined;
-    const previewOffsetY = !collapseDraggingSlot && previewShiftPx > 0 ? previewShiftPx : 0;
+    const previewOffsetY =
+      !collapseDraggingSlot && previewShiftPx > 0 ? previewShiftPx : 0;
     const splitPreviewTransform = suppressSortableTransform
       ? `translate3d(0, ${previewOffsetY}px, 0)`
       : undefined;
@@ -9104,8 +13958,8 @@ const Content = ({
     const sortableTransition = suppressDropMotion
       ? undefined
       : isDragging
-      ? undefined
-      : splitPreviewTransition ?? splitTransitionCss ?? transition;
+        ? undefined
+        : splitPreviewTransition ?? splitTransitionCss ?? transition;
     const style = {
       transform: composedTransform,
       transition: sortableTransition,
@@ -9118,14 +13972,15 @@ const Content = ({
       touchAction: "none",
       cursor: isDragging ? "grabbing" : "grab",
       position: "relative",
-      ...(builderMode === "Layout Mode" && isDraggingLayout && curIx >= 0
-        ? { zIndex: curIx + 1 }
-        : {}),
-      ...(isDragging ? { zIndex: 1200 } : {}),
+      zIndex:
+        isDragging
+          ? 1200
+          : builderMode === "Layout Mode" && isDraggingLayout && curIx >= 0
+            ? curIx + 1
+            : undefined,
       width: tightSortableWidth ? "auto" : "100%",
-      ...(tightSortableWidth
-        ? { maxWidth: "100%", flexShrink: 0 }
-        : {}),
+      maxWidth: tightSortableWidth ? "100%" : undefined,
+      flexShrink: tightSortableWidth ? 0 : undefined,
       ...(inFormRowGroup
         ? {
             width: formRowWidthStyle,
@@ -9152,18 +14007,88 @@ const Content = ({
                 }
               : {}),
           }
-        : {}),
+        : {
+            height: undefined,
+            minHeight: undefined,
+            margin: undefined,
+            padding: undefined,
+            border: undefined,
+            overflow: undefined,
+            pointerEvents: undefined,
+            minWidth: undefined,
+            flexBasis: inFormRowGroup ? formRowWidthStyle : undefined,
+          }),
     };
-    const sortableBindings = isLayoutMode ? { ...attributes, ...listeners } : {};
+
+    return {
+      attributes: isLayoutMode ? attributes : {},
+      listeners: isLayoutMode ? listeners : {},
+      sortableBindings: isLayoutMode ? { ...attributes, ...listeners } : {},
+      style,
+    };
+  };
+
+  const renderSortableElementItem = ({
+    id,
+    containerId,
+    columnId,
+    elementData,
+    children,
+    spanId = null,
+    nestedSpanId = null,
+    /** list ในแถว listRow: แสดงเส้นคั่นแนวตั้งหลังรายการนี้ (ยกเว้นตัวสุดท้ายในแถว) */
+    listInlineDividerAfter = false,
+    /** listRow: mr หลังชุดนี้คู่กับชุดถัดไป (gap-x ใช้ 0 แล้วคุมด้วยคลาสนี้) */
+    listInlineRowTrailingClassName = "",
+    sortableBridge,
+    selected,
+    hoverElement,
+    setHoverElement,
+  }) => {
+    const { type } = elementData;
+    const inCounterRowGroup =
+      type === "ctn" &&
+      typeof elementData?.counterRowGroupId === "string" &&
+      elementData.counterRowGroupId.trim() !== "";
+    const IDX = layouts.findIndex((l) => l.container.id === containerId);
+    const idx = layouts[IDX].columns.findIndex((c) => c.id === columnId);
+    let sidx,msidx
+    if(spanId){
+      sidx = layouts[IDX].columns[idx].spans.findIndex((s) => s.id === spanId);
+    }if(nestedSpanId){
+      msidx = layouts[IDX].columns[idx].spans[sidx].nestedSpans.findIndex((ms) => ms.id === nestedSpanId);
+    }
+    const eleBucket = nestedSpanId
+      ? layouts[IDX].columns[idx].spans[sidx].nestedSpans[msidx].elements
+      : spanId
+        ? layouts[IDX].columns[idx].spans[sidx].elements
+        : layouts[IDX].columns[idx].elements;
+    const curIx = eleBucket.findIndex((e) => e.id === id);
+    const nextEl = curIx >= 0 ? eleBucket[curIx + 1] : undefined;
+
+    const nextInSameListRow =
+      nextEl?.type === "list" &&
+      typeof nextEl?.listRowGroupId === "string" &&
+      typeof elementData?.listRowGroupId === "string" &&
+      String(nextEl.listRowGroupId).trim() !== "" &&
+      String(elementData.listRowGroupId).trim() !== "" &&
+      String(nextEl.listRowGroupId).trim() ===
+        String(elementData.listRowGroupId).trim();
+    /** List iCons ในแถวเดียวกัน: ไม่ใช้เส้นคั่นแนวนอนระหว่างช่อง (ใช้เส้นแนวตั้งแทน) — List Item ยังมีเส้นด้านล่างเหมือนเดิม */
+    const suppressHorizontalBetweenSameListRow =
+      Boolean(nextInSameListRow) &&
+      elementData?.listIconsElement === true &&
+      nextEl?.listIconsElement === true;
+    const isLastList =
+      nextEl?.type !== "list" ||
+      Boolean(suppressHorizontalBetweenSameListRow);
+    const {
+      style = {},
+      sortableBindings = {},
+    } = sortableBridge?.current?.snapshot || {};
+    const setNodeRef = sortableBridge?.current?.nodeRef;
 
 
-
-
-  useEffect(() => {
-      if(isDragging && selectID.status && selectID.ids?.eleID){
-        setSelectID({ids:{},status:""});
-      }
-    }, [isDragging]);
 
     if (type === "null") {
       return (
@@ -9189,7 +14114,6 @@ const Content = ({
 
       const ids = {conID:containerId,colID:columnId,spnID:spanId,nestID:nestedSpanId}
 
-      const selected = selectID.ids?.eleID === id && selectID.status === "Delete"
       const isEditorHoverOnThis =
         builderMode === "Editor Mode" && hoverElement?.id === id;
       const partHoverOnlyType =
@@ -9360,17 +14284,29 @@ const Content = ({
         }else{
           return;
         }
-        if (selectID.ids?.eleID === id && selectID.status === status) {
-          setSelectID({ids:{},status:""});
+        const currentSelection = selectIDRef.current;
+        const isCurrentSelection =
+          status === "Delete"
+            ? selected
+            : currentSelection?.ids?.eleID === id &&
+              currentSelection?.status === status;
+        if (isCurrentSelection) {
+          setSelectID(
+            { ids: {}, status: "" },
+            { elementSelectionCache: status === "Delete" }
+          );
           if(status === "Edit"){
             setPositionElementSetting({x:null,y:null})
           }
           return;
         }
-        setSelectID({
-          ids:{...ids,eleID:id},
-          status
-        });
+        setSelectID(
+          {
+            ids:{...ids,eleID:id},
+            status
+          },
+          { elementSelectionCache: status === "Delete" }
+        );
         if(status === "Edit"){
           setPositionElementSetting({x:e.clientX,y:e.clientY})
         }
@@ -9386,12 +14322,7 @@ const Content = ({
         id={ID}
         data-drop="ELEMENT"
         onMouseMove={(e) => {
-          if (builderMode === "Layout Mode") {
-            // Ensure element dragging is immediately enabled while hovering an element.
-            setDisableConDrag(true);
-            setDisableEleDrag(false);
-            scheduleDND(e);
-          }
+          if (inlineSortableRenderersRef.current.dragActive) return;
           scheduleBTNUpdate(e);
           const nextMeta = resolveHoverMeta(e.target);
           setHoverElement((prev) =>
@@ -10785,18 +15716,31 @@ const Content = ({
           }
           onTabElementSelect={(tabEl, tabId) => {
             if (!tabEl) {
+              const currentSelection = selectIDRef.current;
               if (
-                selectID.ids?.tabsHostId === elementData.id &&
-                selectID.status === "Delete"
+                currentSelection?.ids?.tabsHostId === elementData.id &&
+                currentSelection?.status === "Delete"
               ) {
-                setSelectID({ ids: {}, status: "" });
+                setSelectID(
+                  { ids: {}, status: "" },
+                  { elementSelectionCache: true }
+                );
               } else if (
-                selectID.ids?.eleID === elementData.id &&
-                selectID.status === "Delete"
+                currentSelection?.ids?.eleID === elementData.id &&
+                currentSelection?.status === "Delete"
               ) {
-                setSelectID({ ids: {}, status: "" });
+                setSelectID(
+                  { ids: {}, status: "" },
+                  { elementSelectionCache: true }
+                );
               } else {
-                setSelectID({ ids: { ...ids, eleID: elementData.id }, status: "Delete" });
+                setSelectID(
+                  {
+                    ids: { ...ids, eleID: elementData.id },
+                    status: "Delete",
+                  },
+                  { elementSelectionCache: true }
+                );
               }
             } else {
               const suppress = suppressNextTabButtonSelectRef.current;
@@ -10818,17 +15762,25 @@ const Content = ({
                 };
                 return;
               }
-              setSelectID({
-                ids: { eleID: tabEl.id, tabsHostId: elementData.id, tabId },
+              const nestedSelection = {
+                ids: {
+                  ...ids,
+                  eleID: tabEl.id,
+                  tabsHostId: elementData.id,
+                  tabId,
+                },
                 status: "Delete",
-              });
+              };
+              const nestedKey = elementSelectionKey(nestedSelection.ids);
+              setSelectID(
+                elementSelectionStoreRef.current.getSelectedKey() === nestedKey
+                  ? { ids: {}, status: "" }
+                  : nestedSelection,
+                { elementSelectionCache: true }
+              );
             }
           }}
-          tabSelectedElId={
-            selectID.ids?.tabsHostId === elementData.id && selectID.status === "Delete"
-              ? selectID.ids.eleID
-              : null
-          }
+          tabSelectedElId={null}
           onTabElementsReorder={(tabId, fromI, toI) =>
             reorderTabNestedElements(elementData.id, tabId, fromI, toI)
           }
@@ -10853,6 +15805,7 @@ const Content = ({
       </Box>
     );
   };
+  inlineSortableRenderersRef.current.element = renderSortableElementItem;
 
   const change_column_position = (oldIndex, newIndex, containerIndex) => {
     const newLayouts = layouts.map((l) => ({ ...l, columns: [...l.columns] }));
@@ -10865,8 +15818,11 @@ const Content = ({
   /** สลับลำดับ Span ใน Element Split (คอลัมน์ isSpan) — รองรับลากสลับเหมือนคอลัมน์ */
   const change_span_order = (oldIndex, newIndex, containerIndex, columnIndex) => {
     if (oldIndex === newIndex) return;
-    const newLayouts = lodash.cloneDeep(layouts);
-    const spans = newLayouts[containerIndex]?.columns?.[columnIndex]?.spans;
+    const sourceLayout = layouts[containerIndex];
+    const sourceColumn = sourceLayout?.columns?.[columnIndex];
+    const sourceSpans = sourceColumn?.spans;
+    if (!sourceLayout || !sourceColumn || !sourceSpans?.length) return;
+    const spans = [...sourceSpans];
     if (!spans?.length) return;
     if (
       oldIndex < 0 ||
@@ -10877,12 +15833,17 @@ const Content = ({
       return;
     const [sp] = spans.splice(oldIndex, 1);
     spans.splice(newIndex, 0, sp);
+    const columns = [...sourceLayout.columns];
+    columns[columnIndex] = { ...sourceColumn, spans };
+    const newLayouts = [...layouts];
+    newLayouts[containerIndex] = { ...sourceLayout, columns };
     setLayout(newLayouts);
   };
 
 
   const change_container_position = (oldIndex, newIndex) => {
-    const newLayouts = lodash.cloneDeep(layouts);
+    // Reorder เปลี่ยนเฉพาะ array ชั้นบน ไม่ต้อง clone Section/Element ทั้งหน้า
+    const newLayouts = [...layouts];
     const layout = newLayouts[oldIndex];
     if (layout?.splitRowId) {
       const splitRowId = layout.splitRowId;
@@ -10933,6 +15894,84 @@ const Content = ({
     }
   };
 
+  const cloneElementBucketsForMove = (sourcePath, targetPath) => {
+    const nextLayouts = layouts.slice();
+    const sectionCopies = new Map();
+    const columnCopies = new Map();
+    const spanCopies = new Map();
+    const nestedSpanCopies = new Map();
+    const bucketCopies = new Map();
+
+    const cloneBucket = ({ conI, colI, spnI = null, nestI = null }) => {
+      const bucketKey = `${conI}:${colI}:${spnI ?? "-"}:${nestI ?? "-"}`;
+      if (bucketCopies.has(bucketKey)) return bucketCopies.get(bucketKey);
+
+      let section = sectionCopies.get(conI);
+      if (!section) {
+        const sourceSection = layouts[conI];
+        if (!sourceSection || !Array.isArray(sourceSection.columns)) return null;
+        section = {
+          ...sourceSection,
+          columns: sourceSection.columns.slice(),
+        };
+        sectionCopies.set(conI, section);
+        nextLayouts[conI] = section;
+      }
+
+      const columnKey = `${conI}:${colI}`;
+      let column = columnCopies.get(columnKey);
+      if (!column) {
+        const sourceColumn = section.columns[colI];
+        if (!sourceColumn) return null;
+        column = { ...sourceColumn };
+        if (Array.isArray(sourceColumn.spans)) {
+          column.spans = sourceColumn.spans.slice();
+        }
+        section.columns[colI] = column;
+        columnCopies.set(columnKey, column);
+      }
+
+      let owner = column;
+      if (Number.isInteger(spnI)) {
+        const spanKey = `${conI}:${colI}:${spnI}`;
+        let span = spanCopies.get(spanKey);
+        if (!span) {
+          const sourceSpan = column.spans?.[spnI];
+          if (!sourceSpan) return null;
+          span = { ...sourceSpan };
+          if (Array.isArray(sourceSpan.nestedSpans)) {
+            span.nestedSpans = sourceSpan.nestedSpans.slice();
+          }
+          column.spans[spnI] = span;
+          spanCopies.set(spanKey, span);
+        }
+        owner = span;
+
+        if (Number.isInteger(nestI)) {
+          const nestedKey = `${spanKey}:${nestI}`;
+          let nestedSpan = nestedSpanCopies.get(nestedKey);
+          if (!nestedSpan) {
+            const sourceNestedSpan = span.nestedSpans?.[nestI];
+            if (!sourceNestedSpan) return null;
+            nestedSpan = { ...sourceNestedSpan };
+            span.nestedSpans[nestI] = nestedSpan;
+            nestedSpanCopies.set(nestedKey, nestedSpan);
+          }
+          owner = nestedSpan;
+        }
+      }
+
+      if (!Array.isArray(owner.elements)) return null;
+      owner.elements = owner.elements.slice();
+      bucketCopies.set(bucketKey, owner.elements);
+      return owner.elements;
+    };
+
+    const oldElements = cloneBucket(sourcePath);
+    const newElements = cloneBucket(targetPath);
+    return { nextLayouts, oldElements, newElements };
+  };
+
   const change_element_position = (
     oldIndex,
     newIndex,
@@ -10943,58 +15982,37 @@ const Content = ({
     oldMiniSpanIndex = null,
     newMiniSpanIndex = null
   ) => {
-    const newLayouts = [...layouts];
-    let newElements;
-    if (Number.isInteger(oldSpanIndex) && Number.isInteger(newSpanIndex)) {
-      let oldElements, newElements;
-      if (Number.isInteger(oldMiniSpanIndex)) {
-        oldElements =
-          newLayouts[containerIndex].columns[columnIndex].spans[oldSpanIndex]
-            .nestedSpans[oldMiniSpanIndex].elements;
-      } else {
-        oldElements =
-          newLayouts[containerIndex].columns[columnIndex].spans[oldSpanIndex]
-            .elements;
+    const {
+      nextLayouts: newLayouts,
+      oldElements,
+      newElements,
+    } = cloneElementBucketsForMove(
+      {
+        conI: containerIndex,
+        colI: columnIndex,
+        spnI: oldSpanIndex,
+        nestI: oldMiniSpanIndex,
+      },
+      {
+        conI: containerIndex,
+        colI: columnIndex,
+        spnI: newSpanIndex,
+        nestI: newMiniSpanIndex,
       }
-
-      if (Number.isInteger(newMiniSpanIndex)) {
-        newElements =
-          newLayouts[containerIndex].columns[columnIndex].spans[newSpanIndex]
-            .nestedSpans[newMiniSpanIndex].elements;
-      } else {
-        newElements =
-          newLayouts[containerIndex].columns[columnIndex].spans[newSpanIndex]
-            .elements;
-      }
-
-      if (
-        !Array.isArray(oldElements) ||
-        !Array.isArray(newElements) ||
-        !Number.isInteger(oldIndex) ||
-        oldIndex < 0 ||
-        oldIndex >= oldElements.length
-      ) {
-        return;
-      }
-      const [movedElement] = oldElements.splice(oldIndex, 1);
-      if (!movedElement) return;
-      const insertAt = Math.max(0, Math.min(newElements.length, Number(newIndex)));
-      newElements.splice(insertAt, 0, movedElement);
-    } else {
-      newElements = newLayouts[containerIndex].columns[columnIndex].elements;
-      if (
-        !Array.isArray(newElements) ||
-        !Number.isInteger(oldIndex) ||
-        oldIndex < 0 ||
-        oldIndex >= newElements.length
-      ) {
-        return;
-      }
-      const [movedElement] = newElements.splice(oldIndex, 1);
-      if (!movedElement) return;
-      const insertAt = Math.max(0, Math.min(newElements.length, Number(newIndex)));
-      newElements.splice(insertAt, 0, movedElement);
+    );
+    if (
+      !Array.isArray(oldElements) ||
+      !Array.isArray(newElements) ||
+      !Number.isInteger(oldIndex) ||
+      oldIndex < 0 ||
+      oldIndex >= oldElements.length
+    ) {
+      return;
     }
+    const [movedElement] = oldElements.splice(oldIndex, 1);
+    if (!movedElement) return;
+    const insertAt = Math.max(0, Math.min(newElements.length, Number(newIndex)));
+    newElements.splice(insertAt, 0, movedElement);
 
     setLayout(newLayouts);
   };
@@ -11010,36 +16028,24 @@ const Content = ({
     oldMiniSpanIndex = null,
     newMiniSpanIndex = null
   ) => {
-    const newLayouts = [...layouts];
-    let oldElements, newElements;
-    if (Number.isInteger(oldSpanIndex)) {
-      if (Number.isInteger(oldMiniSpanIndex)) {
-        oldElements =
-          newLayouts[containerIndex].columns[oldColumnIndex].spans[oldSpanIndex]
-            .nestedSpans[oldMiniSpanIndex].elements;
-      } else {
-        oldElements =
-          newLayouts[containerIndex].columns[oldColumnIndex].spans[oldSpanIndex]
-            .elements;
+    const {
+      nextLayouts: newLayouts,
+      oldElements,
+      newElements,
+    } = cloneElementBucketsForMove(
+      {
+        conI: containerIndex,
+        colI: oldColumnIndex,
+        spnI: oldSpanIndex,
+        nestI: oldMiniSpanIndex,
+      },
+      {
+        conI: containerIndex,
+        colI: newColumnIndex,
+        spnI: newSpanIndex,
+        nestI: newMiniSpanIndex,
       }
-    } else {
-      oldElements =
-        newLayouts[containerIndex]?.columns[oldColumnIndex].elements;
-    }
-
-    if (Number.isInteger(newSpanIndex)) {
-      if (Number.isInteger(newMiniSpanIndex)) {
-        newElements =
-          newLayouts[containerIndex].columns[newColumnIndex].spans[newSpanIndex]
-            .nestedSpans[newMiniSpanIndex].elements;
-      } else {
-        newElements =
-          newLayouts[containerIndex].columns[newColumnIndex].spans[newSpanIndex]
-            .elements;
-      }
-    } else {
-      newElements = newLayouts[containerIndex].columns[newColumnIndex].elements;
-    }
+    );
 
     if (!oldElements || !newElements) return;
     if (
@@ -11071,42 +16077,24 @@ const Content = ({
     oldMiniSpanIndex = null,
     newMiniSpanIndex = null
   ) => {
-    const newLayouts = [...layouts];
-    let oldElements, newElements;
-
-    if (Number.isInteger(oldSpanIndex)) {
-      if (Number.isInteger(oldMiniSpanIndex)) {
-        oldElements =
-          newLayouts[oldContainerIndex].columns[oldColumnIndex].spans[
-            oldSpanIndex
-          ].nestedSpans[oldMiniSpanIndex].elements;
-      } else {
-        oldElements =
-          newLayouts[oldContainerIndex].columns[oldColumnIndex].spans[
-            oldSpanIndex
-          ].elements;
+    const {
+      nextLayouts: newLayouts,
+      oldElements,
+      newElements,
+    } = cloneElementBucketsForMove(
+      {
+        conI: oldContainerIndex,
+        colI: oldColumnIndex,
+        spnI: oldSpanIndex,
+        nestI: oldMiniSpanIndex,
+      },
+      {
+        conI: newContainerIndex,
+        colI: newColumnIndex,
+        spnI: newSpanIndex,
+        nestI: newMiniSpanIndex,
       }
-    } else {
-      oldElements =
-        newLayouts[oldContainerIndex].columns[oldColumnIndex].elements;
-    }
-
-    if (Number.isInteger(newSpanIndex)) {
-      if (Number.isInteger(newMiniSpanIndex)) {
-        newElements =
-          newLayouts[newContainerIndex].columns[newColumnIndex].spans[
-            newSpanIndex
-          ].nestedSpans[newMiniSpanIndex].elements;
-      } else {
-        newElements =
-          newLayouts[newContainerIndex].columns[newColumnIndex].spans[
-            newSpanIndex
-          ].elements;
-      }
-    } else {
-      newElements =
-        newLayouts[newContainerIndex].columns[newColumnIndex].elements;
-    }
+    );
 
     if (
       !Array.isArray(oldElements) ||
@@ -11428,8 +16416,6 @@ const Content = ({
         <BgImage />
         <div
           className={`${fluid} mx-auto relative z-10`}
-          onMouseEnter={() => setHover(id)}
-          onMouseLeave={() => setHover(null)}
           style={{
             paddingTop: paddingTop,
             paddingBottom: paddingBottom,
@@ -11438,8 +16424,6 @@ const Content = ({
         >
           <div
             className={`grid grid-cols-12 py-5 ${preview?.container?.noColumnGap ? "gap-0" : "gap-[22px]"}`}
-            onMouseEnter={() => setHover(id)}
-            onMouseLeave={() => setHover(null)}
           >
             {children}
           </div>
@@ -11448,13 +16432,17 @@ const Content = ({
     );
   };
 
-  const ElementPreview = ({ element }) => {
+  const ElementPreview = ({
+    element,
+    isDragOverlay = false,
+    isSidebarPortalPreview = false,
+  }) => {
     const layoutPreviewPe = isLayoutMode ? " pointer-events-none" : "";
     const isCanvasElementDrag =
       activeDragRef.current?.data?.current?.type === "ELEMENT";
     const isElementGhostPlaceholder =
       isCanvasElementDrag &&
-      Boolean(activeID?.eleID) &&
+      !isDragOverlay &&
       preview &&
       element &&
       String(preview?.id || "") !== "" &&
@@ -11479,14 +16467,11 @@ const Content = ({
     // ไม่ใช้ FormElement เต็มแบบหน้าออกแบบฟอร์ม
     const isFormPaletteGhost =
       isFormElementType &&
-      preview &&
+      (preview || isSidebarPortalPreview) &&
       String(element?.id || "") !== "" &&
-      String(element?.id || "") === String(preview?.id || "") &&
-      !(
-        activeID &&
-        typeof activeID === "object" &&
-        Boolean(activeID.eleID)
-      );
+      (isSidebarPortalPreview ||
+        String(element?.id || "") === String(preview?.id || "")) &&
+      !isCanvasElementDrag;
     if (isFormPaletteGhost) {
       const {
         icon,
@@ -12327,7 +17312,9 @@ const Content = ({
   const ghostInsertAnimClass = "";
 
   const getTabGhostData = (ele) => {
-    if (!ele || (ele.type !== "tabs" && ele.type !== "acc" && ele.type !== "post" && ele.type !== "dts" && ele.type !== "ctg") || !preview) return null;
+    const nativeSidebarPreview = sidebarPortalPreviewRef.current;
+    const tabPreview = nativeSidebarPreview || preview;
+    if (!ele || (ele.type !== "tabs" && ele.type !== "acc" && ele.type !== "post" && ele.type !== "dts" && ele.type !== "ctg") || !tabPreview) return null;
     const isCanvasElementMove =
       Boolean(activeID?.eleID) ||
       activeDragRef.current?.data?.current?.type === "ELEMENT";
@@ -12386,11 +17373,11 @@ const Content = ({
         ),
       insertAt: typeof idx.tabEleI === "number" ? idx.tabEleI : 0,
       isLast: Boolean(dropTargetRef.current.isLast),
-      ghostEl: (
+      ghostEl: nativeSidebarPreview ? null : (
         <div
           ref={ghostRef}
           className={`w-full ${isCanvasElementMove ? "mb-0 opacity-100" : "mb-2 opacity-70"} ${ghostInsertAnimClass}`}
-          id={String(preview.id || "")}
+          id={String(tabPreview.id || "")}
           onDragOver={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -12407,7 +17394,7 @@ const Content = ({
               </div>
             </div>
           ) : (
-            <ElementPreview element={preview} />
+            <ElementPreview element={tabPreview} />
           )}
         </div>
       ),
@@ -12537,6 +17524,8 @@ const Content = ({
 
   const drag = ({ active,activatorEvent }) => {
     if(builderMode !== "Layout Mode") return;
+    layoutDragTargetRef.current = { containerId: "", id: "" };
+    structureDropIntentRef.current = null;
     const draggingExisting = active?.data?.current?.type === "ELEMENT";
     if (!draggingExisting) {
       setPreview(null);
@@ -12624,13 +17613,16 @@ const Content = ({
         );
       }
       activeInlineDragGroupRef.current = null;
-      setActiveItem(element);
-      setActiveID({
-        conID: current.conID,
-        colID: current.colID,
-        eleID: id,
-        spnID: current.spnID ? current.spnID : null,
-      });
+      activeItemRef.current = element;
+      if (!useScopedColumnDnd) {
+        setActiveItem(element);
+        setActiveID({
+          conID: current.conID,
+          colID: current.colID,
+          eleID: id,
+          spnID: current.spnID ? current.spnID : null,
+        });
+      }
       const { x, y } = getEventCoordinates(activatorEvent);
       
       dragMetaRef.current.startX = x;
@@ -12707,6 +17699,10 @@ const Content = ({
     if (!over || !active) return;
     if (!active || !active.data?.current) return;
     if (active.id === over.id) return;
+    layoutDragTargetRef.current = {
+      containerId: String(over.data?.current?.conID || ""),
+      id: String(over.id || ""),
+    };
 
     /* กัน ping-pong: ถ้า pair นี้เพิ่งถูก apply ไปแล้ว ให้ skip */
     const eleMoveKey = `${String(active.id)}→${String(over.id)}`;
@@ -12719,6 +17715,17 @@ const Content = ({
       const lastOver = lastEleMoveKeyRef.current?.split("→")[1];
       if (lastOver && lastOver !== String(over.id)) {
         lastEleMoveKeyRef.current = null;
+      }
+      const activeData = active.data.current;
+      const overData = over.data.current;
+      const isSameBucket =
+        activeData.conID === overData.conID &&
+        activeData.colID === overData.colID &&
+        (activeData.spnID ?? null) === (overData.spnID ?? null) &&
+        (activeData.nestID ?? null) === (overData.nestID ?? null);
+      if (isSameBucket) {
+        // dnd-kit จัดการ transform และ drop() commit อยู่แล้ว
+        return;
       }
     }
     setIsDraggingLayout(true);
@@ -12742,7 +17749,13 @@ const Content = ({
       const oldIndex = spans.findIndex((s) => s.id === active.id);
       const newIndex = spans.findIndex((s) => s.id === over.id);
       if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
-      change_span_order(oldIndex, newIndex, IDX, colIdx);
+      structureDropIntentRef.current = {
+        type: "SPAN",
+        oldIndex,
+        newIndex,
+        containerIndex: IDX,
+        columnIndex: colIdx,
+      };
       return;
     }
 
@@ -12792,7 +17805,11 @@ const Content = ({
         }
         if (insertAtSans === firstI) return;
       }
-      change_container_position(oldIndex, newIndex);
+      structureDropIntentRef.current = {
+        type: "SECTION",
+        oldIndex,
+        newIndex,
+      };
       return;
     }
 
@@ -13385,18 +18402,44 @@ const Content = ({
   const drop = ({ active, over }) => {
     
     if(builderMode !== "Layout Mode") return;
+    resetDropElementGeometryCache();
+    layoutDragTargetRef.current = { containerId: "", id: "" };
     sidebarPreviewIntentRef.current = { key: "", startedAt: 0, x: 0, y: 0 };
     dragMetaRef.current.dx = null;
     dragMetaRef.current.dy = null;
     lastEleMoveKeyRef.current = null;
     activeInlineDragGroupRef.current = null;
-    setDisableColDrag(true);
-    setDisableConDrag(true);
     setActiveID(null);
     positionRef.current = null;
     setActiveItem(null);
     setIsDraggingLayout(false);
     if (!active || !active.data?.current) return;
+    const structureIntent = structureDropIntentRef.current;
+    structureDropIntentRef.current = null;
+    if (
+      active.data.current.type === "SECTION" &&
+      structureIntent?.type === "SECTION"
+    ) {
+      change_container_position(
+        structureIntent.oldIndex,
+        structureIntent.newIndex
+      );
+      activeDragRef.current = null;
+      return;
+    }
+    if (
+      active.data.current.type === "SPAN" &&
+      structureIntent?.type === "SPAN"
+    ) {
+      change_span_order(
+        structureIntent.oldIndex,
+        structureIntent.newIndex,
+        structureIntent.containerIndex,
+        structureIntent.columnIndex
+      );
+      activeDragRef.current = null;
+      return;
+    }
     const normalizeCommittedIndexForSameBucketReorder = (
       rawIndex,
       oldIndex,
@@ -13449,7 +18492,7 @@ const Content = ({
       if (!Number.isFinite(pointerY)) return null;
       const overNode = findDropElementNodeByEleId(overId);
       if (!overNode) return null;
-      const rect = overNode.getBoundingClientRect();
+      const rect = getCachedDropElementRect(overNode);
       const midY = rect.top + rect.height / 2;
       const rawBoundary = overIndex + (pointerY > midY ? 1 : 0);
       return snapInsertOutsideInlineGroup(bucket, rawBoundary);
@@ -13513,13 +18556,16 @@ const Content = ({
       } else if (boundary >= sourceStart && boundary <= sourceEnd + 1) {
         boundary = sourceStart;
       }
-      const nextLayouts = lodash.cloneDeep(layouts);
-      let nextBucket = nextLayouts[srcConI].columns[srcColI].elements;
-      if (Number.isInteger(srcSpnI)) {
-        nextBucket = Number.isInteger(srcMspnI)
-          ? nextLayouts[srcConI].columns[srcColI].spans[srcSpnI].nestedSpans[srcMspnI].elements
-          : nextLayouts[srcConI].columns[srcColI].spans[srcSpnI].elements;
-      }
+      const sourcePath = {
+        conI: srcConI,
+        colI: srcColI,
+        spnI: srcSpnI,
+        nestI: srcMspnI,
+      };
+      const {
+        nextLayouts,
+        oldElements: nextBucket,
+      } = cloneElementBucketsForMove(sourcePath, sourcePath);
       if (!Array.isArray(nextBucket)) return false;
       const moveBlock = nextBucket.splice(sourceStart, blockLen);
       const insertAt = Math.max(0, Math.min(nextBucket.length, boundary));
@@ -13540,19 +18586,52 @@ const Content = ({
       ) {
         return false;
       }
-      const nextLayouts = lodash.cloneDeep(layouts);
-      const srcLoc = findLayoutElementListIndex(nextLayouts, String(active.id || ""));
+      let nextLayouts;
+      let srcLoc = findLayoutElementListIndex(layouts, String(active.id || ""));
       if (!srcLoc || !Array.isArray(srcLoc.list) || !Number.isInteger(srcLoc.ix)) return false;
-      const dstBucket = getBucketByDropIndex(
-        nextLayouts,
-        cur.index.conI,
-        cur.index.colI,
-        cur.index?.spnI ?? null,
-        cur.index?.nestI ?? null
+      let srcList;
+      let dstList;
+      const directSourceBucket = getBucketByDropIndex(
+        layouts,
+        srcLoc.conI,
+        srcLoc.colI,
+        srcLoc.spnI ?? null,
+        srcLoc.nestI ?? null
       );
-      const dstList = dstBucket?.elements;
+      if (directSourceBucket?.elements === srcLoc.list) {
+        const cloned = cloneElementBucketsForMove(
+          {
+            conI: srcLoc.conI,
+            colI: srcLoc.colI,
+            spnI: srcLoc.spnI ?? null,
+            nestI: srcLoc.nestI ?? null,
+          },
+          {
+            conI: cur.index.conI,
+            colI: cur.index.colI,
+            spnI: cur.index?.spnI ?? null,
+            nestI: cur.index?.nestI ?? null,
+          }
+        );
+        nextLayouts = cloned.nextLayouts;
+        srcList = cloned.oldElements;
+        dstList = cloned.newElements;
+      } else {
+        // Nested Tab/Accordion/Post items need their host path cloned as well.
+        nextLayouts = lodash.cloneDeep(layouts);
+        srcLoc = findLayoutElementListIndex(nextLayouts, String(active.id || ""));
+        const dstBucket = getBucketByDropIndex(
+          nextLayouts,
+          cur.index.conI,
+          cur.index.colI,
+          cur.index?.spnI ?? null,
+          cur.index?.nestI ?? null
+        );
+        srcList = srcLoc?.list;
+        dstList = dstBucket?.elements;
+      }
+      if (!Array.isArray(srcList)) return false;
       if (!Array.isArray(dstList)) return false;
-      const srcList = srcLoc.list;
       const boundaryRaw = cur.isLast === true ? dstList.length : cur.index.eleI;
       if (!Number.isInteger(boundaryRaw)) return false;
       const boundaryClamped = Math.max(0, Math.min(dstList.length, boundaryRaw));
@@ -13689,7 +18768,7 @@ const Content = ({
     return;
   };
 
-  function collisionByType(args) {
+  function collisionByTypeRaw(args) {
     const { active, droppableContainers, pointerCoordinates, droppableRects } =
       args;
     const { type } = active.data.current;
@@ -13698,11 +18777,66 @@ const Content = ({
       sectionReorderPointerRef.current = pointerCoordinates;
     }
 
-    const filtered = droppableContainers.filter((dc) => {
-      const t = dc.data.current.type;
-      return t === type;
-    });
+    const collisionCache = collisionContainerCacheRef.current;
+    if (collisionCache.byType.size === 0) {
+      const allContainers = droppableContainers.filter(() => true);
+      for (const dc of allContainers) {
+        const data = dc.data.current;
+        const containerType = data.type;
+        if (!collisionCache.byType.has(containerType)) {
+          collisionCache.byType.set(containerType, []);
+        }
+        collisionCache.byType.get(containerType).push(dc);
+        collisionCache.byId.set(String(dc.id), dc);
+        if (containerType === "ELEMENT") {
+          const bucketKey = [
+            data.conID,
+            data.colID,
+            data.spnID ?? "",
+            data.nestID ?? "",
+          ].join(":");
+          if (!collisionCache.elementBuckets.has(bucketKey)) {
+            collisionCache.elementBuckets.set(bucketKey, []);
+          }
+          collisionCache.elementBuckets.get(bucketKey).push(dc);
+        }
+      }
+    }
+    let filtered = collisionCache.byType.get(type) || [];
 
+    if (type === "ELEMENT" && pointerCoordinates && filtered.length > 1) {
+      const pointerNode = document.elementFromPoint(
+        pointerCoordinates.x,
+        pointerCoordinates.y
+      );
+      const hitElementNode = pointerNode?.closest?.('[data-drop="ELEMENT"]');
+      const hitElementId = String(
+        hitElementNode?.getAttribute?.("id") || ""
+      )
+        .split("/")
+        .pop();
+      const hitContainer = hitElementId
+        ? collisionCache.byId.get(hitElementId)
+        : null;
+      const hitData = hitContainer?.data?.current;
+      if (hitData) {
+        const bucketKey = [
+          hitData.conID,
+          hitData.colID,
+          hitData.spnID ?? "",
+          hitData.nestID ?? "",
+        ].join(":");
+        const sameBucket =
+          collisionCache.elementBuckets.get(bucketKey) || [];
+        if (sameBucket.length > 0) filtered = sameBucket;
+      }
+    }
+
+    collisionCache.lastFilteredCount = filtered.length;
+    collisionCache.lastUsedBucket =
+      type === "ELEMENT" &&
+      filtered.length <
+        (collisionCache.byType.get("ELEMENT") || []).length;
     const subArgs = { ...args, droppableContainers: filtered };
 
     /* SECTION: closestCenter ทำให้ Section สูง (เช่น Span) มีศูนย์กลางต่ำ — pointer อยู่ด้านบนของมัน
@@ -13749,9 +18883,39 @@ const Content = ({
     return closestCenter(subArgs);
   }
 
-  const addClass = () => document.documentElement.classList.add("dragging");
-  const removeClass = () =>
+  function collisionByType(args) {
+    const startedAt = performance.now();
+    const result = collisionByTypeRaw(args);
+    const perf = dndPerfRef.current;
+    if (perf?.active) {
+      const elapsed = performance.now() - startedAt;
+      const candidates =
+        collisionContainerCacheRef.current.lastFilteredCount || 0;
+      perf.collisionCount += 1;
+      perf.collisionTotalMs += elapsed;
+      perf.collisionMaxMs = Math.max(perf.collisionMaxMs, elapsed);
+      perf.collisionCandidatesTotal += candidates;
+      perf.collisionCandidatesMax = Math.max(
+        perf.collisionCandidatesMax,
+        candidates
+      );
+      if (collisionContainerCacheRef.current.lastUsedBucket) {
+        perf.bucketCollisionCount += 1;
+      } else {
+        perf.fallbackCollisionCount += 1;
+      }
+    }
+    return result;
+  }
+
+  const addClass = () => {
+    document.documentElement.classList.add("dragging");
+    setOffscreenSectionDndBypass(true);
+  };
+  const removeClass = () => {
     document.documentElement.classList.remove("dragging");
+    setOffscreenSectionDndBypass(false);
+  };
 
   const sizes = { Tablet: 768, Mobile: 375, Desktop: "100%" };
   const canvasSize = { width: sizes[device] };
@@ -13866,7 +19030,6 @@ const Content = ({
             ? undefined
             : (e) => {
                 scheduleBTNUpdate(e);
-                scheduleDND(e);
               }
         }
         onClickCapture={(e) => {
@@ -13900,10 +19063,17 @@ const Content = ({
         }
       >
         {/* Canvas สำหรับวาง element */}
+        <React.Profiler id="BuilderCanvas" onRender={recordCanvasProfiler}>
+        <InlineSortableRenderContext.Provider value={inlineSortableRenderersRef}>
+        <ElementSelectionStoreContext.Provider value={elementSelectionStoreRef.current}>
+        <StructuralOptionStoreContext.Provider value={structuralOptionStoreRef.current}>
+        <StructuralRenderRevisionContext.Provider value={structuralRenderRevision}>
         <MaybeDndContext
         enabled={!isPreviewCleanMode}
         onDragStart={(e) => {
           if (builderMode !== "Layout Mode") return;
+          startDndPerf(e.active);
+          beginDragInteraction(e.active);
           listImageColWarnedRef.current = false;
           setListImageColToastOpen(false);
           carouselColWarnedRef.current = false;
@@ -13920,19 +19090,40 @@ const Content = ({
         }}
         onDragMove={(e) => {
           if (builderMode !== "Layout Mode") return;
+          markContentDndLifecycle("active-move");
+          const moveStartedAt = performance.now();
+          const perf = dndPerfRef.current;
+          if (perf?.active && perf.firstMoveDelayMs == null) {
+            perf.firstMoveDelayMs = moveStartedAt - perf.startedAt;
+          }
+          if (perf?.active) {
+            perf.phase = "active-move";
+            perf.lastAction = "active-move";
+          }
           during(e);
+          if (perf?.active) {
+            const elapsed = performance.now() - moveStartedAt;
+            perf.moveCount += 1;
+            perf.moveTotalMs += elapsed;
+            perf.moveMaxMs = Math.max(perf.moveMaxMs, elapsed);
+          }
         }}
         onDragEnd={(e) => {
           if (builderMode !== "Layout Mode") return;
+          markContentDndLifecycle("drop");
           drop(e);
+          markContentDndLifecycle("drop-handler-complete");
           clearGhost();
           setIsDraggingLayout(false);
           removeClass();
+          finishDndPerf("drop");
         }}
         onDragCancel={() => {
           clearGhost();
           sidebarPreviewIntentRef.current = { key: "", startedAt: 0, x: 0, y: 0 };
           activeInlineDragGroupRef.current = null;
+          setOffscreenSectionDndBypass(false);
+          finishDndPerf("cancel");
         }}
         sensors={sensors}
         autoScroll
@@ -13951,16 +19142,140 @@ const Content = ({
             ...mobileSkeletonStyle,
           }}
         >
-          <SortableContext
-            items={containerIds}
-            strategy={verticalListSortingStrategy}
-            disabled={!isLayoutMode || disableConDrag}
-          >
             {layouts.length > 0 ? (
               <>
                 {layouts.map((layout, I) => {
+                  const cacheKey = String(
+                    layout?.splitRowId || layout?.container?.id || I
+                  );
+                  // Only the left entry renders a split row. Do not let the
+                  // right placeholder overwrite the shared row cache.
+                  if (layout?.splitRowId && layout.splitSide !== "left") {
+                    return null;
+                  }
+                  const sectionLayoutRefs = layout?.splitRowId
+                    ? layouts.filter(
+                        (entry) => entry?.splitRowId === layout.splitRowId
+                      )
+                    : [layout];
+                  const requiresDragTargetRender =
+                    elementCanvasDragRenderActive ||
+                    sidebarPreviewRenderActive;
+                  let targetRenderIndex = -1;
+                  if (requiresDragTargetRender) {
+                    let rawTargetIndex =
+                      dropTargetRef.current?.type === "SECTION"
+                        ? dropTargetRef.current?.index
+                        : dropTargetRef.current?.index?.conI;
+                    if (!Number.isInteger(rawTargetIndex)) {
+                      const internalTarget = layoutDragTargetRef.current;
+                      rawTargetIndex = layouts.findIndex(
+                        (entry) =>
+                          (internalTarget.containerId &&
+                            entry?.container?.id ===
+                              internalTarget.containerId) ||
+                          (internalTarget.id &&
+                            (entry?.container?.id === internalTarget.id ||
+                              entry?.splitRowId === internalTarget.id))
+                      );
+                    }
+                    targetRenderIndex = Number.isInteger(rawTargetIndex)
+                      ? Math.max(
+                          0,
+                          Math.min(
+                            rawTargetIndex,
+                            Math.max(0, layouts.length - 1)
+                          )
+                        )
+                      : -1;
+                    const targetLayout = layouts[targetRenderIndex];
+                    if (targetLayout?.splitRowId) {
+                      const targetSplitId = targetLayout.splitRowId;
+                      while (
+                        targetRenderIndex > 0 &&
+                        layouts[targetRenderIndex - 1]?.splitRowId ===
+                          targetSplitId
+                      ) {
+                        targetRenderIndex -= 1;
+                      }
+                    }
+                  }
+                  const activeDragData = elementCanvasDragRenderActive
+                    ? activeDragRef.current?.data?.current
+                    : null;
+                  const sidebarPreviousTargetIndex =
+                    sidebarPreviewRenderActive
+                      ? sidebarNewElementFlipRef.current.previousConI
+                      : -1;
+                  const activeContainerId = activeDragData?.conID || "";
+                  let sourceRenderIndex = activeContainerId
+                    ? layouts.findIndex(
+                        (entry) =>
+                          entry?.container?.id === activeContainerId ||
+                          entry?.splitRowId === activeContainerId
+                      )
+                    : -1;
+                  const sourceLayout = layouts[sourceRenderIndex];
+                  if (sourceLayout?.splitRowId) {
+                    const sourceSplitId = sourceLayout.splitRowId;
+                    while (
+                      sourceRenderIndex > 0 &&
+                      layouts[sourceRenderIndex - 1]?.splitRowId ===
+                        sourceSplitId
+                    ) {
+                      sourceRenderIndex -= 1;
+                    }
+                  }
+                  const cachedSection =
+                    canvasSectionRenderCacheRef.current.get(cacheKey);
+                  const cachedLayoutRefs = cachedSection?.layouts;
+                  const cacheLayoutMatches =
+                    Array.isArray(cachedLayoutRefs) &&
+                    cachedLayoutRefs.length === sectionLayoutRefs.length &&
+                    cachedLayoutRefs.every(
+                      (entry, index) => entry === sectionLayoutRefs[index]
+                    );
+                  const cacheStats = canvasSectionCacheStatsRef.current;
+                  const recordCacheMiss = (reason) => {
+                    cacheStats.cacheMisses += 1;
+                    cacheStats.missReasons[reason] =
+                      (cacheStats.missReasons[reason] || 0) + 1;
+                  };
+                  const forceDragTargetRender =
+                    requiresDragTargetRender && targetRenderIndex === I;
+                  const forceDragSourceRender =
+                    elementCanvasDragRenderActive && sourceRenderIndex === I;
+                  if (
+                    canReuseSectionCache &&
+                    !forceDragTargetRender &&
+                    !forceDragSourceRender &&
+                    sidebarPreviousTargetIndex !== I &&
+                    cacheLayoutMatches
+                  ) {
+                    cacheStats.cacheHits += 1;
+                    return cachedSection.element;
+                  }
+                  if (!cachedSection) {
+                    recordCacheMiss("no-entry");
+                  } else if (!cacheLayoutMatches) {
+                    recordCacheMiss("layout-reference-changed");
+                  } else if (!canReuseSectionCache) {
+                    recordCacheMiss("drag-inactive-bypass");
+                  } else if (forceDragTargetRender) {
+                    recordCacheMiss("drag-target");
+                  } else if (forceDragSourceRender) {
+                    recordCacheMiss("drag-source");
+                  } else if (sidebarPreviousTargetIndex === I) {
+                    recordCacheMiss("sidebar-previous-target");
+                  } else {
+                    recordCacheMiss("unknown");
+                  }
+                  const renderedSection = (() => {
                   // ====== SPLIT ROW ======
                   if (layout.splitRowId) {
+                    // Split halves share one sortable row but have independent containers.
+                    // Keep their element trees on the global context until the split renderer
+                    // can expose a stable per-half section boundary without changing row drag.
                     if (layout.splitSide !== "left") return null;
                     const splitRowId = layout.splitRowId;
                     const splitSections = [];
@@ -14044,14 +19359,16 @@ const Content = ({
                     return (
                       <React.Fragment key={splitRowId}>
                         {preview && dropTargetRef.current.type === "SECTION" && dropTargetRef.current.index === I && <GhostPreviewSplit />}
-                        <SortableSplitRowItem
+                        <StructuralSplitRowItem
                           id={splitRowId}
-                          renderChildren={({ listeners: splitListeners, setActivatorNodeRef: splitActivatorRef }) => (
+                          renderChildren={({ structuralOption: splitStructuralOption }) => (
                           <div className="flex w-full">
                           {splitSections.map(({ layout: sec, I: secI }, splitIdx) => {
                             const { container: secCon, columns: secCols } = sec;
                             const secID = secCon.id;
-                            const splitShowOption = hover === secID && !activeID && device === "Desktop" && builderMode === "Layout Mode";
+                            const splitShowOption =
+                              splitStructuralOption?.hoverId === secID &&
+                              structuralRenderRevision.controlsVisible;
                             // standard width: แต่ละ half เป็น independent container
                             // ใช้ 100% (= canvas/2) แทน 100vw เพื่อ match กับ container mx-auto ของ normal section
                             // calc(100% - 640px) = (canvas/2 - 640) = (canvas - 1280)/2 = outer margin ของ normal section
@@ -14096,26 +19413,27 @@ const Content = ({
                                   layouts={layouts}
                                   onUpdate={updateContainer}
                                   modal={openModal}
-                                  scheduleDND={scheduleDND}
                                   openOffcavanas={openOffcavanas}
                                   changePosition={changePosition}
-                                  sectionDndHandle={null}
-                                  onSectionDragEnable={undefined}
-                                  onSectionDragDisable={undefined}
                                 >
-                                  <SortableContext
-                                    items={secCols?.map((c) => c.id) || []}
-                                    strategy={rectSortingStrategy}
-                                    disabled={!isLayoutMode || disableColDrag}
-                                  >
                                     {secCols && (
                                       <>
-                                        {secCols.map((col, ci) => {
+                                        {secCols.map((col, ci) =>
+                                          renderCachedColumnSubtree(
+                                            {
+                                              branch: "split",
+                                              sectionId: secID,
+                                              column: col,
+                                              sectionIndex: secI,
+                                              columnIndex: ci,
+                                              splitIndex: splitIdx,
+                                              splitSide: sec.splitSide || "",
+                                            },
+                                            () => {
                                           const { id: colId, elements, isSpan, spans = [] } = col;
                                           const eleID = !isSpan ? elements.map((e) => e.id) : [];
-                                          const spanID = isSpan ? spans.map((s) => s.id) : [];
                                           return (
-                                            <SortableColumnItem key={colId} id={colId} containerId={secID} elementData={col}>
+                                            <StructuralColumnItem key={colId} id={colId} containerId={secID} elementData={col}>
                                               {!isSpan ? (
                                                 <SortableContext items={eleID} strategy={verticalListSortingStrategy} disabled={!isLayoutMode}>
                                                   {elements.length > 0 ? (
@@ -14222,18 +19540,14 @@ const Content = ({
                                                   )}
                                                 </SortableContext>
                                               ) : (
-                                                <SortableContext
-                                                  items={spanID}
-                                                  strategy={verticalListSortingStrategy}
-                                                  disabled={!isLayoutMode || disableSpnDrag}
-                                                >
+                                                <>
                                                   {spans.map((s, o) => {
                                                     const eleSpn = Array.isArray(s?.elements) ? s.elements : [];
                                                     const sid = s?.id;
                                                     if (!sid) return null;
                                                     const eleSpnID = eleSpn.map((e) => e.id);
                                                     return (
-                                                      <SortableSpanItem
+                                                      <StructuralSpanItem
                                                         key={sid}
                                                         id={sid}
                                                         columnId={colId}
@@ -14378,17 +19692,18 @@ const Content = ({
                                                             </>
                                                           )}
                                                         </SortableContext>
-                                                      </SortableSpanItem>
+                                                      </StructuralSpanItem>
                                                     );
                                                   })}
-                                                </SortableContext>
+                                                </>
                                               )}
-                                            </SortableColumnItem>
+                                            </StructuralColumnItem>
                                           );
-                                        })}
+                                            }
+                                          )
+                                        )}
                                       </>
                                     )}
-                                  </SortableContext>
                                 </Container>
                               </div>
                             );
@@ -14490,7 +19805,7 @@ const Content = ({
                           )
                         )}
 
-                      <SortableContainerItem
+                      <StructuralContainerItem
                         key={ID}
                         isColumn={columns}
                         elementData={container}
@@ -14499,35 +19814,32 @@ const Content = ({
                       >
 
                         
-                        <SortableContext
-                          items={columns?.map((c) => c.id)  || ["header"]}
-                          strategy={rectSortingStrategy}
-                          disabled={!isLayoutMode || disableColDrag}
-                        >
                           {columns && (
                             <>
-                                {columns.map((col, i) => {
+                                {columns.map((col, i) =>
+                                  renderCachedColumnSubtree(
+                                    {
+                                      branch: "normal",
+                                      sectionId: ID,
+                                      column: col,
+                                      sectionIndex: I,
+                                      columnIndex: i,
+                                    },
+                                    () => {
                             const { id, elements, isSpan, spans } = col;
                             let eleID;
                             if (!isSpan) {
                               eleID = elements.map((e) => e.id) ?? ["ele-null"];
                             }
-                            const spanID = spans?.map((e) => e.id) ?? [
-                              "span-null",
-                            ];
                             return (
-                              <SortableColumnItem
+                              <StructuralColumnItem
                                 key={id}
                                 id={id}
                                 containerId={ID}
                                 elementData={col}
                               >
                                 {isSpan ? (
-                                  <SortableContext
-                                    items={spanID}
-                                    strategy={verticalListSortingStrategy}
-                                    disabled={!isLayoutMode || disableSpnDrag}
-                                  >
+                                  <>
                                     {spans.map((s, o) => {
                                       const {
                                         elements: eleSpn,
@@ -14537,7 +19849,7 @@ const Content = ({
                                         (e) => e.id
                                       ) || ["ele-spn-null"];
                                       return (
-                                        <SortableSpanItem
+                                        <StructuralSpanItem
                                           key={sid}
                                           id={sid}
                                           columnId={id}
@@ -14983,10 +20295,10 @@ const Content = ({
                                                 </React.Fragment>
                                               )}
                                             </SortableContext>
-                                        </SortableSpanItem>
+                                        </StructuralSpanItem>
                                       );
                                     })}
-                                  </SortableContext>
+                                  </>
                                 ) : (
                                   <SortableContext
                                     items={eleID}
@@ -15367,9 +20679,11 @@ const Content = ({
                                     )}
                                   </SortableContext>
                                 )}
-                              </SortableColumnItem>
+                              </StructuralColumnItem>
                             );
-                          })}
+                                    }
+                                  )
+                                )}
                             </>
                           )}
                           {heros && heros.map(hero=>{
@@ -15380,10 +20694,7 @@ const Content = ({
 
                             )
                           })}
-                        </SortableContext>
-
-
-                      </SortableContainerItem>
+                      </StructuralContainerItem>
 
                       {preview &&
                         dropTargetRef.current.type === "SECTION" &&
@@ -15453,6 +20764,29 @@ const Content = ({
                         )}
                     </React.Fragment>
                   );
+                  })();
+                  const profiledSection =
+                    benchmarkOffscreenSections && renderedSection ? (
+                      <React.Profiler
+                        key={cacheKey}
+                        id={`BuilderSection:${I}:${cacheKey}`}
+                        onRender={recordOffscreenSectionProfiler}
+                      >
+                        {renderedSection}
+                      </React.Profiler>
+                    ) : (
+                      renderedSection
+                    );
+                  if (
+                    !dragRenderActive ||
+                    (targetRenderIndex !== I && sourceRenderIndex !== I)
+                  ) {
+                    canvasSectionRenderCacheRef.current.set(cacheKey, {
+                      layouts: sectionLayoutRefs,
+                      element: profiledSection,
+                    });
+                  }
+                  return profiledSection;
                 })}
               </>
             ) : (
@@ -15522,7 +20856,6 @@ const Content = ({
                 )}
               </>
             )}
-          </SortableContext>
           <DragOverlay
            dropAnimation={null}
            adjustScale={false}
@@ -15663,7 +20996,7 @@ const Content = ({
                 </SpanPreview>
               ) : typeof activeID === "object" && activeID.eleID && activeItem ? (
                 <div style={{ opacity: 0.37 }}>
-                  <ElementPreview element={activeItem} />
+                  <ElementPreview element={activeItem} isDragOverlay />
                 </div>
               ) : null)}
           </DragOverlay>
@@ -15674,6 +21007,11 @@ const Content = ({
 
 
       </MaybeDndContext>
+      </StructuralRenderRevisionContext.Provider>
+      </StructuralOptionStoreContext.Provider>
+      </ElementSelectionStoreContext.Provider>
+      </InlineSortableRenderContext.Provider>
+      </React.Profiler>
       </div>
 
       {!isPreview && (
@@ -15957,13 +21295,14 @@ const Content = ({
             <input
               autoFocus
               value={columnPresetModal?.name || ""}
-              onChange={(e) =>
+              onChange={(e) => {
+                markPresetUiInteraction();
                 setColumnPresetModal((prev) => ({
                   ...prev,
                   name: e.target.value,
                   error: "",
-                }))
-              }
+                }));
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -16072,6 +21411,7 @@ const Content = ({
                         type="button"
                         className="flex min-w-0 flex-1 items-center justify-between rounded-md pl-1 pr-2 py-1.5 text-left transition-colors hover:bg-gray-100"
                         onClick={() => {
+                          markPresetUiInteraction();
                           setPresetDeleteConfirmId(null);
                           applyColumnPresetToTarget(preset);
                         }}
@@ -16094,6 +21434,7 @@ const Content = ({
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              markPresetUiInteraction();
                               setPresetDeleteConfirmId(null);
                             }}
                           >
@@ -16119,6 +21460,7 @@ const Content = ({
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
+                            markPresetUiInteraction();
                             setPresetDeleteConfirmId(preset?.id || null);
                           }}
                         >
@@ -16158,7 +21500,10 @@ const Content = ({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         open={presetSavedToastOpen}
         autoHideDuration={2400}
-        onClose={() => setPresetSavedToastOpen(false)}
+        onClose={() => {
+          markPresetUiInteraction();
+          setPresetSavedToastOpen(false);
+        }}
         ContentProps={{ elevation: 0 }}
         message={
           <Box
@@ -16205,7 +21550,10 @@ const Content = ({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         open={presetLoadedToastOpen}
         autoHideDuration={2400}
-        onClose={() => setPresetLoadedToastOpen(false)}
+        onClose={() => {
+          markPresetUiInteraction();
+          setPresetLoadedToastOpen(false);
+        }}
         ContentProps={{ elevation: 0 }}
         message={
           <Box
@@ -16609,4 +21957,4 @@ const Content = ({
 
 };
 
-export default Content;
+export default React.memo(Content);

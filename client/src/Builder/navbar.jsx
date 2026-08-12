@@ -516,7 +516,7 @@ function SelectInput({ label, name, value, datas, handleChange }) {
 
 
 
-function Navbar({ handleDragElement,isDark,updateNewTheme,navOpen,setNavOpen,selectedMenuId,setSelectedMenuId, railExpanded = false }) {
+function Navbar({ handleDragElement,prepareDragElement,isDark,updateNewTheme,navOpen,setNavOpen,selectedMenuId,setSelectedMenuId, railExpanded = false }) {
  const FORMS_MENU_BAR_ID = "69db17211be82fe7637ea096";
  const countUnreadMessages = (rows) =>
    (Array.isArray(rows) ? rows : []).filter(
@@ -1266,6 +1266,8 @@ const pages = ["Page1","Page2","Page3"]
                         style={{ background: "var(--dash-nav-panel-item-bg)", borderColor: "var(--dash-nav-panel-item-border)" }}
                         draggable
                         key={`builder-struct-${items.label}-${index}`}
+                        onPointerEnter={() => prepareDragElement?.(items.dragLabel ?? items.label)}
+                        onPointerDown={() => prepareDragElement?.(items.dragLabel ?? items.label)}
                         onDragStart={() => {
                           handleDragElement(items.dragLabel ?? items.label);
                         }}
@@ -1291,6 +1293,8 @@ const pages = ["Page1","Page2","Page3"]
                             style={{ background: "var(--dash-nav-panel-item-bg)", borderColor: "var(--dash-nav-panel-item-border)" }}
                             draggable
                             key={`builder-basic-${items.label}-${index}`}
+                            onPointerEnter={() => prepareDragElement?.(items.dragLabel ?? items.label)}
+                            onPointerDown={() => prepareDragElement?.(items.dragLabel ?? items.label)}
                             onDragStart={() => {
                               handleDragElement(items.dragLabel ?? items.label);
                             }}
@@ -1321,6 +1325,8 @@ const pages = ["Page1","Page2","Page3"]
                                 style={{ background: "var(--dash-nav-panel-item-bg)", borderColor: "var(--dash-nav-panel-item-border)" }}
                                 draggable
                                 key={`builder-section-special-${items.label}-${index}`}
+                                onPointerEnter={() => prepareDragElement?.(items.dragLabel ?? items.label)}
+                                onPointerDown={() => prepareDragElement?.(items.dragLabel ?? items.label)}
                                 onDragStart={() => {
                                   handleDragElement(items.dragLabel ?? items.label);
                                 }}
@@ -1348,6 +1354,8 @@ const pages = ["Page1","Page2","Page3"]
                                 style={{ background: "var(--dash-nav-panel-item-bg)", borderColor: "var(--dash-nav-panel-item-border)" }}
                                 draggable
                                 key={`builder-special-${items.label}-${index}`}
+                                onPointerEnter={() => prepareDragElement?.(items.dragLabel ?? items.label)}
+                                onPointerDown={() => prepareDragElement?.(items.dragLabel ?? items.label)}
                                 onDragStart={() => {
                                   handleDragElement(items.dragLabel ?? items.label);
                                 }}
@@ -1378,6 +1386,8 @@ const pages = ["Page1","Page2","Page3"]
                             key={`builder-form-preview-${items.label}-${index}`}
                             title="ลากวางลงคอลัมน์"
                             draggable
+                            onPointerEnter={() => prepareDragElement?.(items.dragLabel ?? items.label)}
+                            onPointerDown={() => prepareDragElement?.(items.dragLabel ?? items.label)}
                             onDragStart={() => {
                               handleDragElement(items.dragLabel ?? items.label);
                             }}

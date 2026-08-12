@@ -13,7 +13,9 @@ const app = express();
 
 app.use(cors());
 app.use(morgan('dev'));
-app.use(express.json())
+// หน้า Builder ที่มี Section/Element เยอะส่ง JSON ใหญ่ — ค่า default 100kb ไม่พอ
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use("/uploads",express.static(path.join(__dirname, "uploads")))
 app.use("/uploadForBuilder",express.static(path.join(__dirname, "uploadForBuilder")))
 

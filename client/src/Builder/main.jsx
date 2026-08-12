@@ -1,4 +1,5 @@
 import React, {
+  Profiler,
   Suspense,
   lazy,
   useEffect,
@@ -119,12 +120,16 @@ import {
   resolveDashboardChrome,
   saveDashboardChromeState,
 } from "./dashboardChrome";
+import {
+  clearAllPanelPreviews,
+  markBuilderPanelOpen,
+} from "./panelPreviewStore";
+import ContainerOffcanvas from "./Offcanvas/container";
+import ColumnOffcanvas from "./Offcanvas/column";
 const Content = lazy(() => import("./content"));
 const PageSettingsPanel = lazy(() => import("./pageSettingsPanel"));
 
-const ContainerOffcanvas = lazy(() => import("./Offcanvas/container"));
 const HeaderOffcanvas = lazy(() => import("./Offcanvas/header"));
-const ColumnOffcanvas = lazy(() => import("./Offcanvas/column"));
 const ImageElementOffcanvas = lazy(() => import("./Offcanvas/imageElement"));
 const ButtonElementOffcanvas = lazy(() => import("./Offcanvas/buttonElement"));
 const IconElementOffcanvas = lazy(() => import("./Offcanvas/iconElement"));
@@ -227,6 +232,25 @@ function findLayoutElementById(layouts, eleId) {
 const Builder = ()=>{
   const location = useLocation();
   const isPreviewRoute = location.pathname === "/preview";
+  const handleLayoutPanelRender = useCallback(
+    (panelType, phase, actualDuration) => {
+      if (
+        phase !== "mount" ||
+        new URLSearchParams(window.location.search).get(
+          "builderSectionPerf"
+        ) !== "1"
+      ) {
+        return;
+      }
+      console.info("[Builder Panel Render Perf]", {
+        panelType,
+        phase,
+        actualDuration:
+          Math.round((Number(actualDuration) || 0) * 100) / 100,
+      });
+    },
+    []
+  );
 
 
 
@@ -311,7 +335,8 @@ const Builder = ()=>{
 
     const [selectedMenuId,setSelectedMenuId] = useState(getLatestPage())
     const [builderMode, setBuilderMode] = useState("Layout Mode");
-    const [element,setElement] = useState(null);
+    // Payload ชั่วคราวระหว่างลากจาก palette ไม่ควร trigger render Builder ทั้งหน้า
+    const dragElementRef = useRef(null);
     const [darkMode,setDarkMode] = useState(getMode().mode);
     const [device,setDevice] = useState("Desktop")
     const [offcanvas, setOffcanvasState] = useState(null);
@@ -417,6 +442,7 @@ const Builder = ()=>{
 
     const applyBuilderPage = useCallback(
       (nextPage, defaultIdFromList = "") => {
+        clearAllPanelPreviews();
         const normalizedPage =
           nextPage && typeof nextPage === "object" ? nextPage : {};
         const nextPageId = String(normalizedPage?._id || "");
@@ -640,14 +666,15 @@ const Builder = ()=>{
 
 
 
-    const openOffcavanas = (type,data,funct)=>{
+    const openOffcavanas = useCallback((type,data,funct)=>{
       if (type) {
         setIsPageSettingsPanelOpen(false);
+        markBuilderPanelOpen(type, data?.id ?? data?.colData?.id);
       }
       setOffcanvas(type)
       setElementData(data)
       elementFunction.current = funct;
-    }
+    }, [])
     const openPageSettingsPanel = useCallback(() => {
       if (!page?._id) return;
       setOffcanvas(null);
@@ -1634,42 +1661,78 @@ const Builder = ()=>{
       return null;
     };
 
+    const dragElementTemplateRef = useRef(new Map());
+    const dragElementPromiseRef = useRef(new Map());
+    const dragElementRequestTokenRef = useRef(0);
+
+    const normalizeDragElementTemplate = useCallback((raw) => {
+      const dropped = stripInlineRowGroupIdsForNewElement(raw);
+      if (dropped?.type === "tbl") return normalizeDroppedTableElement(dropped);
+      if (dropped?.type === "btw") return normalizeDroppedBetweenElement(dropped);
+      return dropped;
+    }, []);
+
+    const loadDragElementTemplate = useCallback((label) => {
+      if (dragElementTemplateRef.current.has(label)) {
+        return Promise.resolve(dragElementTemplateRef.current.get(label));
+      }
+      const pending = dragElementPromiseRef.current.get(label);
+      if (pending) return pending;
+      const request = createElement(label)
+        .then((res) => {
+          const template = normalizeDragElementTemplate(res?.data);
+          dragElementTemplateRef.current.set(label, template);
+          dragElementPromiseRef.current.delete(label);
+          return template;
+        })
+        .catch((err) => {
+          dragElementPromiseRef.current.delete(label);
+          throw err;
+        });
+      dragElementPromiseRef.current.set(label, request);
+      return request;
+    }, [normalizeDragElementTemplate]);
+
+    const prepareDragElement = useCallback((newElement) => {
+      if (!newElement || typeof newElement !== "string") return;
+      if (FORM_DRAG_ITEM_TO_TYPE[newElement] || newElement === "Span") return;
+      loadDragElementTemplate(newElement).catch((err) => console.log(err));
+    }, [loadDragElementTemplate]);
+
     const handleDragElement = (newElement)=>{
-    if (!newElement || typeof newElement !== "string") {
-      setElement(null);
-      return;
-    }
-    const localFormType = FORM_DRAG_ITEM_TO_TYPE[newElement];
-    if (localFormType) {
-      setElement(buildFormDraftElement(localFormType));
-      return;
-    }
-    if (newElement === "Span") {
-      setElement(null);
-      return;
-    }
-      createElement(newElement)
-      .then(res=>{
-        const dropped = stripInlineRowGroupIdsForNewElement(res?.data);
-        if (dropped?.type === "tbl") {
-          setElement(normalizeDroppedTableElement(dropped));
-          return;
-        }
-        if (dropped?.type === "btw") {
-          setElement(normalizeDroppedBetweenElement(dropped));
-          return;
-        }
-        setElement(dropped);
-      })
-      .catch(err=>{
-        console.log(err);
-      })
+      const token = ++dragElementRequestTokenRef.current;
+      if (!newElement || typeof newElement !== "string") {
+        dragElementRef.current = null;
+        return;
+      }
+      const localFormType = FORM_DRAG_ITEM_TO_TYPE[newElement];
+      if (localFormType) {
+        dragElementRef.current = buildFormDraftElement(localFormType);
+        return;
+      }
+      if (newElement === "Span") {
+        dragElementRef.current = null;
+        return;
+      }
+      const cached = dragElementTemplateRef.current.get(newElement);
+      if (dragElementTemplateRef.current.has(newElement)) {
+        dragElementRef.current = _.cloneDeep(cached);
+        return;
+      }
+      loadDragElementTemplate(newElement)
+        .then((template) => {
+          if (dragElementRequestTokenRef.current !== token) return;
+          dragElementRef.current = _.cloneDeep(template);
+        })
+        .catch(err=>{
+          console.log(err);
+        })
     }
 
     
-   const handleDropElement = ()=>{
-     return element;
-   }
+   const handleDropElement = useCallback(()=>{
+     return dragElementRef.current;
+   }, [])
 
    const toggleDarkMode = ()=>{
     const mode = darkMode === "dark" ? "light" : "dark";
@@ -4293,7 +4356,7 @@ useEffect(() => {
 
 
                 {!isPreviewRoute && (
-                  <Navbar handleDragElement={handleDragElement} isDark={darkMode} selectedMenuId={selectedMenuId} setSelectedMenuId={setSelectedMenuId} updateNewTheme={updateNewTheme} setMobilePage={setMobilePage}  mobilePage={mobilePage}  navOpen={navOpen} setNavOpen={setNavOpen} railExpanded={railExpanded}/>
+                  <Navbar handleDragElement={handleDragElement} prepareDragElement={prepareDragElement} isDark={darkMode} selectedMenuId={selectedMenuId} setSelectedMenuId={setSelectedMenuId} updateNewTheme={updateNewTheme} setMobilePage={setMobilePage}  mobilePage={mobilePage}  navOpen={navOpen} setNavOpen={setNavOpen} railExpanded={railExpanded}/>
                 )}
 
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -4651,7 +4714,13 @@ useEffect(() => {
                             handleDropElement={handleDropElement}
                             device={device}
                             openOffcavanas={openOffcavanas}
-                            offcanvasID={elementData?.id}
+                            offcanvasID={
+                              offcanvas &&
+                              offcanvas !== "Container" &&
+                              offcanvas !== "Column"
+                                ? elementData?.id ?? null
+                                : null
+                            }
                             layouts={layouts}
                             setLayout={updateLayout}
                             theme={theme}
@@ -4789,7 +4858,9 @@ useEffect(() => {
 >
 <Suspense fallback={<div className="h-full min-h-0 flex-1 bg-transparent" />}>
 {offcanvas === "Container" && (
-              <ContainerOffcanvas element={elementData} updateContainer={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
+              <Profiler id="Container" onRender={handleLayoutPanelRender}>
+                <ContainerOffcanvas element={elementData} updateContainer={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
+              </Profiler>
              )}
               {offcanvas === "Header" && (
               <HeaderOffcanvas elements={elementData} updateContainer={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
@@ -4804,7 +4875,9 @@ useEffect(() => {
               />
              )}
               {offcanvas === "Column" && (
-              <ColumnOffcanvas element={elementData} updateColumn={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
+              <Profiler id="Column" onRender={handleLayoutPanelRender}>
+                <ColumnOffcanvas element={elementData} updateColumn={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
+              </Profiler>
              )}
              {offcanvas === "Image" && (
               <ImageElementOffcanvas

@@ -17,9 +17,8 @@ import {
 
 
 } from "@mui/material";
-import lodash, { isNull, set } from "lodash";
+import lodash, { isNull } from "lodash";
 import { Minus, Plus,Check,Palette,ImageOff,Trash2} from "lucide-react";
-import { use } from "react";
 import Popper from "@mui/material/Popper";
 import { styled } from '@mui/material/styles';
 import Switch from '@mui/material/Switch';
@@ -28,6 +27,10 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { panelGroupButtonSx } from "../panelControlSx";
+import {
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
 
 
 const COLUMN_PADDING_MAX = 200;
@@ -56,6 +59,42 @@ const stepperBtnClass =
   "flex h-[34px] min-w-[2rem] shrink-0 items-center justify-center border-0 bg-white text-[12px] font-normal text-slate-700 transition hover:bg-slate-50 dark:bg-slate-900/80 dark:text-white/90 dark:hover:bg-white/10";
 const stepperMidClass =
   "flex h-[34px] min-w-0 flex-1 items-center justify-center border-x border-slate-200 bg-white px-2 text-left text-[12px] font-normal tabular-nums text-slate-800 dark:border-white/10 dark:bg-slate-900/80 dark:text-white/90";
+
+const AntSwitch = styled(Switch)(({ theme }) => ({
+  width: 28,
+  height: 16,
+  padding: 0,
+  display: "flex",
+  "&:active": {
+    "& .MuiSwitch-thumb": { width: 15 },
+    "& .MuiSwitch-switchBase.Mui-checked": { transform: "translateX(9px)" },
+  },
+  "& .MuiSwitch-switchBase": {
+    padding: 2,
+    "&.Mui-checked": {
+      transform: "translateX(12px)",
+      color: "#fff",
+      "& + .MuiSwitch-track": {
+        opacity: 1,
+        backgroundColor: "var(--dash-panel-switch-on, #333333)",
+      },
+    },
+  },
+  "& .MuiSwitch-thumb": {
+    boxShadow: "0 2px 4px 0 rgb(0 35 11 / 20%)",
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    transition: theme.transitions.create(["width"], { duration: 200 }),
+  },
+  "& .MuiSwitch-track": {
+    borderRadius: 8,
+    opacity: 1,
+    backgroundColor: "rgba(0,0,0,.25)",
+    boxSizing: "border-box",
+    ".dark &": { backgroundColor: "rgba(255,255,255,.25)" },
+  },
+}));
 
 function NumericStepper({ value, min = 0, max = 200, onChange }) {
   const current = Number(value) || 0;
@@ -92,53 +131,6 @@ const ColumnOffcanvas = ({
   onUpdateWithData = null,
 }) => {
 
-    const AntSwitch = styled(Switch)(({ theme }) => ({
-        width: 28,
-        height: 16,
-        padding: 0,
-        display: 'flex',
-        '&:active': {
-          '& .MuiSwitch-thumb': {
-            width: 15,
-            
-          },
-          '& .MuiSwitch-switchBase.Mui-checked': {
-            transform: 'translateX(9px)',
-            
-          },
-        },
-        '& .MuiSwitch-switchBase': {
-          padding: 2,
-          '&.Mui-checked': {
-            transform: 'translateX(12px)',
-            
-            color: '#fff',
-            '& + .MuiSwitch-track': {
-              opacity: 1,
-              backgroundColor: "var(--dash-panel-switch-on, #333333)",
-            },
-          },
-        },
-        '& .MuiSwitch-thumb': {
-          boxShadow: '0 2px 4px 0 rgb(0 35 11 / 20%)',
-          width: 12,
-          height: 12,
-          borderRadius: 6,
-          transition: theme.transitions.create(['width'], {
-            duration: 200,
-          }),
-          
-        },
-        '& .MuiSwitch-track': {
-          borderRadius: 16 / 2,
-          opacity: 1,
-          backgroundColor: 'rgba(0,0,0,.25)',
-          boxSizing: 'border-box',
-          ".dark &":{backgroundColor: 'rgba(255,255,255,.25)'},
-          
-        },
-      }));
-
 
 
     const [data,setData] = useState(element?.[elementDataKey] || {})
@@ -155,6 +147,36 @@ const ColumnOffcanvas = ({
     const anchorRefBorder = useRef(null);
     const anchorRef = useRef(null);
     const anchorRefGradient = useRef(null);
+    const panelTargetId = element?.[elementDataKey]?.id;
+    useEffect(() => {
+      markBuilderPanelMounted("Column", panelTargetId);
+    }, [panelTargetId]);
+    const normalizeForCommit = (value) => {
+      const normalized = { ...value };
+      for (const key in normalized) {
+        if (normalized[key] === "") normalized[key] = 0;
+      }
+      return normalized;
+    };
+    const commitData = (latest) => {
+      const normalized = normalizeForCommit(latest);
+      if (typeof onUpdateWithData === "function") {
+        onUpdateWithData(normalized, element, onUpdate);
+      } else {
+        onUpdate(normalized, normalized.id, element?.conID);
+      }
+    };
+    const {
+      updateSlider,
+      commitSlider,
+      sliderCommitProps,
+    } = usePanelSliderPreview({
+      type: "column",
+      targetIds: [data?.id],
+      data,
+      setData,
+      onCommit: commitData,
+    });
 
 
     const loadTheme = () => {
@@ -179,7 +201,6 @@ const ColumnOffcanvas = ({
       };
     
       const handlePadding = (field, valueOrUpdater) => {
-        console.log(field);
         setData((prev) => {
           const current = prev[field];
           let next =
@@ -198,11 +219,14 @@ const ColumnOffcanvas = ({
         });
         setUpdated(true);
       };
+      const handleSliderPadding = (field, value) => {
+        updateSlider((prev) => ({ ...prev, [field]: value }));
+      };
       const handleColor = (field,value,index=null) => {
         if(!isNull(index)){
     
           setData((prev)=>{
-            const bgc = prev[field]
+            const bgc = [...(prev[field] || [])]
             bgc[index] = value
             return{...prev,[field]:bgc}
           })
@@ -214,16 +238,14 @@ const ColumnOffcanvas = ({
 
       const handleOpacity = (field,value,index=null) => {
         if(!isNull(index)){
-          setData((prev)=>{
-            const opct = prev[field]
+          updateSlider((prev)=>{
+            const opct = [...(prev[field] || [])]
             opct[index] = value
             return{...prev,[field]:opct}
           })
         }else{
-          setData((prev)=>{return{...prev,[field]:value}})
+          updateSlider((prev)=>{return{...prev,[field]:value}})
         }
-        
-        setUpdated(true)
       }
       const columnPaddingSliderMax = (v) =>
         Math.max(COLUMN_PADDING_MAX, Number(v) || 0);
@@ -236,17 +258,8 @@ const ColumnOffcanvas = ({
 
     useEffect(()=>{
         if(updated){
-            const cloneData = lodash.cloneDeep(data)
-            for(let key in cloneData){
-                if(cloneData[key] === ""){
-                    cloneData[key] = 0
-                }
-            }
-            if (typeof onUpdateWithData === "function") {
-              onUpdateWithData(cloneData, element, onUpdate);
-            } else {
-              onUpdate(cloneData,data.id,element?.conID)
-            }
+            commitData(data);
+            setUpdated(false);
         }
     },[data])
 
@@ -301,7 +314,6 @@ const ColumnOffcanvas = ({
        
     
   },[theme])
-
   const colorlabels = ["สีพื้นหลังแบบสีพื้น","สีพื้นหลังแบบไล่โทน"]
   const columnGradientGi = columnGradientPicker === "end" ? 1 : 0;
   const columnGradientDeg = Number(data.degrees);
@@ -328,7 +340,10 @@ const ColumnOffcanvas = ({
           </div>
           <button
             className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
-            onClick={() => close(null, null, null)}
+            onClick={() => {
+              commitSlider("close");
+              close(null, null, null);
+            }}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -363,7 +378,8 @@ const ColumnOffcanvas = ({
                       max={columnPaddingSliderMax(item.data)}
                       step={1}
                       value={Number(item.data) || 0}
-                      onChange={(e) => handlePadding(item.type, Number(e.target.value) || 0)}
+                      onChange={(e) => handleSliderPadding(item.type, Number(e.target.value) || 0)}
+                      {...sliderCommitProps}
                       className={THEME_RANGE_SLIDER_CLASS}
                       style={{
                         ["--pos"]: `${((Number(item.data) || 0) / columnPaddingSliderMax(item.data)) * 100}%`,
@@ -389,6 +405,7 @@ const ColumnOffcanvas = ({
                         value={Number(data.borderOpacity) || 0}
                         step={1}
                         onChange={(e) => handleOpacity("borderOpacity", Number(e.target.value))}
+                        {...sliderCommitProps}
                         className={THEME_RANGE_SLIDER_CLASS}
                         style={{
                           ["--pos"]: `${((Number(data.borderOpacity) || 0) / 255) * 100}%`,
@@ -468,6 +485,7 @@ const ColumnOffcanvas = ({
                       value={Number(data.opacityColor) || 0}
                       step={1}
                       onChange={(e) => handleOpacity("opacityColor", Number(e.target.value))}
+                      {...sliderCommitProps}
                       className={THEME_RANGE_SLIDER_CLASS}
                       style={{
                         ["--pos"]: `${((Number(data.opacityColor) || 0) / 255) * 100}%`,
@@ -547,6 +565,7 @@ const ColumnOffcanvas = ({
                         onChange={(e) =>
                           handleOpacity("opacityColorGradient", Number(e.target.value), columnGradientGi)
                         }
+                        {...sliderCommitProps}
                         className={THEME_RANGE_SLIDER_CLASS}
                         style={{
                           ["--pos"]: `${((Number(data.opacityColorGradient?.[columnGradientGi]) || 0) / 255) * 100}%`,
@@ -599,9 +618,9 @@ const ColumnOffcanvas = ({
                   value={Number.isFinite(columnGradientDeg) ? columnGradientDeg : 0}
                   step={1}
                   onChange={(e) => {
-                    setData((prev) => ({ ...prev, degrees: Number(e.target.value) || 0 }));
-                    setUpdated(true);
+                    updateSlider((prev) => ({ ...prev, degrees: Number(e.target.value) || 0 }));
                   }}
+                  {...sliderCommitProps}
                   className={THEME_RANGE_SLIDER_CLASS}
                   style={{
                     ["--pos"]: `${((Number.isFinite(columnGradientDeg) ? columnGradientDeg : 0) / 360) * 100}%`,
@@ -649,9 +668,9 @@ const ColumnOffcanvas = ({
                     }}
                     onChange={(e) => {
                       const v = Number(e.target.value);
-                      setData((prev) => ({ ...prev, colGlassLevel: v }));
-                      setUpdated(true);
+                      updateSlider((prev) => ({ ...prev, colGlassLevel: v }));
                     }}
+                    {...sliderCommitProps}
                   />
                 </div>
               </Box>

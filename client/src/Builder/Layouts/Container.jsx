@@ -1,7 +1,8 @@
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useMemo } from "react";
 import { setColor } from "../../../function";
 import ServiceLayout from "../Services/ServiceLayout";
 import { resolveSectionOverlapPx } from "./sectionOverlapDevice";
+import { usePanelPreview } from "../panelPreviewStore";
 
 /** หา element ที่เลื่อนได้ (เช่น main ของ builder) — มิติพื้นหลัง (parallax) ต้องฟัง scroll ตรงนี้ ไม่ใช่แค่ window */
 function getScrollableAncestor(el) {
@@ -34,16 +35,17 @@ function Container({
   funct,
   onUpdate,
   modal,
-  scheduleDND,
   openOffcavanas,
   changePosition,
   innerContentStyle,
-  sectionDndHandle = null,
-  onSectionDragEnable,
-  onSectionDragDisable,
   className: extraClassName = "",
   children,
 }) {
+  const previewData = usePanelPreview("section", elementData?.id);
+  const visualElementData = useMemo(
+    () => (previewData ? { ...elementData, ...previewData } : elementData),
+    [elementData, previewData]
+  );
   const {
     isFluid,
     paddingTop,
@@ -59,9 +61,9 @@ function Container({
     blur,
     id,
     parallaxEnabled,
-  } = elementData;
+  } = visualElementData;
 
-  const overlapPx = resolveSectionOverlapPx(elementData, device);
+  const overlapPx = resolveSectionOverlapPx(visualElementData, device);
   const hasOverlap = overlapPx > 0;
 
   const sectionRootRef = useRef(null);
@@ -135,7 +137,7 @@ function Container({
       scrollRoot.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
       if (rafId) cancelAnimationFrame(rafId);
-      if (bgParallaxRef.current) bgParallaxRef.current.style.transform = "";
+      if (inner) inner.style.transform = "";
     };
   }, [hasParallaxBg, id, backgroundImage]);
 
@@ -194,16 +196,12 @@ function Container({
           element={elementData}
           clone={clone}
           remove={remove}
-          scheduleDND={scheduleDND}
           openOffcavanas={openOffcavanas}
           ids={ids}
           onUpdate={onUpdate}
           modal={modal}
           offcavanas="Container"
           changePosition={changePosition}
-          sectionDndHandle={sectionDndHandle}
-          onSectionDragEnable={onSectionDragEnable}
-          onSectionDragDisable={onSectionDragDisable}
         />
    </div>
    </div>

@@ -1,4 +1,12 @@
 const Range = ({ min, max, step, value, handleChange, onCommit, pos, color }) => {
+  const commit = (e, reason) => {
+    if (!onCommit) return;
+    const n = Number(e.currentTarget.value);
+    onCommit(
+      Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : value,
+      reason
+    );
+  };
   const THEME_RANGE_INPUT_CLASS = `
   w-full cursor-pointer appearance-none h-2 rounded-full
 
@@ -26,14 +34,17 @@ const Range = ({ min, max, step, value, handleChange, onCommit, pos, color }) =>
       value={value}
       step={step}
       onChange={handleChange}
-      onPointerUp={
-        onCommit
-          ? (e) => {
-              const n = Number(e.target.value);
-              onCommit(Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : value);
-            }
-          : undefined
+      onPointerUp={onCommit ? (e) => commit(e, "pointerup") : undefined}
+      onPointerCancel={
+        onCommit ? (e) => commit(e, "pointercancel") : undefined
       }
+      onMouseUp={onCommit ? (e) => commit(e, "mouseup") : undefined}
+      onTouchEnd={onCommit ? (e) => commit(e, "touchend") : undefined}
+      onTouchCancel={
+        onCommit ? (e) => commit(e, "touchcancel") : undefined
+      }
+      onKeyUp={onCommit ? (e) => commit(e, "keyboard") : undefined}
+      onBlur={onCommit ? (e) => commit(e, "blur") : undefined}
       className={THEME_RANGE_INPUT_CLASS}
       style={{
         ["--pos"]: `${pos}%`,
