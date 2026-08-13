@@ -22,6 +22,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 const SORTABLE_GHOST_CLASS =
   "pointer-events-none absolute -inset-x-3 inset-y-0 rounded border border-dashed border-red-400 bg-red-300/10";
@@ -55,7 +56,7 @@ const SortablePostItem = ({ id, builderMode, onClick, children }) => {
 };
 
 const PostElement = ({
-  elementData,
+  elementData: rawElementData,
   selected,
   animationForElement,
   builderMode,
@@ -68,6 +69,10 @@ const PostElement = ({
   tabSelectedElId,
   theme,
 }) => {
+  const panelPreview = usePanelPreview("post", rawElementData?.id);
+  const elementData = panelPreview
+    ? { ...rawElementData, ...panelPreview }
+    : rawElementData;
   const [isPostImageHover, setIsPostImageHover] = useState(false);
   const isLayoutMode = builderMode === "Layout Mode";
   const sensors = useSensors(

@@ -15,6 +15,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 const ACCORDION_DEFAULTS = {
   accordionAlign: "start",
@@ -293,7 +294,7 @@ function selectionFrameAlignClass(el) {
 }
 
 const AccordionElement = ({
-  elementData,
+  elementData: rawElementData,
   selected,
   animationForElement,
   builderMode,
@@ -306,6 +307,10 @@ const AccordionElement = ({
   onUpdate,
   theme,
 }) => {
+  const panelPreview = usePanelPreview("acc", rawElementData?.id);
+  const elementData = panelPreview
+    ? { ...rawElementData, ...panelPreview }
+    : rawElementData;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
@@ -314,11 +319,17 @@ const AccordionElement = ({
   const activeId =
     items.some((t) => t.id === activeIdRaw) ? activeIdRaw : items[0]?.id;
 
-  const justifyContent = "flex-start";
-  const textAlign = "left";
+  const align = elementData?.accordionAlign;
+  const justifyContent =
+    align === "center" ? "center" : align === "end" ? "flex-end" : "flex-start";
+  const textAlign =
+    align === "center" ? "center" : align === "end" ? "right" : "left";
 
   const tabStyle = elementData?.accordionTabLabelStyle === "iconText" ? "iconText" : "text";
-  const gap = 8;
+  const gap = Math.max(
+    0,
+    Math.min(48, Number(elementData?.accordionGap) || 8)
+  );
   const tabHeight = Math.max(
     32,
     Math.min(

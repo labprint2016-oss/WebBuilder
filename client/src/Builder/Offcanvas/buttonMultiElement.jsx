@@ -9,6 +9,15 @@ import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { mergeListElement } from "../Layouts/Elements/listElementConfig";
 import { BUTTON_STYLE_DEFAULTS } from "../Layouts/Elements/buttonElementConfig";
 import { panelGroupButtonSx } from "../panelControlSx";
+import {
+  getBuilderPanelOpenStartedAt,
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
+
+const buttonGroupPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("buttonGroupPerf") === "1";
 
 const THEME_RANGE_INPUT_CLASS = `
   w-full cursor-pointer appearance-none h-2 rounded-full
@@ -161,8 +170,20 @@ const ButtonGroupElementOffcanvas = ({
   theme,
   darkMode = "light",
 }) => {
+  const initialRenderStartedAtRef = useRef(
+    buttonGroupPanelPerfEnabled ? performance.now() : 0
+  );
   const accent = textColor || "#0d9488";
   const [draft, setDraft] = useState(() => mergeButtonGroupElement(element));
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    getBuilderPanelOpenStartedAt("Button Group", panelTargetId) ??
+      window.__buttonGroupPanelOpenPerf?.startedAt ??
+      null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
+  const rangeGestureActiveRef = useRef(false);
+  const sliderChangedFieldsRef = useRef([]);
   const itemNodeRefs = useRef(new Map());
   const flipRectsRef = useRef(null);
   const moveLockRef = useRef(false);
@@ -179,14 +200,85 @@ const ButtonGroupElementOffcanvas = ({
     setMovingItemId(null);
   }, [element?.id]);
 
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "list",
+    targetIds: [panelTargetId],
+    data: draft,
+    setData: setDraft,
+    onCommit: (latest) => {
+      const changedFields = sliderChangedFieldsRef.current;
+      sliderChangedFieldsRef.current = [];
+      const updateStartedAt = buttonGroupPanelPerfEnabled
+        ? performance.now()
+        : 0;
+      onUpdate?.(latest, { changedFields });
+      if (buttonGroupPanelPerfEnabled) {
+        console.info("[Button Group Panel Perf] update", {
+          target: String(latest?.id || ""),
+          fields: changedFields,
+          source: "slider-commit",
+          updateDispatchMs:
+            Math.round((performance.now() - updateStartedAt) * 100) / 100,
+        });
+      }
+    },
+  });
+
   const patch = useCallback(
     (partial) => {
+      const mergeStartedAt = buttonGroupPanelPerfEnabled
+        ? performance.now()
+        : 0;
       const next = mergeButtonGroupElement({ ...draft, ...partial });
       setDraft(next);
-      onUpdate?.(next);
+      if (rangeGestureActiveRef.current) {
+        sliderChangedFieldsRef.current = Array.from(
+          new Set([
+            ...sliderChangedFieldsRef.current,
+            ...Object.keys(partial || {}),
+          ])
+        );
+        updateSlider(() => next);
+        return;
+      }
+      const dispatchStartedAt = buttonGroupPanelPerfEnabled
+        ? performance.now()
+        : 0;
+      onUpdate?.(next, { changedFields: Object.keys(partial || {}) });
+      if (buttonGroupPanelPerfEnabled) {
+        console.info("[Button Group Panel Perf] update", {
+          target: String(next?.id || ""),
+          fields: Object.keys(partial || {}),
+          mergeMs:
+            Math.round((dispatchStartedAt - mergeStartedAt) * 100) / 100,
+          updateDispatchMs:
+            Math.round((performance.now() - dispatchStartedAt) * 100) / 100,
+        });
+      }
     },
-    [draft, onUpdate]
+    [draft, onUpdate, updateSlider]
   );
+
+  useLayoutEffect(() => {
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (buttonGroupPanelPerfEnabled) {
+        const now = performance.now();
+        console.info("[Button Group Panel Mount Breakdown]", {
+          target: String(panelTargetId || ""),
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          itemCount: Array.isArray(draft?.listItems)
+            ? draft.listItems.length
+            : 0,
+        });
+      }
+    }
+    markBuilderPanelMounted("Button Group", panelTargetId);
+  }, [panelTargetId]);
 
   const captureItemRects = useCallback(() => {
     const rects = new Map();
@@ -333,7 +425,27 @@ const ButtonGroupElementOffcanvas = ({
   };
 
   return (
-    <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
+    <aside
+      className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
+      onPointerDownCapture={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          rangeGestureActiveRef.current = true;
+        }
+      }}
+      onPointerUp={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointerup");
+      }}
+      onPointerCancel={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointercancel");
+      }}
+    >
       <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
           <span className="shrink-0 font-bold tracking-wide">

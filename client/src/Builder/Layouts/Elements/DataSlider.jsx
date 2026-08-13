@@ -14,6 +14,7 @@ import {
 } from "@dnd-kit/sortable";
 import { mergeDataSliderElement } from "./dataSliderElementConfig";
 import { isButtonFullWidthEnabled } from "./buttonElementConfig";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 const SortableDataSliderItem = ({
   id,
@@ -238,10 +239,13 @@ const DataSlider = ({
   /** true = หน้าเว็บ/Preview runtime — เคารพ dataSliderNavShowOnWebsite */
   isSiteRuntime = false,
 }) => {
+  const panelPreview = usePanelPreview("dts", elementData?.id);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
-  const data = mergeDataSliderElement(elementData);
+  const data = mergeDataSliderElement(
+    panelPreview ? { ...elementData, ...panelPreview } : elementData
+  );
   const items = data.dataSliderItems || [];
   const activeId = items.some((it) => it.id === data.dataSliderActiveId)
     ? data.dataSliderActiveId

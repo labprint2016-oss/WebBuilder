@@ -41,6 +41,7 @@ import {
   LIST_IMAGE_DEFAULT_CAPTION_FONT_SIZE,
   listIconsFallbackIconSize,
 } from "./listElementConfig";
+import { usePanelPreview } from "../../panelPreviewStore";
 import { BUTTON_STYLE_DEFAULTS } from "./buttonElementConfig";
 
 
@@ -781,7 +782,7 @@ function ListItemRow({
 }
 
 const ListElement = ({
-  elementData,
+  elementData: rawElementData,
   selected,
   hover,
   isLastList,
@@ -793,6 +794,10 @@ const ListElement = ({
   /** Layout Mode: ให้คลิก/คีย์ลัดคัดลอก–วางเหมือน Text (กันโฟกัส rich text) */
   builderMode,
 })=>{
+  const panelPreview = usePanelPreview("list", rawElementData?.id);
+  const elementData = panelPreview
+    ? { ...rawElementData, ...panelPreview }
+    : rawElementData;
 
   const { id } = elementData;
   const isLayoutMode = builderMode === "Layout Mode";

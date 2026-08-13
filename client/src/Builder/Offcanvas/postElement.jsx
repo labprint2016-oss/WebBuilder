@@ -1,48 +1,94 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Box, Button, ButtonGroup, Switch } from "@mui/material";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Check, AlignCenter, AlignLeft, AlignRight } from "lucide-react";
-import { styled } from "@mui/material/styles";
 import lodash from "lodash";
 import Field from "../HTML/Field";
 import Range from "../HTML/Range";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { panelGroupButtonSx } from "../panelControlSx";
+import {
+  getBuilderPanelOpenStartedAt,
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
 
-const PostPanelSwitch = styled(Switch, {
-  shouldForwardProp: (prop) => prop !== "accentColor",
-})(({ theme, accentColor = "#0d9488" }) => ({
-  width: 28,
-  height: 16,
-  padding: 0,
-  display: "flex",
-  "&:active": {
-    "& .MuiSwitch-thumb": { width: 15 },
-    "& .MuiSwitch-switchBase.Mui-checked": { transform: "translateX(9px)" },
-  },
-  "& .MuiSwitch-switchBase": {
-    padding: 2,
-    "&.Mui-checked": {
-      transform: "translateX(12px)",
-      color: "#fff",
-      "& + .MuiSwitch-track": { opacity: 1, backgroundColor: accentColor },
-    },
-  },
-  "& .MuiSwitch-thumb": {
-    boxShadow: "0 2px 4px 0 rgb(0 35 11 / 20%)",
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    transition: theme.transitions.create(["width"], { duration: 200 }),
-  },
-  "& .MuiSwitch-track": {
-    borderRadius: 8,
-    opacity: 1,
-    backgroundColor: "rgba(0,0,0,.25)",
-    boxSizing: "border-box",
-    ".dark &": { backgroundColor: "rgba(255,255,255,.25)" },
-  },
-}));
+const postPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("postPerf") === "1";
+
+const Box = ({ component: Component = "div", sx: _sx, ...props }) => (
+  <Component {...props} />
+);
+
+const ButtonGroup = ({
+  children,
+  sx: _sx,
+  fullWidth: _fullWidth,
+  variant: _variant,
+  ...props
+}) => (
+  <div
+    {...props}
+    className={`flex h-[34px] w-full overflow-hidden rounded-md ${props.className || ""}`}
+    style={{
+      border: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)",
+      ...props.style,
+    }}
+  >
+    {children}
+  </div>
+);
+
+const Button = ({ children, sx, color: _color, ...props }) => (
+  <button
+    type="button"
+    {...props}
+    className={`inline-flex h-[34px] min-w-0 flex-1 items-center justify-center border-0 border-r px-1 text-[11px] font-normal leading-tight last:border-r-0 hover:opacity-90 ${
+      props.className || ""
+    }`}
+    style={{
+      backgroundColor: sx?.backgroundColor,
+      color: sx?.color,
+      borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)",
+      ...props.style,
+    }}
+  >
+    {children}
+  </button>
+);
+
+const PostPanelSwitch = ({
+  checked,
+  onChange,
+  accentColor = "#0d9488",
+  inputProps,
+}) => (
+  <label className="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center">
+    <input
+      type="checkbox"
+      className="peer sr-only"
+      checked={Boolean(checked)}
+      onChange={onChange}
+      {...inputProps}
+    />
+    <span
+      className="absolute inset-0 rounded-full bg-black/25 transition-colors dark:bg-white/25"
+      style={checked ? { backgroundColor: accentColor } : undefined}
+    />
+    <span
+      className={`relative ml-0.5 size-3 rounded-full bg-white shadow-sm transition-transform ${
+        checked ? "translate-x-3" : "translate-x-0"
+      }`}
+    />
+  </label>
+);
 
 const chipRootSx = {
   width: "100%",
@@ -116,7 +162,12 @@ const mergePostElement = (element) => {
         : { type: "mainColor", index: 0 },
     postHeadingColorOpacity: Math.max(
       0,
-      Math.min(255, Number(base.postHeadingColorOpacity) || 255)
+      Math.min(
+        255,
+        Number.isFinite(Number(base.postHeadingColorOpacity))
+          ? Number(base.postHeadingColorOpacity)
+          : 255
+      )
     ),
     postHeadingBold: Boolean(base.postHeadingBold),
     postHeadingFontSize: Math.max(
@@ -146,7 +197,12 @@ const mergePostElement = (element) => {
         : "#d8d8d8",
     postDividerColorOpacity: Math.max(
       0,
-      Math.min(255, Number(base.postDividerColorOpacity) || 255)
+      Math.min(
+        255,
+        Number.isFinite(Number(base.postDividerColorOpacity))
+          ? Number(base.postDividerColorOpacity)
+          : 255
+      )
     ),
     postAlign:
       base.postAlign === "start" || base.postAlign === "center" || base.postAlign === "end"
@@ -171,24 +227,122 @@ const PostElementOffcanvas = ({
   textColor = "#0d9488",
   theme,
 }) => {
+  const initialRenderStartedAtRef = useRef(
+    postPanelPerfEnabled ? performance.now() : 0
+  );
+  const layoutSyncScheduledRef = useRef(false);
+  const layoutSyncGenerationRef = useRef(0);
+  const pendingLayoutRef = useRef(null);
+  const elementRef = useRef(element);
+  elementRef.current = element;
   const [draft, setDraft] = useState(() => mergePostElement(element));
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    getBuilderPanelOpenStartedAt("Post", panelTargetId) ??
+      window.__postPanelOpenPerf?.startedAt ??
+      null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
 
   useEffect(() => {
     setDraft(mergePostElement(element));
   }, [element]);
 
-  const commit = useCallback(
+  const scheduleLayoutSync = useCallback(
     (next) => {
-      const cleaned = mergePostElement(next);
-      onUpdate?.(lodash.cloneDeep(cleaned));
+      const base = elementRef.current || {};
+      const merged = {
+        ...base,
+        ...next,
+        type: "post",
+        id: next?.id != null ? next.id : base?.id,
+      };
+      const changedFields = Object.keys(next || {}).filter(
+        (key) => !Object.is(base?.[key], merged?.[key])
+      );
+      pendingLayoutRef.current = {
+        snapshot: merged,
+        changedFields,
+        queuedAt: postPanelPerfEnabled ? performance.now() : 0,
+      };
+      if (layoutSyncScheduledRef.current) return;
+      layoutSyncScheduledRef.current = true;
+      const generation = layoutSyncGenerationRef.current;
+      queueMicrotask(() => {
+        if (generation !== layoutSyncGenerationRef.current) return;
+        layoutSyncScheduledRef.current = false;
+        const pending = pendingLayoutRef.current;
+        pendingLayoutRef.current = null;
+        if (!pending?.snapshot) return;
+        const updateStartedAt = postPanelPerfEnabled ? performance.now() : 0;
+        onUpdate?.(pending.snapshot, {
+          changedFields: pending.changedFields,
+        });
+        if (postPanelPerfEnabled) {
+          console.info("[Post Panel Perf] update", {
+            target: pending.snapshot?.id,
+            fields: pending.changedFields,
+            queueMs:
+              Math.round((updateStartedAt - pending.queuedAt) * 100) / 100,
+            updateDispatchMs:
+              Math.round((performance.now() - updateStartedAt) * 100) / 100,
+          });
+        }
+      });
     },
     [onUpdate]
   );
 
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "post",
+    targetIds: [panelTargetId],
+    data: draft,
+    setData: setDraft,
+    onCommit: (latest) => scheduleLayoutSync(latest),
+  });
+  const updateRangeField = (field, value) => {
+    updateSlider((prev) => mergePostElement({ ...prev, [field]: value }));
+  };
+  const commitRangeField = (_value, reason) => {
+    commitSlider(reason || "range-commit");
+  };
+
+  useLayoutEffect(() => {
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (postPanelPerfEnabled) {
+        const now = performance.now();
+        console.info("[Post Panel Mount Breakdown]", {
+          target: String(panelTargetId || ""),
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          nestedElementCount: Array.isArray(draft?.postElements)
+            ? draft.postElements.length
+            : 0,
+        });
+      }
+    }
+    markBuilderPanelMounted("Post", panelTargetId);
+  }, [panelTargetId]);
+
+  useEffect(
+    () => () => {
+      layoutSyncGenerationRef.current += 1;
+      layoutSyncScheduledRef.current = false;
+      pendingLayoutRef.current = null;
+    },
+    []
+  );
+
   const patch = (partial) => {
-    const next = mergePostElement({ ...draft, ...partial });
-    setDraft(next);
-    commit(next);
+    setDraft((prev) => {
+      const next = mergePostElement({ ...prev, ...partial });
+      scheduleLayoutSync(next);
+      return next;
+    });
   };
 
   const allColors = useMemo(() => {
@@ -317,10 +471,12 @@ const PostElementOffcanvas = ({
                     step={1}
                     value={draft.postHeadingColorOpacity}
                     handleChange={(e) =>
-                      patch({
-                        postHeadingColorOpacity: Math.max(0, Math.min(255, Number(e.target.value) || 0)),
-                      })
+                      updateRangeField(
+                        "postHeadingColorOpacity",
+                        Math.max(0, Math.min(255, Number(e.target.value) || 0))
+                      )
                     }
+                    onCommit={commitRangeField}
                     pos={(draft.postHeadingColorOpacity / 255) * 100}
                     color={textColor}
                   />
@@ -376,10 +532,12 @@ const PostElementOffcanvas = ({
                       step={1}
                       value={draft.postHeadingGap}
                       handleChange={(e) =>
-                        patch({
-                          postHeadingGap: Math.max(10, Math.min(30, Number(e.target.value) || 10)),
-                        })
+                        updateRangeField(
+                          "postHeadingGap",
+                          Math.max(10, Math.min(30, Number(e.target.value) || 10))
+                        )
                       }
+                      onCommit={commitRangeField}
                       pos={((draft.postHeadingGap - 10) / (30 - 10)) * 100}
                       color={textColor}
                     />
@@ -398,10 +556,12 @@ const PostElementOffcanvas = ({
                       step={1}
                       value={draft.postHeadingFontSize}
                       handleChange={(e) =>
-                        patch({
-                          postHeadingFontSize: Math.max(12, Math.min(20, Number(e.target.value) || 12)),
-                        })
+                        updateRangeField(
+                          "postHeadingFontSize",
+                          Math.max(12, Math.min(20, Number(e.target.value) || 12))
+                        )
                       }
+                      onCommit={commitRangeField}
                       pos={((draft.postHeadingFontSize - 12) / (20 - 12)) * 100}
                       color={textColor}
                     />
@@ -457,10 +617,12 @@ const PostElementOffcanvas = ({
                     step={1}
                     value={draft.postDividerWidth}
                     handleChange={(e) =>
-                      patch({
-                        postDividerWidth: Math.max(1, Math.min(10, Number(e.target.value) || 1)),
-                      })
+                      updateRangeField(
+                        "postDividerWidth",
+                        Math.max(1, Math.min(10, Number(e.target.value) || 1))
+                      )
                     }
+                    onCommit={commitRangeField}
                     pos={((draft.postDividerWidth - 1) / (10 - 1)) * 100}
                     color={textColor}
                   />
@@ -479,10 +641,12 @@ const PostElementOffcanvas = ({
                           step={1}
                           value={draft.postDividerColorOpacity}
                           handleChange={(e) =>
-                            patch({
-                              postDividerColorOpacity: Math.max(0, Math.min(255, Number(e.target.value) || 0)),
-                            })
+                            updateRangeField(
+                              "postDividerColorOpacity",
+                              Math.max(0, Math.min(255, Number(e.target.value) || 0))
+                            )
                           }
+                          onCommit={commitRangeField}
                           pos={(draft.postDividerColorOpacity / 255) * 100}
                           color={textColor}
                         />
@@ -560,10 +724,12 @@ const PostElementOffcanvas = ({
                   step={1}
                   value={draft.postMarginTop}
                   handleChange={(e) =>
-                    patch({
-                      postMarginTop: Math.max(0, Math.min(80, Number(e.target.value) || 0)),
-                    })
+                    updateRangeField(
+                      "postMarginTop",
+                      Math.max(0, Math.min(80, Number(e.target.value) || 0))
+                    )
                   }
+                  onCommit={commitRangeField}
                   pos={((draft.postMarginTop || 0) / 80) * 100}
                   color={textColor}
                 />
@@ -584,10 +750,12 @@ const PostElementOffcanvas = ({
                   step={1}
                   value={draft.postMarginBottom}
                   handleChange={(e) =>
-                    patch({
-                      postMarginBottom: Math.max(0, Math.min(80, Number(e.target.value) || 0)),
-                    })
+                    updateRangeField(
+                      "postMarginBottom",
+                      Math.max(0, Math.min(80, Number(e.target.value) || 0))
+                    )
                   }
+                  onCommit={commitRangeField}
                   pos={((draft.postMarginBottom || 0) / 80) * 100}
                   color={textColor}
                 />

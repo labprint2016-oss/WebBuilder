@@ -14,6 +14,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 const TABS_DEFAULTS = {
   tabsAlign: "start",
@@ -107,7 +108,7 @@ const SortableTabItem = ({ id, builderMode, children, onClick }) => {
 };
 
 const Tabs = ({
-  elementData,
+  elementData: rawElementData,
   selected,
   animationForElement,
   builderMode,
@@ -120,6 +121,10 @@ const Tabs = ({
   onUpdate,
   theme,
 }) => {
+  const panelPreview = usePanelPreview("tabs", rawElementData?.id);
+  const elementData = panelPreview
+    ? { ...rawElementData, ...panelPreview }
+    : rawElementData;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })

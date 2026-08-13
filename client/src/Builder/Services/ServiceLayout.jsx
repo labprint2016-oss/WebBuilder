@@ -358,10 +358,12 @@ function ServiceLayout({
               onMouseLeave={(e) => {
                 const columnHost = e.currentTarget.closest?.('[data-drop="COLUMN"]');
                 const nextTarget = e.relatedTarget;
+                const NodeConstructor =
+                  columnHost?.ownerDocument?.defaultView?.Node;
                 const stillInsideColumn =
                   Boolean(columnHost) &&
-                  Boolean(nextTarget) &&
-                  typeof nextTarget === "object" &&
+                  Boolean(NodeConstructor) &&
+                  nextTarget instanceof NodeConstructor &&
                   columnHost.contains(nextTarget);
                 if (stillInsideColumn) return;
                 // ปล่อยให้ root ของ Column เป็นผู้จัดการการปิด pin/unpin หลัก

@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, ButtonGroup, Stack } from "@mui/material";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { panelGroupButtonSx } from "../panelControlSx";
 import {
   Check,
@@ -12,10 +18,99 @@ import lodash from "lodash";
 import ServiceIcon from "../ServiceIcon";
 import IconAwsome from "../IconAwsome";
 import Field from "../HTML/Field";
-import MainLabel from "../HTML/MainLabel";
 import Range from "../HTML/Range";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
+import {
+  getBuilderPanelOpenStartedAt,
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
+
+const accordionPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("accordionPerf") === "1";
+
+const Box = ({ component: Component = "div", sx: _sx, ...props }) => (
+  <Component {...props} />
+);
+
+const Stack = ({ direction = "column", spacing = 0, sx: _sx, ...props }) => (
+  <div
+    {...props}
+    style={{
+      display: "flex",
+      flexDirection: direction === "row" ? "row" : "column",
+      gap: `${Number(spacing) * 8}px`,
+      alignItems: _sx?.alignItems,
+      ...props.style,
+    }}
+  />
+);
+
+const ButtonGroup = ({
+  children,
+  sx: _sx,
+  fullWidth: _fullWidth,
+  disableElevation: _disableElevation,
+  color: _color,
+  variant: _variant,
+  ...props
+}) => (
+  <div
+    {...props}
+    className={`flex h-[34px] w-full overflow-hidden rounded-md ${props.className || ""}`}
+    style={{
+      border: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)",
+      ...props.style,
+    }}
+  >
+    {children}
+  </div>
+);
+
+const Button = ({ children, sx, color: _color, ...props }) => (
+  <button
+    type="button"
+    {...props}
+    className={`inline-flex h-[34px] min-w-0 flex-1 items-center justify-center border-0 border-r px-1 text-[11px] font-normal leading-tight last:border-r-0 hover:opacity-90 ${
+      props.className || ""
+    }`}
+    style={{
+      backgroundColor: sx?.backgroundColor,
+      color: sx?.color,
+      borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)",
+      ...props.style,
+    }}
+  >
+    {children}
+  </button>
+);
+
+const MainLabel = ({
+  label,
+  value = NaN,
+  metricValue = NaN,
+  mb = 0.75,
+}) => {
+  const displayValue = !Number.isNaN(Number(value)) ? value : metricValue;
+  const marginBottom =
+    typeof mb === "string" ? mb : `${Number(mb) * 8}px`;
+  return (
+    <div
+      className="flex flex-1 items-center gap-2 text-[13px] font-semibold tabular-nums text-[var(--dash-panel-heading,#0f172a)] dark:text-[var(--dash-panel-heading,#f8fafc)]"
+      style={{ marginBottom }}
+    >
+      <span className="shrink-0">{label}</span>
+      {!Number.isNaN(Number(displayValue)) ? (
+        <span className="shrink-0 text-[12px] font-medium text-slate-400">
+          {Math.round(Number(displayValue))}
+        </span>
+      ) : null}
+      <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+    </div>
+  );
+};
 
 const AccordionActiveColorSelectLine = ({
   prev,
@@ -184,7 +279,11 @@ const AccordionElementOffcanvas = ({
   darkMode = "light",
   theme,
 }) => {
-  const layoutSyncRafRef = useRef(0);
+  const initialRenderStartedAtRef = useRef(
+    accordionPanelPerfEnabled ? performance.now() : 0
+  );
+  const layoutSyncScheduledRef = useRef(false);
+  const layoutSyncGenerationRef = useRef(0);
   const pendingLayoutRef = useRef(null);
   const elementRef = useRef(element);
   elementRef.current = element;
@@ -198,13 +297,39 @@ const AccordionElementOffcanvas = ({
         type: next?.type ?? base?.type ?? "acc",
         id: next?.id != null ? next.id : base?.id,
       };
-      pendingLayoutRef.current = lodash.cloneDeep(merged);
-      if (layoutSyncRafRef.current) cancelAnimationFrame(layoutSyncRafRef.current);
-      layoutSyncRafRef.current = requestAnimationFrame(() => {
-        layoutSyncRafRef.current = 0;
-        const snapshot = pendingLayoutRef.current;
+      const changedFields = Object.keys(next || {}).filter(
+        (key) => !Object.is(base?.[key], merged?.[key])
+      );
+      pendingLayoutRef.current = {
+        snapshot: merged,
+        changedFields,
+        queuedAt: accordionPanelPerfEnabled ? performance.now() : 0,
+      };
+      if (layoutSyncScheduledRef.current) return;
+      layoutSyncScheduledRef.current = true;
+      const generation = layoutSyncGenerationRef.current;
+      queueMicrotask(() => {
+        if (generation !== layoutSyncGenerationRef.current) return;
+        layoutSyncScheduledRef.current = false;
+        const pending = pendingLayoutRef.current;
         pendingLayoutRef.current = null;
-        if (snapshot) onUpdate?.(snapshot);
+        if (!pending?.snapshot) return;
+        const updateStartedAt = accordionPanelPerfEnabled
+          ? performance.now()
+          : 0;
+        onUpdate?.(pending.snapshot, {
+          changedFields: pending.changedFields,
+        });
+        if (accordionPanelPerfEnabled) {
+          console.info("[Accordion Panel Perf] update", {
+            target: pending.snapshot?.id,
+            fields: pending.changedFields,
+            queueMs:
+              Math.round((updateStartedAt - pending.queuedAt) * 100) / 100,
+            updateDispatchMs:
+              Math.round((performance.now() - updateStartedAt) * 100) / 100,
+          });
+        }
       });
     },
     [onUpdate]
@@ -212,6 +337,47 @@ const AccordionElementOffcanvas = ({
 
   const [data, setData] = useState(element);
   const [iconPickerItemId, setIconPickerItemId] = useState(null);
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    getBuilderPanelOpenStartedAt("Accordion", panelTargetId) ??
+      window.__accordionPanelOpenPerf?.startedAt ??
+      null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "acc",
+    targetIds: [panelTargetId],
+    data,
+    setData,
+    onCommit: (latest) => scheduleLayoutSync(latest),
+  });
+  const updateRangeField = (field, value) => {
+    updateSlider((prev) => ({ ...prev, [field]: value }));
+  };
+  const commitRangeField = (_value, reason) => {
+    commitSlider(reason || "range-commit");
+  };
+
+  useLayoutEffect(() => {
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (accordionPanelPerfEnabled) {
+        const now = performance.now();
+        console.info("[Accordion Panel Mount Breakdown]", {
+          target: String(panelTargetId || ""),
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          itemCount: Array.isArray(data?.accordionItems)
+            ? data.accordionItems.length
+            : 0,
+        });
+      }
+    }
+    markBuilderPanelMounted("Accordion", panelTargetId);
+  }, [panelTargetId]);
 
   useEffect(() => {
     if (!element?.id) return;
@@ -234,7 +400,9 @@ const AccordionElementOffcanvas = ({
 
   useEffect(
     () => () => {
-      if (layoutSyncRafRef.current) cancelAnimationFrame(layoutSyncRafRef.current);
+      layoutSyncGenerationRef.current += 1;
+      layoutSyncScheduledRef.current = false;
+      pendingLayoutRef.current = null;
     },
     []
   );
@@ -514,8 +682,12 @@ const AccordionElementOffcanvas = ({
                     step={1}
                     value={labelFontSize}
                     handleChange={(e) =>
-                      patch({ accordionLabelFontSize: Number(e.target.value) || 13 })
+                      updateRangeField(
+                        "accordionLabelFontSize",
+                        Number(e.target.value) || 13
+                      )
                     }
+                    onCommit={commitRangeField}
                     pos={((labelFontSize - 10) / 12) * 100}
                     color={textColor}
                   />
@@ -530,8 +702,12 @@ const AccordionElementOffcanvas = ({
                     step={1}
                     value={tabHeight}
                     handleChange={(e) =>
-                      patch({ accordionTabHeight: Number(e.target.value) || 48 })
+                      updateRangeField(
+                        "accordionTabHeight",
+                        Number(e.target.value) || 48
+                      )
                     }
+                    onCommit={commitRangeField}
                     pos={((tabHeight - 32) / (96 - 32)) * 100}
                     color={textColor}
                   />
@@ -546,8 +722,12 @@ const AccordionElementOffcanvas = ({
                     step={1}
                     value={borderWidth}
                     handleChange={(e) =>
-                      patch({ accordionBorderWidth: Number(e.target.value) || 0 })
+                      updateRangeField(
+                        "accordionBorderWidth",
+                        Number(e.target.value) || 0
+                      )
                     }
+                    onCommit={commitRangeField}
                     pos={(borderWidth / 8) * 100}
                     color={textColor}
                   />
@@ -563,10 +743,12 @@ const AccordionElementOffcanvas = ({
                     value={radius}
                     handleChange={(e) => {
                       const next = Number(e.target.value);
-                      patch({
-                        accordionItemRadius: Number.isFinite(next) ? next : 0,
-                      });
+                      updateRangeField(
+                        "accordionItemRadius",
+                        Number.isFinite(next) ? next : 0
+                      );
                     }}
+                    onCommit={commitRangeField}
                     pos={(radius / ACCORDION_RADIUS_MAX) * 100}
                     color={textColor}
                   />
@@ -599,15 +781,16 @@ const AccordionElementOffcanvas = ({
                       const v = Number(e.target.value);
                       const safe = Number.isFinite(v) ? Math.min(255, Math.max(0, v)) : 255;
                       if (activeColorMode === "tab") {
-                        patch({ accordionActiveTabColorOpacity: safe });
+                        updateRangeField("accordionActiveTabColorOpacity", safe);
                       } else if (activeColorMode === "text") {
-                        patch({ accordionActiveLabelColorOpacity: safe });
+                        updateRangeField("accordionActiveLabelColorOpacity", safe);
                       } else if (activeColorMode === "border") {
-                        patch({ accordionActiveBorderColorOpacity: safe });
+                        updateRangeField("accordionActiveBorderColorOpacity", safe);
                       } else {
-                        patch({ accordionActiveToggleColorOpacity: safe });
+                        updateRangeField("accordionActiveToggleColorOpacity", safe);
                       }
                     }}
+                    onCommit={commitRangeField}
                     pos={(Math.min(255, Math.max(0, activeModeOpacity)) / 255) * 100}
                     color={textColor}
                   />
@@ -679,15 +862,16 @@ const AccordionElementOffcanvas = ({
                       const v = Number(e.target.value);
                       const safe = Number.isFinite(v) ? Math.min(255, Math.max(0, v)) : 255;
                       if (inactiveColorMode === "tab") {
-                        patch({ accordionInactiveTabColorOpacity: safe });
+                        updateRangeField("accordionInactiveTabColorOpacity", safe);
                       } else if (inactiveColorMode === "text") {
-                        patch({ accordionInactiveLabelColorOpacity: safe });
+                        updateRangeField("accordionInactiveLabelColorOpacity", safe);
                       } else if (inactiveColorMode === "border") {
-                        patch({ accordionInactiveBorderColorOpacity: safe });
+                        updateRangeField("accordionInactiveBorderColorOpacity", safe);
                       } else {
-                        patch({ accordionInactiveToggleColorOpacity: safe });
+                        updateRangeField("accordionInactiveToggleColorOpacity", safe);
                       }
                     }}
+                    onCommit={commitRangeField}
                     pos={(Math.min(255, Math.max(0, inactiveModeOpacity)) / 255) * 100}
                     color={textColor}
                   />
@@ -746,8 +930,12 @@ const AccordionElementOffcanvas = ({
                     step={1}
                     value={marginTop}
                     handleChange={(e) =>
-                      patch({ accordionMarginTop: Number(e.target.value) || 0 })
+                      updateRangeField(
+                        "accordionMarginTop",
+                        Number(e.target.value) || 0
+                      )
                     }
+                    onCommit={commitRangeField}
                     pos={(marginTop / 80) * 100}
                     color={textColor}
                   />
@@ -762,8 +950,12 @@ const AccordionElementOffcanvas = ({
                     step={1}
                     value={marginBottom}
                     handleChange={(e) =>
-                      patch({ accordionMarginBottom: Number(e.target.value) || 0 })
+                      updateRangeField(
+                        "accordionMarginBottom",
+                        Number(e.target.value) || 0
+                      )
                     }
+                    onCommit={commitRangeField}
                     pos={(marginBottom / 80) * 100}
                     color={textColor}
                   />

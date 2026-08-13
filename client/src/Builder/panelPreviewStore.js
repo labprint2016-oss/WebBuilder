@@ -13,7 +13,15 @@ const EMPTY_SNAPSHOT = null;
 
 const perfEnabled =
   typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("builderSectionPerf") === "1";
+  (new URLSearchParams(window.location.search).get("builderSectionPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("dataSliderPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("categoriesPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("tabsPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("accordionPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("postPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("listItemsPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("listIconsPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("buttonGroupPerf") === "1");
 
 let activeSliderPerf = null;
 let activePanelOpenPerf = null;
@@ -337,6 +345,17 @@ export function recordBuilderPanelOpenCanvasCommit(actualDuration) {
   if (!activePanelOpenPerf) return;
   activePanelOpenPerf.canvasCommits += 1;
   activePanelOpenPerf.canvasActualMs += actualDuration;
+}
+
+export function getBuilderPanelOpenStartedAt(type, targetId) {
+  if (
+    !activePanelOpenPerf ||
+    activePanelOpenPerf.type !== String(type || "") ||
+    activePanelOpenPerf.targetId !== String(targetId ?? "")
+  ) {
+    return null;
+  }
+  return activePanelOpenPerf.startedAt;
 }
 
 export function markBuilderPanelMounted(type, targetId) {

@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, ButtonGroup, Stack } from "@mui/material";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { panelGroupButtonSx } from "../panelControlSx";
 import {
   Check,
@@ -16,6 +22,76 @@ import MainLabel from "../HTML/MainLabel";
 import Range from "../HTML/Range";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
+import {
+  getBuilderPanelOpenStartedAt,
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
+
+const tabsPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("tabsPerf") === "1";
+
+const Box = ({ component: Component = "div", sx: _sx, ...props }) => (
+  <Component {...props} />
+);
+
+const Stack = ({ direction = "column", spacing = 0, sx: _sx, ...props }) => (
+  <div
+    {...props}
+    style={{
+      display: "flex",
+      flexDirection: direction === "row" ? "row" : "column",
+      gap: `${Number(spacing) * 8}px`,
+      alignItems: _sx?.alignItems,
+      ...props.style,
+    }}
+  />
+);
+
+const ButtonGroup = ({
+  children,
+  sx: _sx,
+  fullWidth: _fullWidth,
+  disableElevation: _disableElevation,
+  color: _color,
+  variant: _variant,
+  ...props
+}) => (
+  <div
+    {...props}
+    className={`flex h-[34px] w-full overflow-hidden rounded-md ${props.className || ""}`}
+    style={{
+      border: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)",
+      ...props.style,
+    }}
+  >
+    {children}
+  </div>
+);
+
+const Button = ({
+  children,
+  sx,
+  color: _color,
+  ...props
+}) => (
+  <button
+    type="button"
+    {...props}
+    className={`inline-flex h-[34px] min-w-0 flex-1 items-center justify-center border-0 border-r px-1 text-[11px] font-normal leading-tight last:border-r-0 hover:opacity-90 ${
+      props.className || ""
+    }`}
+    style={{
+      backgroundColor: sx?.backgroundColor,
+      color: sx?.color,
+      borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)",
+      ...props.style,
+    }}
+  >
+    {children}
+  </button>
+);
 
 /** สลับแก้สี (แท็บที่ทำงานอยู่ / ไม่ทำงาน) — รูปแบบเดียวกับ Image panel */
 const TabsActiveColorSelectLine = ({
@@ -193,7 +269,11 @@ const TabsElementOffcanvas = ({
   darkMode = "light",
   theme,
 }) => {
-  const layoutSyncRafRef = useRef(0);
+  const initialRenderStartedAtRef = useRef(
+    tabsPanelPerfEnabled ? performance.now() : 0
+  );
+  const layoutSyncScheduledRef = useRef(false);
+  const layoutSyncGenerationRef = useRef(0);
   const pendingLayoutRef = useRef(null);
   const elementRef = useRef(element);
   elementRef.current = element;
@@ -207,13 +287,37 @@ const TabsElementOffcanvas = ({
         type: next?.type ?? base?.type ?? "tabs",
         id: next?.id != null ? next.id : base?.id,
       };
-      pendingLayoutRef.current = lodash.cloneDeep(merged);
-      if (layoutSyncRafRef.current) cancelAnimationFrame(layoutSyncRafRef.current);
-      layoutSyncRafRef.current = requestAnimationFrame(() => {
-        layoutSyncRafRef.current = 0;
-        const snapshot = pendingLayoutRef.current;
+      const changedFields = Object.keys(next || {}).filter(
+        (key) => !Object.is(base?.[key], merged?.[key])
+      );
+      pendingLayoutRef.current = {
+        snapshot: merged,
+        changedFields,
+        queuedAt: tabsPanelPerfEnabled ? performance.now() : 0,
+      };
+      if (layoutSyncScheduledRef.current) return;
+      layoutSyncScheduledRef.current = true;
+      const generation = layoutSyncGenerationRef.current;
+      queueMicrotask(() => {
+        if (generation !== layoutSyncGenerationRef.current) return;
+        layoutSyncScheduledRef.current = false;
+        const pending = pendingLayoutRef.current;
         pendingLayoutRef.current = null;
-        if (snapshot) onUpdate?.(snapshot);
+        if (!pending?.snapshot) return;
+        const updateStartedAt = tabsPanelPerfEnabled ? performance.now() : 0;
+        onUpdate?.(pending.snapshot, {
+          changedFields: pending.changedFields,
+        });
+        if (tabsPanelPerfEnabled) {
+          console.info("[Tabs Panel Perf] update", {
+            target: pending.snapshot?.id,
+            fields: pending.changedFields,
+            queueMs:
+              Math.round((updateStartedAt - pending.queuedAt) * 100) / 100,
+            updateDispatchMs:
+              Math.round((performance.now() - updateStartedAt) * 100) / 100,
+          });
+        }
       });
     },
     [onUpdate]
@@ -221,6 +325,48 @@ const TabsElementOffcanvas = ({
 
   const [data, setData] = useState(element);
   const [iconPickerTabId, setIconPickerTabId] = useState(null);
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    getBuilderPanelOpenStartedAt("Tabs", panelTargetId) ??
+      window.__tabsPanelOpenPerf?.startedAt ??
+      null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
+
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "tabs",
+    targetIds: [panelTargetId],
+    data,
+    setData,
+    onCommit: (latest) => scheduleLayoutSync(latest),
+  });
+  const updateRangeField = (field, value) => {
+    updateSlider((prev) => ({ ...prev, [field]: value }));
+  };
+  const commitRangeField = (_value, reason) => {
+    commitSlider(reason || "range-commit");
+  };
+
+  useLayoutEffect(() => {
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (tabsPanelPerfEnabled) {
+        const now = performance.now();
+        console.info("[Tabs Panel Mount Breakdown]", {
+          target: String(panelTargetId || ""),
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          itemCount: Array.isArray(data?.tabsItems)
+            ? data.tabsItems.length
+            : 0,
+        });
+      }
+    }
+    markBuilderPanelMounted("Tabs", panelTargetId);
+  }, [panelTargetId]);
 
   useEffect(() => {
     if (!element?.id) return;
@@ -239,7 +385,9 @@ const TabsElementOffcanvas = ({
   }, [element?.id]);
 
   useEffect(() => () => {
-    if (layoutSyncRafRef.current) cancelAnimationFrame(layoutSyncRafRef.current);
+    layoutSyncGenerationRef.current += 1;
+    layoutSyncScheduledRef.current = false;
+    pendingLayoutRef.current = null;
   }, []);
 
   const patch = (partial) => {
@@ -599,8 +747,12 @@ const TabsElementOffcanvas = ({
                     step={1}
                     value={labelFontSize}
                     handleChange={(e) =>
-                      patch({ tabsLabelFontSize: Number(e.target.value) || 13 })
+                      updateRangeField(
+                        "tabsLabelFontSize",
+                        Number(e.target.value) || 13
+                      )
                     }
+                    onCommit={commitRangeField}
                     pos={((labelFontSize - 10) / 12) * 100}
                     color={textColor}
                   />
@@ -624,8 +776,12 @@ const TabsElementOffcanvas = ({
                     value={tabGap}
                     handleChange={(e) => {
                       const n = Number(e.target.value);
-                      patch({ tabsGap: Number.isFinite(n) ? n : 0 });
+                      updateRangeField(
+                        "tabsGap",
+                        Number.isFinite(n) ? n : 0
+                      );
                     }}
+                    onCommit={commitRangeField}
                     pos={(tabGap / 24) * 100}
                     color={textColor}
                   />
@@ -787,13 +943,14 @@ const TabsElementOffcanvas = ({
                       const n = Number(e.target.value);
                       const v = Number.isFinite(n) ? Math.min(255, Math.max(0, n)) : 255;
                       if (activeColorMode === "text") {
-                        patch({ tabsLabelColorOpacity: v });
+                        updateRangeField("tabsLabelColorOpacity", v);
                       } else if (activeColorMode === "icon") {
-                        patch({ tabsActiveIconColorOpacity: v });
+                        updateRangeField("tabsActiveIconColorOpacity", v);
                       } else {
-                        patch({ tabsActiveTabColorOpacity: v });
+                        updateRangeField("tabsActiveTabColorOpacity", v);
                       }
                     }}
+                    onCommit={commitRangeField}
                     pos={(modeOpacity / 255) * 100}
                     color={textColor}
                   />
@@ -867,13 +1024,14 @@ const TabsElementOffcanvas = ({
                       const n = Number(e.target.value);
                       const v = Number.isFinite(n) ? Math.min(255, Math.max(0, n)) : 255;
                       if (inactiveColorMode === "text") {
-                        patch({ tabsInactiveLabelColorOpacity: v });
+                        updateRangeField("tabsInactiveLabelColorOpacity", v);
                       } else if (inactiveColorMode === "icon") {
-                        patch({ tabsInactiveIconColorOpacity: v });
+                        updateRangeField("tabsInactiveIconColorOpacity", v);
                       } else {
-                        patch({ tabsInactiveTabColorOpacity: v });
+                        updateRangeField("tabsInactiveTabColorOpacity", v);
                       }
                     }}
+                    onCommit={commitRangeField}
                     pos={(inactiveModeOpacity / 255) * 100}
                     color={textColor}
                   />
@@ -982,7 +1140,13 @@ const TabsElementOffcanvas = ({
                     max={80}
                     step={1}
                     value={marginTop}
-                    handleChange={(e) => patch({ tabsMarginTop: Number(e.target.value) || 0 })}
+                    handleChange={(e) =>
+                      updateRangeField(
+                        "tabsMarginTop",
+                        Number(e.target.value) || 0
+                      )
+                    }
+                    onCommit={commitRangeField}
                     pos={(marginTop / 80) * 100}
                     color={textColor}
                   />
@@ -1004,7 +1168,13 @@ const TabsElementOffcanvas = ({
                     max={80}
                     step={1}
                     value={marginBottom}
-                    handleChange={(e) => patch({ tabsMarginBottom: Number(e.target.value) || 0 })}
+                    handleChange={(e) =>
+                      updateRangeField(
+                        "tabsMarginBottom",
+                        Number(e.target.value) || 0
+                      )
+                    }
+                    onCommit={commitRangeField}
                     pos={(marginBottom / 80) * 100}
                     color={textColor}
                   />

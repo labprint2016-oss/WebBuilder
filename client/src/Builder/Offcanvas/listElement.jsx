@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, ButtonGroup, Stack, Switch, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles";
 import Range from "../HTML/Range";
 import { panelGroupButtonSx } from "../panelControlSx";
 import {
@@ -32,9 +30,159 @@ import {
   buildListIconsFramedAppearanceSnapshot,
 } from "../Layouts/Elements/listElementConfig";
 import { LIST_BOX_ICON_SHAPE_OPTIONS } from "../Layouts/Elements/listBoxElementConfig";
-import MainLabel from "../HTML/MainLabel";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
+import {
+  getBuilderPanelOpenStartedAt,
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
+
+const listItemsPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  (new URLSearchParams(window.location.search).get("listItemsPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("listIconsPerf") === "1");
+
+const Box = ({ component: Component = "div", sx: _sx, ...props }) => (
+  <Component {...props} />
+);
+
+const Stack = ({ direction = "column", spacing = 0, sx: _sx, ...props }) => (
+  <div
+    {...props}
+    style={{
+      display: "flex",
+      flexDirection: direction === "row" ? "row" : "column",
+      gap: `${Number(spacing) * 8}px`,
+      alignItems: _sx?.alignItems,
+      ...props.style,
+    }}
+  />
+);
+
+const ButtonGroup = ({
+  children,
+  sx: _sx,
+  fullWidth: _fullWidth,
+  variant: _variant,
+  color: _color,
+  disableElevation: _disableElevation,
+  ...props
+}) => (
+  <div
+    {...props}
+    className={`flex h-[34px] w-full overflow-hidden rounded-md ${props.className || ""}`}
+    style={{
+      border: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)",
+      ...props.style,
+    }}
+  >
+    {children}
+  </div>
+);
+
+const Button = ({ children, sx, color: _color, ...props }) => (
+  <button
+    type="button"
+    {...props}
+    className={`inline-flex h-[34px] min-w-0 flex-1 items-center justify-center border-0 border-r px-1 text-[11px] font-normal leading-tight last:border-r-0 hover:opacity-90 ${
+      props.className || ""
+    }`}
+    style={{
+      backgroundColor: sx?.backgroundColor,
+      color: sx?.color,
+      borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)",
+      ...props.style,
+    }}
+  >
+    {children}
+  </button>
+);
+
+const Typography = ({
+  component: Component = "div",
+  sx,
+  children,
+  ...props
+}) => (
+  <Component
+    {...props}
+    style={{
+      display: sx?.display,
+      alignItems: sx?.alignItems,
+      gap: typeof sx?.gap === "number" ? `${sx.gap * 8}px` : sx?.gap,
+      flex: sx?.flex,
+      fontSize: sx?.fontSize,
+      fontWeight: sx?.fontWeight,
+      color: sx?.color,
+      marginBottom:
+        typeof sx?.mb === "number" ? `${sx.mb * 8}px` : sx?.mb,
+      ...props.style,
+    }}
+  >
+    {children}
+  </Component>
+);
+
+const Switch = ({
+  checked,
+  onChange,
+  accentColor = "#0d9488",
+  inputProps,
+}) => (
+  <label className="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center">
+    <input
+      type="checkbox"
+      className="peer sr-only"
+      checked={Boolean(checked)}
+      onChange={onChange}
+      {...inputProps}
+    />
+    <span
+      className="absolute inset-0 rounded-full bg-black/25 transition-colors dark:bg-white/25"
+      style={checked ? { backgroundColor: accentColor } : undefined}
+    />
+    <span
+      className={`relative ml-0.5 size-3 rounded-full bg-white shadow-sm transition-transform ${
+        checked ? "translate-x-3" : "translate-x-0"
+      }`}
+    />
+  </label>
+);
+
+const MainLabel = ({
+  label,
+  value = NaN,
+  mb = 0.75,
+  checked = "-",
+  handleSwitch,
+  color,
+  typography,
+}) => (
+  <div
+    className="flex flex-1 items-center gap-2 text-[13px] font-semibold tabular-nums text-[var(--dash-panel-heading,#0f172a)] dark:text-[var(--dash-panel-heading,#f8fafc)]"
+    style={{ marginBottom: typeof mb === "string" ? mb : `${Number(mb) * 8}px` }}
+  >
+    <span className="shrink-0">{label}</span>
+    {!Number.isNaN(Number(value)) ? (
+      <span className="shrink-0 text-[12px] font-medium text-slate-400">
+        {Math.round(Number(value))}
+      </span>
+    ) : null}
+    <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+    {checked !== "-" ? (
+      <span className="flex shrink-0 items-center gap-2">
+        <Switch
+          checked={checked}
+          onChange={handleSwitch}
+          accentColor={color}
+          inputProps={{ "aria-label": typography || label }}
+        />
+        {typography ? <span className="text-[12px]">{typography}</span> : null}
+      </span>
+    ) : null}
+  </div>
+);
 
 const THEME_RANGE_INPUT_CLASS = `
   w-full cursor-pointer appearance-none h-2 rounded-full
@@ -168,43 +316,7 @@ const itemRowReorderBtnClass =
   "rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-white/10 dark:hover:text-white/80";
 
 /** Switch แบบ Counter panel */
-const ListImagePanelSwitch = styled(Switch, {
-  shouldForwardProp: (prop) => prop !== "accentColor",
-})(({ theme, accentColor = "#0d9488" }) => ({
-  width: 28,
-  height: 16,
-  padding: 0,
-  display: "flex",
-  "&:active": {
-    "& .MuiSwitch-thumb": { width: 15 },
-    "& .MuiSwitch-switchBase.Mui-checked": { transform: "translateX(9px)" },
-  },
-  "& .MuiSwitch-switchBase": {
-    padding: 2,
-    "&.Mui-checked": {
-      transform: "translateX(12px)",
-      color: "#fff",
-      "& + .MuiSwitch-track": {
-        opacity: 1,
-        backgroundColor: accentColor,
-      },
-    },
-  },
-  "& .MuiSwitch-thumb": {
-    boxShadow: "0 2px 4px 0 rgb(0 35 11 / 20%)",
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    transition: theme.transitions.create(["width"], { duration: 200 }),
-  },
-  "& .MuiSwitch-track": {
-    borderRadius: 8,
-    opacity: 1,
-    backgroundColor: "rgba(0,0,0,.25)",
-    boxSizing: "border-box",
-    ".dark &": { backgroundColor: "rgba(255,255,255,.25)" },
-  },
-}));
+const ListImagePanelSwitch = Switch;
 
 const LIST_IMAGE_PANEL_INPUT_CLASS =
   "box-border w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition focus:border-slate-300 dark:border-white/10 dark:bg-slate-900/40 dark:text-white/90 dark:focus:border-white/20";
@@ -359,6 +471,15 @@ const LIST_ITEMS_ICON_CORNER_SLIDER_MIN = 0;
 const LIST_ITEMS_ICON_CORNER_SLIDER_MAX = 80;
 
 const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) => {
+  const initialRenderStartedAtRef = useRef(
+    listItemsPanelPerfEnabled ? performance.now() : 0
+  );
+  const layoutSyncScheduledRef = useRef(false);
+  const layoutSyncGenerationRef = useRef(0);
+  const pendingLayoutRef = useRef(null);
+  const elementRef = useRef(element);
+  elementRef.current = element;
+  const rangeGestureActiveRef = useRef(false);
   const [draft, setDraft] = useState(() => mergeListElement(element));
   const itemNodeRefs = useRef(new Map());
   const itemStableKeysRef = useRef([]);
@@ -384,12 +505,122 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
     setMovingItemKey(null);
   }, [element?.id]);
 
+  const scheduleLayoutSync = useCallback(
+    (next) => {
+      const base = elementRef.current || {};
+      const merged = {
+        ...base,
+        ...next,
+        type: next?.type ?? base?.type ?? "list",
+        id: next?.id != null ? next.id : base?.id,
+      };
+      const changedFields = Object.keys(next || {}).filter(
+        (key) => !Object.is(base?.[key], merged?.[key])
+      );
+      pendingLayoutRef.current = {
+        snapshot: merged,
+        changedFields,
+        queuedAt: listItemsPanelPerfEnabled ? performance.now() : 0,
+      };
+      if (layoutSyncScheduledRef.current) return;
+      layoutSyncScheduledRef.current = true;
+      const generation = layoutSyncGenerationRef.current;
+      queueMicrotask(() => {
+        if (generation !== layoutSyncGenerationRef.current) return;
+        layoutSyncScheduledRef.current = false;
+        const pending = pendingLayoutRef.current;
+        pendingLayoutRef.current = null;
+        if (!pending?.snapshot) return;
+        const updateStartedAt = listItemsPanelPerfEnabled
+          ? performance.now()
+          : 0;
+        onUpdate?.(pending.snapshot, {
+          changedFields: pending.changedFields,
+        });
+        if (listItemsPanelPerfEnabled) {
+          console.info("[List Items Panel Perf] update", {
+            target: pending.snapshot?.id,
+            listVariant: pending.snapshot?.buttonMultiElement
+              ? "buttonMulti"
+              : pending.snapshot?.listImageElement
+                ? "image"
+                : pending.snapshot?.listIconsElement
+                  ? "icons"
+                  : "items",
+            fields: pending.changedFields,
+            queueMs:
+              Math.round((updateStartedAt - pending.queuedAt) * 100) / 100,
+            updateDispatchMs:
+              Math.round((performance.now() - updateStartedAt) * 100) / 100,
+          });
+        }
+      });
+    },
+    [onUpdate]
+  );
+
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    getBuilderPanelOpenStartedAt("List", panelTargetId) ??
+      window.__listItemsPanelOpenPerf?.startedAt ??
+      null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "list",
+    targetIds: [panelTargetId],
+    data: draft,
+    setData: setDraft,
+    onCommit: (latest) => scheduleLayoutSync(latest),
+  });
+
   const commit = useCallback(
     (next) => {
       const cleaned = mergeListElement(next);
-      onUpdate?.(cleaned);
+      if (rangeGestureActiveRef.current) {
+        updateSlider(() => cleaned);
+        return;
+      }
+      scheduleLayoutSync(cleaned);
     },
-    [onUpdate]
+    [scheduleLayoutSync, updateSlider]
+  );
+
+  useLayoutEffect(() => {
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (listItemsPanelPerfEnabled) {
+        const now = performance.now();
+        console.info("[List Items Panel Mount Breakdown]", {
+          target: String(panelTargetId || ""),
+          listVariant: draft?.buttonMultiElement
+            ? "buttonMulti"
+            : draft?.listImageElement
+              ? "image"
+              : draft?.listIconsElement
+                ? "icons"
+                : "items",
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          itemCount: Array.isArray(draft?.listItems)
+            ? draft.listItems.length
+            : 0,
+        });
+      }
+    }
+    markBuilderPanelMounted("List", panelTargetId);
+  }, [panelTargetId]);
+
+  useEffect(
+    () => () => {
+      layoutSyncGenerationRef.current += 1;
+      layoutSyncScheduledRef.current = false;
+      pendingLayoutRef.current = null;
+    },
+    []
   );
 
   const ensureStableKeys = useCallback((count) => {
@@ -543,6 +774,21 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
     <aside
       className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
       style={{ color: textColor || undefined }}
+      onPointerDownCapture={(event) => {
+        if (event.target instanceof HTMLInputElement && event.target.type === "range") {
+          rangeGestureActiveRef.current = true;
+        }
+      }}
+      onPointerUp={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointerup");
+      }}
+      onPointerCancel={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointercancel");
+      }}
     >
       {/* Header */}
       <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">

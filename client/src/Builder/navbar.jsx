@@ -525,6 +525,7 @@ function Navbar({ handleDragElement,prepareDragElement,isDark,updateNewTheme,nav
 
 
  const navigate = useNavigate()
+ const location = useLocation()
  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
 
  const refreshUnreadMessageCount = useCallback(async () => {
@@ -1190,7 +1191,11 @@ const pages = ["Page1","Page2","Page3"]
                 setSelectedMenuId(item.label);
                 setNavOpen(true);
                 if (!item.path) return;
-                navigate(item.path);
+                navigate({
+                  pathname: item.path,
+                  search:
+                    item.path === "/builder" ? location.search : undefined,
+                });
               }}
             />
           ))}
@@ -1226,7 +1231,7 @@ const pages = ["Page1","Page2","Page3"]
       <aside
         className={`dash-nav-panel ${
           navWidth()
-        } sm:block ${isChromeOnlyPage ? "" : "transition-all duration-300"} overflow-hidden border-r`}
+        } sm:block ${isChromeOnlyPage ? "" : "transition-[width] duration-300"} overflow-hidden border-r`}
       >
         <div className="px-6 py-[14px] flex items-center justify-between">
           <div className="dash-heading font-semibold tracking-wide">{selectedMenuId}</div>

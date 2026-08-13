@@ -1,7 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, ButtonGroup, Stack, Switch } from "@mui/material";
-import { styled } from "@mui/material/styles";
-import { panelGroupButtonSx } from "../panelControlSx";
 import {
   ArrowDown,
   ArrowUp,
@@ -24,41 +21,40 @@ import MainLabel from "../HTML/MainLabel";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { mergeDataSliderElement } from "../Layouts/Elements/dataSliderElementConfig";
+import {
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
 
-const DataSliderPanelSwitch = styled(Switch, {
-  shouldForwardProp: (prop) => prop !== "accentColor",
-})(({ theme, accentColor = "#0d9488" }) => ({
-  width: 28,
-  height: 16,
-  padding: 0,
-  display: "flex",
-  "&:active": {
-    "& .MuiSwitch-thumb": { width: 15 },
-    "& .MuiSwitch-switchBase.Mui-checked": { transform: "translateX(9px)" },
-  },
-  "& .MuiSwitch-switchBase": {
-    padding: 2,
-    "&.Mui-checked": {
-      transform: "translateX(12px)",
-      color: "#fff",
-      "& + .MuiSwitch-track": { opacity: 1, backgroundColor: accentColor },
-    },
-  },
-  "& .MuiSwitch-thumb": {
-    boxShadow: "0 2px 4px 0 rgb(0 35 11 / 20%)",
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    transition: theme.transitions.create(["width"], { duration: 200 }),
-  },
-  "& .MuiSwitch-track": {
-    borderRadius: 8,
-    opacity: 1,
-    backgroundColor: "rgba(0,0,0,.25)",
-    boxSizing: "border-box",
-    ".dark &": { backgroundColor: "rgba(255,255,255,.25)" },
-  },
-}));
+const dataSliderPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("dataSliderPerf") === "1";
+
+const DataSliderPanelSwitch = ({
+  checked,
+  onChange,
+  accentColor = "#0d9488",
+  inputProps,
+}) => (
+  <label className="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center">
+    <input
+      type="checkbox"
+      className="peer sr-only"
+      checked={checked}
+      onChange={onChange}
+      {...inputProps}
+    />
+    <span
+      className="absolute inset-0 rounded-full bg-black/25 transition-colors dark:bg-white/25"
+      style={checked ? { backgroundColor: accentColor } : undefined}
+    />
+    <span
+      className={`relative ml-0.5 size-3 rounded-full bg-white shadow-sm transition-transform ${
+        checked ? "translate-x-3" : "translate-x-0"
+      }`}
+    />
+  </label>
+);
 
 const ITEM_LIST_MAX = 12;
 const ITEM_LIST_MIN = 1;
@@ -221,47 +217,6 @@ function NumericStepper({ value, min, max, onChange, decLabel, incLabel }) {
   );
 }
 
-const OPTION_CHIP_RADIUS = "0.375rem";
-const CHIP_BORDER = "#e2e8f0";
-const CHIP_BORDER_DARK = "rgba(255, 255, 255, 0.1)";
-const CHIP_BG = "#ffffff";
-const CHIP_BG_HOVER = "#f8fafc";
-const CHIP_BG_DARK = "rgba(30, 41, 59, 0.9)";
-const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
-
-const sectionLayoutGroupButtonSx = panelGroupButtonSx;
-
-const sectionLayoutGroupRootSx = {
-  width: "100%",
-  boxShadow: "none",
-  "& .MuiButton-root": {
-    boxShadow: "none",
-  },
-  "& .MuiButtonGroup-grouped": {
-    borderRadius: "0 !important",
-  },
-  "& .MuiButtonGroup-grouped:first-of-type": {
-    borderTopLeftRadius: `${OPTION_CHIP_RADIUS} !important`,
-    borderBottomLeftRadius: `${OPTION_CHIP_RADIUS} !important`,
-  },
-  "& .MuiButtonGroup-grouped:last-of-type": {
-    borderTopRightRadius: `${OPTION_CHIP_RADIUS} !important`,
-    borderBottomRightRadius: `${OPTION_CHIP_RADIUS} !important`,
-  },
-  "& .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
-  },
-  "& .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
-  },
-  ".dark & .MuiButtonGroup-grouped.MuiButton-outlined": {
-    borderColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
-  },
-  ".dark & .MuiButtonGroup-grouped.MuiButton-outlined:not(:last-of-type)": {
-    borderRightColor: "var(--dash-panel-btn-group-border, #e2e8f0) !important",
-  },
-};
-
 const chipSelected = (active, chip) => {
   if (active && typeof active === "object" && chip && typeof chip === "object") {
     return lodash.isEqual(active, chip);
@@ -279,7 +234,11 @@ const DataSliderElementOffcanvas = ({
   textColor = "#0d9488",
   theme,
 }) => {
-  const layoutSyncRafRef = useRef(0);
+  const initialRenderStartedAtRef = useRef(
+    dataSliderPanelPerfEnabled ? performance.now() : 0
+  );
+  const layoutSyncScheduledRef = useRef(false);
+  const layoutSyncGenerationRef = useRef(0);
   const pendingRef = useRef(null);
   const elementRef = useRef(element);
   elementRef.current = element;
@@ -310,13 +269,39 @@ const DataSliderElementOffcanvas = ({
         type: next?.type ?? base?.type ?? "dts",
         id: next?.id != null ? next.id : base?.id,
       };
-      pendingRef.current = lodash.cloneDeep(merged);
-      if (layoutSyncRafRef.current) cancelAnimationFrame(layoutSyncRafRef.current);
-      layoutSyncRafRef.current = requestAnimationFrame(() => {
-        layoutSyncRafRef.current = 0;
-        const snapshot = pendingRef.current;
+      const changedFields = Object.keys(next || {}).filter(
+        (key) => !Object.is(base?.[key], merged?.[key])
+      );
+      pendingRef.current = {
+        snapshot: merged,
+        changedFields,
+        queuedAt: dataSliderPanelPerfEnabled ? performance.now() : 0,
+      };
+      if (layoutSyncScheduledRef.current) return;
+      layoutSyncScheduledRef.current = true;
+      const generation = layoutSyncGenerationRef.current;
+      queueMicrotask(() => {
+        if (generation !== layoutSyncGenerationRef.current) return;
+        layoutSyncScheduledRef.current = false;
+        const pending = pendingRef.current;
         pendingRef.current = null;
-        if (snapshot) onUpdate?.(snapshot);
+        if (!pending?.snapshot) return;
+        const updateStartedAt = dataSliderPanelPerfEnabled
+          ? performance.now()
+          : 0;
+        onUpdate?.(pending.snapshot, {
+          changedFields: pending.changedFields,
+        });
+        if (dataSliderPanelPerfEnabled) {
+          console.info("[Data Slider Panel Perf] update", {
+            target: pending.snapshot?.id,
+            fields: pending.changedFields,
+            queueMs:
+              Math.round((updateStartedAt - pending.queuedAt) * 100) / 100,
+            updateDispatchMs:
+              Math.round((performance.now() - updateStartedAt) * 100) / 100,
+          });
+        }
       });
     },
     [onUpdate]
@@ -324,6 +309,48 @@ const DataSliderElementOffcanvas = ({
 
   const [data, setData] = useState(() => mergeDataSliderElement(element));
   const [navColorEditMode, setNavColorEditMode] = useState("active");
+  const panelTargetId = element?.id;
+
+  useEffect(() => {
+    markBuilderPanelMounted("Data Slider", panelTargetId);
+  }, [panelTargetId]);
+
+  useLayoutEffect(() => {
+    if (!dataSliderPanelPerfEnabled) return;
+    const opened = window.__dataSliderPanelOpenPerf;
+    const now = performance.now();
+    console.info("[Data Slider Panel Mount Breakdown]", {
+      target: String(panelTargetId || ""),
+      openToPanelCommitMs: opened?.startedAt
+        ? Math.round((now - opened.startedAt) * 100) / 100
+        : null,
+      panelRenderToCommitMs:
+        Math.round(
+          (now - initialRenderStartedAtRef.current) * 100
+        ) / 100,
+    });
+  }, [panelTargetId]);
+
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "dts",
+    targetIds: [panelTargetId],
+    data,
+    setData,
+    onCommit: (latest) => scheduleLayoutSync(latest),
+  });
+
+  const updateRangeField = (field, value) => {
+    updateSlider((prev) =>
+      mergeDataSliderElement({
+        ...prev,
+        [field]: value,
+      })
+    );
+  };
+
+  const commitRangeField = (_value, reason) => {
+    commitSlider(reason || "range-commit");
+  };
 
   useEffect(() => {
     setData(mergeDataSliderElement(element));
@@ -335,7 +362,9 @@ const DataSliderElementOffcanvas = ({
 
   useEffect(
     () => () => {
-      if (layoutSyncRafRef.current) cancelAnimationFrame(layoutSyncRafRef.current);
+      layoutSyncGenerationRef.current += 1;
+      layoutSyncScheduledRef.current = false;
+      pendingRef.current = null;
     },
     []
   );
@@ -616,7 +645,7 @@ const DataSliderElementOffcanvas = ({
               </span>
               <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
-            <Stack direction="row" spacing={1} className="w-full">
+            <div className="flex w-full gap-2">
               {CAROUSEL_PERVIEW_INPUTS.map(
                 ({ id, field, min, max, Icon, deviceLabel }) => (
                   <div
@@ -694,7 +723,7 @@ const DataSliderElementOffcanvas = ({
                   </div>
                 )
               )}
-            </Stack>
+            </div>
           </li>
 
           <li>
@@ -715,32 +744,44 @@ const DataSliderElementOffcanvas = ({
                 inputProps={{ "aria-label": "แสดงปุ่มเลื่อนบนหน้าเวบ" }}
               />
             </div>
-            <ButtonGroup
-              fullWidth
-              variant="outlined"
-              disableElevation
-              color="inherit"
-              sx={sectionLayoutGroupRootSx}
-            >
-              <Button
-                color="inherit"
-                sx={sectionLayoutGroupButtonSx(navShape === "square", textColor)}
+            <div className="dash-input flex h-9 w-full overflow-hidden rounded-md border border-slate-200 dark:border-white/10">
+              <button
+                type="button"
+                className={`flex-1 text-[12px] font-medium transition ${
+                  navShape === "square"
+                    ? "text-white"
+                    : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800/90 dark:text-white/80 dark:hover:bg-slate-800"
+                }`}
+                style={
+                  navShape === "square"
+                    ? { backgroundColor: textColor || "#0d9488" }
+                    : undefined
+                }
                 onClick={() => patch({ dataSliderNavShape: "square" })}
               >
                 เหลี่ยม
-              </Button>
-              <Button
-                color="inherit"
-                sx={sectionLayoutGroupButtonSx(navShape === "circle", textColor)}
+              </button>
+              <button
+                type="button"
+                className={`flex-1 border-l border-slate-200 text-[12px] font-medium transition dark:border-white/10 ${
+                  navShape === "circle"
+                    ? "text-white"
+                    : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800/90 dark:text-white/80 dark:hover:bg-slate-800"
+                }`}
+                style={
+                  navShape === "circle"
+                    ? { backgroundColor: textColor || "#0d9488" }
+                    : undefined
+                }
                 onClick={() => patch({ dataSliderNavShape: "circle" })}
               >
                 วงกลม
-              </Button>
-            </ButtonGroup>
+              </button>
+            </div>
           </li>
 
           <li>
-            <Box sx={{ width: "100%", px: 0.25 }}>
+            <div className="w-full px-0.5">
               {(() => {
                 const modes = DATA_SLIDER_NAV_COLOR_MODES;
                 const modeIds = modes.map((m) => m.id);
@@ -780,13 +821,18 @@ const DataSliderElementOffcanvas = ({
                           step={1}
                           value={opacityVal}
                           handleChange={(e) => {
-                            const v = Number(e.target.value) || 255;
+                            const raw = Number(e.target.value);
+                            const v = Number.isFinite(raw) ? raw : 255;
                             if (isActiveMode) {
-                              patch({ dataSliderNavActiveColorOpacity: v });
+                              updateRangeField(
+                                "dataSliderNavActiveColorOpacity",
+                                v
+                              );
                             } else {
-                              patch({ dataSliderNavColorOpacity: v });
+                              updateRangeField("dataSliderNavColorOpacity", v);
                             }
                           }}
+                          onCommit={commitRangeField}
                           pos={(opacityVal / 255) * 100}
                           color={textColor}
                         />
@@ -829,7 +875,7 @@ const DataSliderElementOffcanvas = ({
                   </>
                 );
               })()}
-            </Box>
+            </div>
           </li>
 
           <li>
@@ -842,8 +888,12 @@ const DataSliderElementOffcanvas = ({
                   step={1}
                   value={marginTop}
                   handleChange={(e) =>
-                    patch({ dataSliderMarginTop: Number(e.target.value) || 0 })
+                    updateRangeField(
+                      "dataSliderMarginTop",
+                      Number(e.target.value) || 0
+                    )
                   }
+                  onCommit={commitRangeField}
                   pos={(marginTop / 80) * 100}
                   color={textColor}
                 />
@@ -856,8 +906,12 @@ const DataSliderElementOffcanvas = ({
                   step={1}
                   value={marginBottom}
                   handleChange={(e) =>
-                    patch({ dataSliderMarginBottom: Number(e.target.value) || 0 })
+                    updateRangeField(
+                      "dataSliderMarginBottom",
+                      Number(e.target.value) || 0
+                    )
                   }
+                  onCommit={commitRangeField}
                   pos={(marginBottom / 80) * 100}
                   color={textColor}
                 />

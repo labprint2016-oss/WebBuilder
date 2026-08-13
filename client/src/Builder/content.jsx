@@ -2221,6 +2221,13 @@ const PREVIEW_CANVAS_FOOTER_BUTTON_TONE = null;
 const OFFSCREEN_SECTION_BENCHMARK_MIN_WEIGHTED_ITEMS = 401;
 const OFFSCREEN_SECTION_BENCHMARK_MIN_SECTIONS = 12;
 const OFFSCREEN_SECTION_BENCHMARK_QUERY_PARAM = "builderSectionPerf";
+const DATA_SLIDER_PERF_QUERY_PARAM = "dataSliderPerf";
+const STRUCTURE_PERF_QUERY_PARAM = "structurePerf";
+const CATEGORIES_PERF_QUERY_PARAM = "categoriesPerf";
+const TABS_PERF_QUERY_PARAM = "tabsPerf";
+const ACCORDION_PERF_QUERY_PARAM = "accordionPerf";
+const POST_PERF_QUERY_PARAM = "postPerf";
+const LIST_ITEMS_PERF_QUERY_PARAM = "listItemsPerf";
 const STABLE_ELEMENT_RENDER_REVISION = Object.freeze({});
 const OFFSCREEN_SECTION_FALLBACK_HEIGHT_PX = 600;
 const OFFSCREEN_SECTION_UNSAFE_ELEMENT_TYPES = new Set([
@@ -3086,6 +3093,57 @@ const Content = ({
         OFFSCREEN_SECTION_BENCHMARK_QUERY_PARAM
       ) === "1"
   );
+  const [dataSliderPerfEnabled] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get(
+        DATA_SLIDER_PERF_QUERY_PARAM
+      ) === "1"
+  );
+  const [structurePerfEnabled] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get(
+        STRUCTURE_PERF_QUERY_PARAM
+      ) === "1"
+  );
+  const [categoriesPerfEnabled] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get(
+        CATEGORIES_PERF_QUERY_PARAM
+      ) === "1"
+  );
+  const [tabsPerfEnabled] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get(TABS_PERF_QUERY_PARAM) ===
+        "1"
+  );
+  const [accordionPerfEnabled] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get(
+        ACCORDION_PERF_QUERY_PARAM
+      ) === "1"
+  );
+  const [postPerfEnabled] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get(POST_PERF_QUERY_PARAM) ===
+        "1"
+  );
+  const [listItemsPerfEnabled] = useState(
+    () => {
+      if (typeof window === "undefined") return false;
+      const params = new URLSearchParams(window.location.search);
+      return (
+        params.get(LIST_ITEMS_PERF_QUERY_PARAM) === "1" ||
+        params.get("listIconsPerf") === "1" ||
+        params.get("buttonGroupPerf") === "1"
+      );
+    }
+  );
   const [builderHoverPerfEnabled] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -3255,6 +3313,8 @@ const Content = ({
     nextId: 1,
   });
   const sidebarNativeDragPerfRef = useRef(null);
+  const sidebarNativeDropPerfRef = useRef(null);
+  const dataSliderPanelUpdatePerfRef = useRef(null);
   const finishSidebarNativeDragPerfRef = useRef(null);
   useEffect(
     () => () => {
@@ -3576,6 +3636,12 @@ const Content = ({
         sidebarPreviewHostRef.current ||
         sidebarNewElementFlipRef.current.targetKey)
   );
+  const sidebarSectionDropRenderActive = Boolean(
+    dragRenderActive &&
+      preview &&
+      dropTargetRef.current?.type === "SECTION" &&
+      !activeDragRef.current
+  );
   const reusePostElementDropCache = Boolean(
     canvasSectionCacheStatsRef.current.layoutsRootChanged &&
       !dragRenderActive &&
@@ -3620,6 +3686,8 @@ const Content = ({
     elementCanvasDragRenderActive;
   canvasSectionCacheStatsRef.current.sidebarPreviewRenderActive =
     sidebarPreviewRenderActive;
+  canvasSectionCacheStatsRef.current.sidebarSectionDropRenderActive =
+    sidebarSectionDropRenderActive;
   canvasSectionCacheStatsRef.current.reusePostElementDropCache =
     reusePostElementDropCache;
   canvasSectionCacheStatsRef.current.scopedLayoutCacheActive =
@@ -4138,12 +4206,38 @@ const Content = ({
     lastUsedBucket: false,
   });
 
-  const startSidebarNativeDragPerf = () => {
-    if (!builderSectionPerfEnabled || sidebarNativeDragPerfRef.current?.active) {
+  const startSidebarNativeDragPerf = (element) => {
+    const elementType = element?.isSplitLayout
+      ? "split"
+      : element?.container
+        ? "column"
+        : String(element?.type || "unknown");
+    const isStructureDrag = elementType === "column" || elementType === "split";
+    const shouldMeasure =
+      builderSectionPerfEnabled ||
+      (dataSliderPerfEnabled && elementType === "dts") ||
+      (categoriesPerfEnabled && elementType === "ctg") ||
+      (tabsPerfEnabled && elementType === "tabs") ||
+      (accordionPerfEnabled && elementType === "acc") ||
+      (postPerfEnabled && elementType === "post") ||
+      (listItemsPerfEnabled && elementType === "list") ||
+      (structurePerfEnabled && isStructureDrag);
+    if (!shouldMeasure || sidebarNativeDragPerfRef.current?.active) {
       return;
     }
     sidebarNativeDragPerfRef.current = {
       active: true,
+      elementType,
+      listVariant:
+        elementType === "list"
+          ? element?.buttonMultiElement
+            ? "buttonMulti"
+            : element?.listImageElement
+              ? "image"
+              : element?.listIconsElement
+                ? "icons"
+                : "items"
+          : null,
       startedAt: performance.now(),
       lastAction: "cancel",
       sections: canvasLayoutCounts.sections,
@@ -4182,6 +4276,16 @@ const Content = ({
       targetSectionRenderTotalMs: 0,
       targetSectionRenderMaxMs: 0,
       firstPreviewDelayMs: null,
+      dropValidationMs: 0,
+      layoutCloneMs: 0,
+      insertMs: 0,
+      layoutCommitMs: 0,
+      dropHandlerSyncMs: 0,
+      sectionCacheHits: 0,
+      sectionCacheMisses: 0,
+      columnCacheHits: 0,
+      columnCacheMisses: 0,
+      sectionCacheMissReasons: {},
     };
   };
 
@@ -4190,10 +4294,15 @@ const Content = ({
     if (!perf?.active) return;
     perf.active = false;
     sidebarNativeDragPerfRef.current = null;
+    if (perf.lastAction === "drop") {
+      sidebarNativeDropPerfRef.current = perf;
+    }
     requestAnimationFrame(() => {
       const round = (value) => Math.round((Number(value) || 0) * 100) / 100;
       const summary = {
         reason: reason === "clear" ? perf.lastAction : reason,
+        elementType: perf.elementType,
+        listVariant: perf.listVariant,
         sections: perf.sections,
         elements: perf.elements,
         dragDurationMs: round(performance.now() - perf.startedAt),
@@ -4254,13 +4363,46 @@ const Content = ({
         ),
         targetSectionRenderMaxMs: round(perf.targetSectionRenderMaxMs),
         firstPreviewDelayMs: round(perf.firstPreviewDelayMs),
+        dropValidationMs: round(perf.dropValidationMs),
+        layoutCloneMs: round(perf.layoutCloneMs),
+        insertMs: round(perf.insertMs),
+        layoutCommitMs: round(perf.layoutCommitMs),
+        dropHandlerSyncMs: round(perf.dropHandlerSyncMs),
+        sectionCacheHits: perf.sectionCacheHits,
+        sectionCacheMisses: perf.sectionCacheMisses,
+        columnCacheHits: perf.columnCacheHits,
+        columnCacheMisses: perf.columnCacheMisses,
+        sectionCacheMissReasons: perf.sectionCacheMissReasons,
       };
       console.groupCollapsed(
-        `[Builder Sidebar DnD Perf] ${summary.elements} elements`
+        perf.elementType === "dts"
+          ? `[Data Slider Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "ctg"
+            ? `[Categories Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "tabs"
+            ? `[Tabs Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "acc"
+            ? `[Accordion Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "post"
+            ? `[Post Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "list"
+            ? `[${
+                perf.listVariant === "buttonMulti"
+                  ? "Button Group"
+                  : perf.listVariant === "icons"
+                    ? "List Icons"
+                    : "List Items"
+              } Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "column" || perf.elementType === "split"
+            ? `[Structure Perf] ${perf.elementType} drop summary / ${summary.elements} canvas elements`
+          : `[Builder Sidebar DnD Perf] ${summary.elements} elements`
       );
       console.table(summary);
       console.log("Copy this object:", summary);
       console.groupEnd();
+      if (sidebarNativeDropPerfRef.current === perf) {
+        sidebarNativeDropPerfRef.current = null;
+      }
     });
   };
   finishSidebarNativeDragPerfRef.current = finishSidebarNativeDragPerf;
@@ -4274,6 +4416,7 @@ const Content = ({
     return () => {
       window.removeEventListener("dragend", finishNativeSidebarDrag, false);
       sidebarNativeDragPerfRef.current = null;
+      sidebarNativeDropPerfRef.current = null;
     };
   }, []);
 
@@ -4350,6 +4493,16 @@ const Content = ({
     recordBuilderPanelOpenCanvasCommit(actualDuration);
     recordPanelSliderCanvasCommit(actualDuration);
     recordPanelSliderSectionCacheStats(canvasSectionCacheStatsRef.current);
+    const builderNavPerf =
+      typeof window !== "undefined" ? window.__builderNavPerf : null;
+    if (builderNavPerf?.active) {
+      builderNavPerf.canvasCommits += 1;
+      builderNavPerf.canvasActualMs += actualDuration;
+      builderNavPerf.canvasMaxMs = Math.max(
+        builderNavPerf.canvasMaxMs,
+        actualDuration
+      );
+    }
     const committedElementSelectionTransaction =
       elementSelectionCacheTransactionRef.current;
     const elementSelectionTransactionCommitted = Boolean(
@@ -4806,14 +4959,65 @@ const Content = ({
         });
       }
     }
-    const sidebarPerf = sidebarNativeDragPerfRef.current;
-    if (sidebarPerf?.active) {
+    const sidebarPerf =
+      sidebarNativeDragPerfRef.current || sidebarNativeDropPerfRef.current;
+    if (sidebarPerf?.active || sidebarPerf?.lastAction === "drop") {
+      const cacheStats = canvasSectionCacheStatsRef.current;
       sidebarPerf.canvasRenderCommits += 1;
       sidebarPerf.canvasRenderTotalMs += actualDuration;
       sidebarPerf.canvasRenderMaxMs = Math.max(
         sidebarPerf.canvasRenderMaxMs,
         actualDuration
       );
+      sidebarPerf.sectionCacheHits += cacheStats?.cacheHits || 0;
+      sidebarPerf.sectionCacheMisses += cacheStats?.cacheMisses || 0;
+      sidebarPerf.columnCacheHits += cacheStats?.columnRenderCacheHits || 0;
+      sidebarPerf.columnCacheMisses += cacheStats?.columnRenderCacheMisses || 0;
+      Object.entries(cacheStats?.missReasons || {}).forEach(([reason, count]) => {
+        sidebarPerf.sectionCacheMissReasons[reason] =
+          (sidebarPerf.sectionCacheMissReasons[reason] || 0) + count;
+      });
+    }
+    const dataSliderPanelPerf = dataSliderPanelUpdatePerfRef.current;
+    if (dataSliderPanelPerf) {
+      const cacheStats = canvasSectionCacheStatsRef.current;
+      dataSliderPanelPerf.canvasCommits += 1;
+      dataSliderPanelPerf.canvasActualMs += actualDuration;
+      dataSliderPanelPerf.canvasMaxMs = Math.max(
+        dataSliderPanelPerf.canvasMaxMs,
+        actualDuration
+      );
+      dataSliderPanelPerf.sectionCacheHits += cacheStats?.cacheHits || 0;
+      dataSliderPanelPerf.sectionCacheMisses += cacheStats?.cacheMisses || 0;
+      Object.entries(cacheStats?.missReasons || {}).forEach(([reason, count]) => {
+        dataSliderPanelPerf.sectionCacheMissReasons[reason] =
+          (dataSliderPanelPerf.sectionCacheMissReasons[reason] || 0) + count;
+      });
+      if (!dataSliderPanelPerf.logScheduled) {
+        dataSliderPanelPerf.logScheduled = true;
+        requestAnimationFrame(() => {
+          if (dataSliderPanelUpdatePerfRef.current === dataSliderPanelPerf) {
+            dataSliderPanelUpdatePerfRef.current = null;
+          }
+          const round = (value) =>
+            Math.round((Number(value) || 0) * 100) / 100;
+          console.info(`[${dataSliderPanelPerf.panelType} Panel Perf] commit`, {
+            target: dataSliderPanelPerf.target,
+            fields: dataSliderPanelPerf.fields,
+            updateToPaintMs: round(
+              performance.now() - dataSliderPanelPerf.startedAt
+            ),
+            patchMs: round(dataSliderPanelPerf.patchMs),
+            canvasProfilerCommits: dataSliderPanelPerf.canvasCommits,
+            canvasProfilerActualMs: round(dataSliderPanelPerf.canvasActualMs),
+            canvasProfilerMaxMs: round(dataSliderPanelPerf.canvasMaxMs),
+            sectionCacheHits: dataSliderPanelPerf.sectionCacheHits,
+            sectionCacheMisses: dataSliderPanelPerf.sectionCacheMisses,
+            sectionCacheMissReasons:
+              dataSliderPanelPerf.sectionCacheMissReasons,
+          });
+        });
+      }
     }
     const hoverPerf = hoverPerfRef.current;
     if (builderHoverPerfEnabled && hoverPerf) {
@@ -4879,8 +5083,9 @@ const Content = ({
     _startTime,
     commitTime
   ) => {
-    const sidebarPerf = sidebarNativeDragPerfRef.current;
-    if (sidebarPerf?.active) {
+    const sidebarPerf =
+      sidebarNativeDragPerfRef.current || sidebarNativeDropPerfRef.current;
+    if (sidebarPerf?.active || sidebarPerf?.lastAction === "drop") {
       const nativeProfilerMatch = /^BuilderSection:(\d+):/.exec(
         String(profilerId || "")
       );
@@ -5304,6 +5509,48 @@ const Content = ({
     (data, ids) => {
       const eleID = ids?.eleID ?? ids?.id;
       if (eleID == null || eleID === "") return;
+      const panelUpdatePerf =
+        (dataSliderPerfEnabled && data?.type === "dts") ||
+        (categoriesPerfEnabled && data?.type === "ctg") ||
+        (tabsPerfEnabled && data?.type === "tabs") ||
+        (accordionPerfEnabled && data?.type === "acc") ||
+        (postPerfEnabled && data?.type === "post") ||
+        (listItemsPerfEnabled && data?.type === "list")
+          ? {
+              panelType:
+                data?.type === "ctg"
+                  ? "Categories"
+                  : data?.type === "tabs"
+                    ? "Tabs"
+                    : data?.type === "acc"
+                      ? "Accordion"
+                      : data?.type === "post"
+                        ? "Post"
+                        : data?.type === "list"
+                          ? data?.buttonMultiElement
+                            ? "Button Group"
+                            : data?.listIconsElement
+                            ? "List Icons"
+                            : "List Items"
+                    : "Data Slider",
+              target: String(eleID),
+              fields: Array.isArray(ids?.panelChangedFields)
+                ? ids.panelChangedFields
+                : [],
+              startedAt: performance.now(),
+              patchMs: 0,
+              canvasCommits: 0,
+              canvasActualMs: 0,
+              canvasMaxMs: 0,
+              sectionCacheHits: 0,
+              sectionCacheMisses: 0,
+              sectionCacheMissReasons: {},
+              logScheduled: false,
+            }
+          : null;
+      if (panelUpdatePerf) {
+        dataSliderPanelUpdatePerfRef.current = panelUpdatePerf;
+      }
 
       const patchList = (list) => {
         if (!Array.isArray(list)) return false;
@@ -5354,8 +5601,23 @@ const Content = ({
             list[i].catagoriesActiveCategoryId = mergedHost.catagoriesActiveCategoryId;
           }
         }
+        if (cleaned.catagoriesTabs && Array.isArray(cleaned.catagoriesTabs)) {
+          const mergedHost = mergeCatagoriesElement({
+            ...list[i],
+            catagoriesTabs: cleaned.catagoriesTabs,
+          });
+          list[i].catagoriesTabs = lodash.cloneDeep(mergedHost.catagoriesTabs);
+          list[i].catagoriesActiveCategoryId =
+            mergedHost.catagoriesActiveCategoryId;
+          list[i].catagoriesItems = lodash.cloneDeep(mergedHost.catagoriesItems);
+          list[i].catagoriesItemCount = mergedHost.catagoriesItemCount;
+          list[i].catagoriesActiveId = mergedHost.catagoriesActiveId;
+        }
         if (cleaned.accordionItems && Array.isArray(cleaned.accordionItems)) {
           list[i].accordionItems = lodash.cloneDeep(cleaned.accordionItems);
+        }
+        if (cleaned.postElements && Array.isArray(cleaned.postElements)) {
+          list[i].postElements = lodash.cloneDeep(cleaned.postElements);
         }
         // Hard replace this array; merge-by-index keeps stale checkbox values.
         if (Array.isArray(cleaned.imageHoverExtras)) {
@@ -5721,29 +5983,136 @@ const Content = ({
 
       setLayout((prev) => {
         if (!Array.isArray(prev)) return prev;
+        const patchStartedAt = panelUpdatePerf ? performance.now() : 0;
+        const finishPanelPatch = (nextLayouts) => {
+          if (panelUpdatePerf) {
+            panelUpdatePerf.patchMs += performance.now() - patchStartedAt;
+          }
+          return nextLayouts;
+        };
+        if (
+          data?.type === "dts" ||
+          data?.type === "ctg" ||
+          data?.type === "tabs" ||
+          data?.type === "acc" ||
+          data?.type === "post" ||
+          data?.type === "list"
+        ) {
+          let targetPath = null;
+          for (let conI = 0; conI < prev.length && !targetPath; conI += 1) {
+            const columns = prev[conI]?.columns || [];
+            for (let colI = 0; colI < columns.length && !targetPath; colI += 1) {
+              const column = columns[colI];
+              if (
+                column?.elements?.some(
+                  (item) => String(item?.id || "") === String(eleID)
+                )
+              ) {
+                targetPath = { conI, colI, spnI: null, nestI: null };
+                break;
+              }
+              const spans = column?.spans || [];
+              for (let spnI = 0; spnI < spans.length && !targetPath; spnI += 1) {
+                const span = spans[spnI];
+                if (
+                  span?.elements?.some(
+                    (item) => String(item?.id || "") === String(eleID)
+                  )
+                ) {
+                  targetPath = { conI, colI, spnI, nestI: null };
+                  break;
+                }
+                const nestedSpans = span?.nestedSpans || [];
+                for (
+                  let nestI = 0;
+                  nestI < nestedSpans.length && !targetPath;
+                  nestI += 1
+                ) {
+                  if (
+                    nestedSpans[nestI]?.elements?.some(
+                      (item) => String(item?.id || "") === String(eleID)
+                    )
+                  ) {
+                    targetPath = { conI, colI, spnI, nestI };
+                  }
+                }
+              }
+            }
+          }
+
+          if (targetPath) {
+            const { conI, colI, spnI, nestI } = targetPath;
+            const nextLayouts = prev.slice();
+            const sourceSection = prev[conI];
+            const section = {
+              ...sourceSection,
+              columns: sourceSection.columns.slice(),
+            };
+            const sourceColumn = sourceSection.columns[colI];
+            const column = { ...sourceColumn };
+            if (Array.isArray(sourceColumn.spans)) {
+              column.spans = sourceColumn.spans.slice();
+            }
+            nextLayouts[conI] = section;
+            section.columns[colI] = column;
+
+            let owner = column;
+            if (Number.isInteger(spnI)) {
+              const sourceSpan = sourceColumn.spans[spnI];
+              const span = { ...sourceSpan };
+              if (Array.isArray(sourceSpan.nestedSpans)) {
+                span.nestedSpans = sourceSpan.nestedSpans.slice();
+              }
+              column.spans[spnI] = span;
+              owner = span;
+              if (Number.isInteger(nestI)) {
+                const nestedSpan = { ...sourceSpan.nestedSpans[nestI] };
+                span.nestedSpans[nestI] = nestedSpan;
+                owner = nestedSpan;
+              }
+            }
+
+            owner.elements = owner.elements.slice();
+            if (!patchList(owner.elements)) return prev;
+            markScopedLayoutSnapshot(nextLayouts);
+            layoutsRef.current = nextLayouts;
+            return finishPanelPatch(nextLayouts);
+          }
+        }
         const newLayouts = lodash.cloneDeep(prev);
         for (const layout of newLayouts) {
           const cols = layout?.columns;
           if (!cols?.length) continue;
           for (const col of cols) {
-            if (patchList(col.elements)) return newLayouts;
-            if (patchTabsNestedList(col.elements)) return newLayouts;
+            if (patchList(col.elements)) return finishPanelPatch(newLayouts);
+            if (patchTabsNestedList(col.elements)) return finishPanelPatch(newLayouts);
             if (!col.spans?.length) continue;
             for (const sp of col.spans) {
-              if (patchList(sp.elements)) return newLayouts;
-              if (patchTabsNestedList(sp.elements)) return newLayouts;
+              if (patchList(sp.elements)) return finishPanelPatch(newLayouts);
+              if (patchTabsNestedList(sp.elements)) return finishPanelPatch(newLayouts);
               if (!sp.nestedSpans?.length) continue;
               for (const ms of sp.nestedSpans) {
-                if (patchList(ms.elements)) return newLayouts;
-                if (patchTabsNestedList(ms.elements)) return newLayouts;
+                if (patchList(ms.elements)) return finishPanelPatch(newLayouts);
+                if (patchTabsNestedList(ms.elements)) return finishPanelPatch(newLayouts);
               }
             }
           }
         }
+        if (panelUpdatePerf) {
+          dataSliderPanelUpdatePerfRef.current = null;
+        }
         return prev;
       });
     },
-    [setLayout]
+    [
+      accordionPerfEnabled,
+      categoriesPerfEnabled,
+      dataSliderPerfEnabled,
+      listItemsPerfEnabled,
+      postPerfEnabled,
+      setLayout,
+      tabsPerfEnabled,
+    ]
   );
 
   useLayoutEffect(() => {
@@ -7489,6 +7858,75 @@ const Content = ({
     return newLayouts[conI]?.columns?.[colI] || null;
   };
 
+  const cloneLayoutsForElementDrop = ({
+    sourceLayouts,
+    conI,
+    colI,
+    spnI = null,
+    nestI = null,
+    eleI,
+    dropType = "ELEMENT",
+    tabEleID = null,
+  }) => {
+    if (!Array.isArray(sourceLayouts)) return null;
+    const sourceSection = sourceLayouts[conI];
+    const sourceColumn = sourceSection?.columns?.[colI];
+    if (!sourceSection || !sourceColumn) return null;
+
+    const nextLayouts = sourceLayouts.slice();
+    const section = {
+      ...sourceSection,
+      columns: sourceSection.columns.slice(),
+    };
+    const column = { ...sourceColumn };
+    if (Array.isArray(sourceColumn.spans)) {
+      column.spans = sourceColumn.spans.slice();
+    }
+    nextLayouts[conI] = section;
+    section.columns[colI] = column;
+
+    let owner = column;
+    if (Number.isInteger(spnI)) {
+      const sourceSpan = sourceColumn.spans?.[spnI];
+      if (!sourceSpan || !Array.isArray(column.spans)) return null;
+      const span = { ...sourceSpan };
+      if (Array.isArray(sourceSpan.nestedSpans)) {
+        span.nestedSpans = sourceSpan.nestedSpans.slice();
+      }
+      column.spans[spnI] = span;
+      owner = span;
+
+      if (Number.isInteger(nestI)) {
+        const sourceNestedSpan = sourceSpan.nestedSpans?.[nestI];
+        if (!sourceNestedSpan || !Array.isArray(span.nestedSpans)) return null;
+        const nestedSpan = { ...sourceNestedSpan };
+        span.nestedSpans[nestI] = nestedSpan;
+        owner = nestedSpan;
+      }
+    }
+
+    if (!Array.isArray(owner.elements)) return null;
+    owner.elements = owner.elements.slice();
+
+    if (dropType === "TAB-ELEMENT") {
+      const hostIndexById = owner.elements.findIndex(
+        (candidate) => String(candidate?.id || "") === String(tabEleID || "")
+      );
+      const hostIndex =
+        hostIndexById >= 0
+          ? hostIndexById
+          : Number.isInteger(eleI)
+            ? eleI
+            : -1;
+      if (hostIndex < 0 || !owner.elements[hostIndex]) return null;
+      // Nested drops mutate the host's tab/slide arrays. Clone only that host,
+      // while preserving every unrelated section and column reference.
+      owner.elements[hostIndex] = lodash.cloneDeep(owner.elements[hostIndex]);
+    }
+
+    return nextLayouts;
+  };
+
   const insertRowsIntoDropTarget = ({
     newLayouts,
     conI,
@@ -7601,11 +8039,26 @@ const Content = ({
   };
 
   const dropNewElement = () => {
+    const dropPerf = sidebarNativeDragPerfRef.current;
+    const sourceLayouts = layoutsRef.current || layouts;
+    const isCanvasElementMove =
+      activeDragRef.current?.data?.current?.type === "ELEMENT";
     const commitElementDrop = (nextLayouts) => {
-      flushSync(() => {
+      const commitStartedAt = dropPerf ? performance.now() : 0;
+      markScopedLayoutSnapshot(nextLayouts);
+      layoutsRef.current = nextLayouts;
+      if (isCanvasElementMove) {
+        flushSync(() => {
+          setLayout(nextLayouts);
+          clearGhost();
+        });
+      } else {
+        clearGhost({ deferSidebarPreviewUnmount: true });
         setLayout(nextLayouts);
-        clearGhost();
-      });
+      }
+      if (dropPerf) {
+        dropPerf.layoutCommitMs += performance.now() - commitStartedAt;
+      }
     };
     const dropType = dropTargetRef.current?.type;
     const isDropElementLike = dropType === "ELEMENT" || dropType === "TAB-ELEMENT";
@@ -7628,8 +8081,6 @@ const Content = ({
     const tabId = dropTargetRef.current.index?.tabId ?? null;
     const tabEleI = dropTargetRef.current.index?.tabEleI ?? 0;
     const rawElement = handleDropElement();
-    const isCanvasElementMove =
-      activeDragRef.current?.data?.current?.type === "ELEMENT";
     const element = isCanvasElementMove
       ? rawElement
       : stripIncomingInlineRowGroupIds(rawElement);
@@ -7669,22 +8120,19 @@ const Content = ({
       if(spnI !== null){
         if(nestI !== null){
 
-          data = layouts[conI].columns[colI].spans[spnI].nestedSpans[nestI]
-          console.log(data);
+          data = sourceLayouts[conI].columns[colI].spans[spnI].nestedSpans[nestI]
           id = data.id.replace("Span-","")
-          console.log(id);
         }else{
-          data = layouts[conI].columns[colI].spans[spnI]
+          data = sourceLayouts[conI].columns[colI].spans[spnI]
 
           id = data.id.replace("Span-","")
 
         }
       }else{
-        data = layouts[conI].columns[colI]
+        data = sourceLayouts[conI].columns[colI]
         id = data.id.replace("Col-","")
       }
       latestEleID = data.latestEleID
-      console.log(latestEleID);
     }
     getID();
 
@@ -7698,7 +8146,20 @@ const Content = ({
       bundle.length > 1 &&
       !Array.isArray(element?.listItems)
     ) {
-      const newLayouts = lodash.cloneDeep(layouts);
+      const newLayouts = cloneLayoutsForElementDrop({
+        sourceLayouts,
+        conI,
+        colI,
+        spnI,
+        nestI,
+        eleI,
+        dropType,
+        tabEleID,
+      });
+      if (!newLayouts) {
+        clearGhost();
+        return;
+      }
       const lid0 = latestEleID;
       const gid = `lr-${Math.ceil(Math.random() * 1e9).toString(36)}`;
       const base = lodash.omit(element, [
@@ -7750,9 +8211,25 @@ const Content = ({
     if (!isCanvasElementMove) {
       element.id += `${id}-${latestEleID}-${makeDropUniqueSuffix()}`;
     }
-    console.log(element);
-    console.log(element.id);
-    const newLayouts = lodash.cloneDeep(layouts);
+    const cloneStartedAt = dropPerf ? performance.now() : 0;
+    const newLayouts = cloneLayoutsForElementDrop({
+      sourceLayouts,
+      conI,
+      colI,
+      spnI,
+      nestI,
+      eleI,
+      dropType,
+      tabEleID,
+    });
+    if (dropPerf) {
+      dropPerf.layoutCloneMs += performance.now() - cloneStartedAt;
+    }
+    if (!newLayouts) {
+      clearGhost();
+      return;
+    }
+    const insertStartedAt = dropPerf ? performance.now() : 0;
     const ok = insertRowsIntoDropTarget({
       newLayouts,
       conI,
@@ -7766,6 +8243,9 @@ const Content = ({
       tabId,
       tabEleI,
     });
+    if (dropPerf) {
+      dropPerf.insertMs += performance.now() - insertStartedAt;
+    }
     if (!ok) {
       clearGhost();
       return;
@@ -7786,6 +8266,20 @@ const Content = ({
   };
 
   const dropNewSection = () => {
+    const dropPerf = sidebarNativeDragPerfRef.current;
+    const sourceLayouts = layoutsRef.current || layouts;
+    const commitSectionDrop = (nextLayouts) => {
+      const commitStartedAt = dropPerf ? performance.now() : 0;
+      markScopedLayoutSnapshot(nextLayouts);
+      layoutsRef.current = nextLayouts;
+      // Native drop events are batched by React. Avoid forcing the whole
+      // canvas commit to block this pointer event.
+      setLayout(nextLayouts);
+      clearGhost();
+      if (dropPerf) {
+        dropPerf.layoutCommitMs += performance.now() - commitStartedAt;
+      }
+    };
     const layout = handleDropElement();
 
     if (layout.isSplitLayout) {
@@ -7797,6 +8291,7 @@ const Content = ({
         clearGhost();
         return;
       }
+      const cloneStartedAt = dropPerf ? performance.now() : 0;
       const splitRowId = `SplitRow-${page.latestID}`;
       const sectionsToInsert = layout.sections.map((sec, si) => {
         const newSec = lodash.cloneDeep(sec);
@@ -7809,11 +8304,17 @@ const Content = ({
         newSec.splitSide = si === 0 ? "left" : "right";
         return newSec;
       });
-      setPage((prev) => ({ ...prev, latestID: prev.latestID + 1 }));
-      const newLayouts = lodash.cloneDeep(layouts);
+      const newLayouts = sourceLayouts.slice();
+      if (dropPerf) {
+        dropPerf.layoutCloneMs += performance.now() - cloneStartedAt;
+      }
+      const insertStartedAt = dropPerf ? performance.now() : 0;
       newLayouts.splice(dropTargetRef.current.index, 0, ...sectionsToInsert);
-      clearGhost();
-      setLayout(newLayouts);
+      if (dropPerf) {
+        dropPerf.insertMs += performance.now() - insertStartedAt;
+      }
+      setPage((prev) => ({ ...prev, latestID: prev.latestID + 1 }));
+      commitSectionDrop(newLayouts);
       return;
     }
 
@@ -7845,10 +8346,17 @@ const Content = ({
       setPage((prev) => {
         return { ...prev, latestID: prev.latestID + 1 };
       });
-      const newLayouts = lodash.cloneDeep(layouts);
+      const cloneStartedAt = dropPerf ? performance.now() : 0;
+      const newLayouts = sourceLayouts.slice();
+      if (dropPerf) {
+        dropPerf.layoutCloneMs += performance.now() - cloneStartedAt;
+      }
+      const insertStartedAt = dropPerf ? performance.now() : 0;
       newLayouts.splice(dropTargetRef.current.index, 0, layout);
-      clearGhost();
-      setLayout(newLayouts);
+      if (dropPerf) {
+        dropPerf.insertMs += performance.now() - insertStartedAt;
+      }
+      commitSectionDrop(newLayouts);
     } else {
       clearGhost();
       return;
@@ -7856,6 +8364,7 @@ const Content = ({
   };
 
   const handleDrop = (e) => {
+    const dropHandlerStartedAt = performance.now();
     e.preventDefault();
     e.stopPropagation();
     const now = Date.now();
@@ -7962,8 +8471,15 @@ const Content = ({
       hoverRef.current = null;
     }
 
+    const dropPerf = sidebarNativeDragPerfRef.current;
+    if (dropPerf) {
+      dropPerf.dropValidationMs += performance.now() - dropHandlerStartedAt;
+    }
     if (dropTargetRef.current.type === "SECTION") dropNewSection();
     else dropNewElement();
+    if (dropPerf) {
+      dropPerf.dropHandlerSyncMs += performance.now() - dropHandlerStartedAt;
+    }
   };
   windowDropHandlerRef.current =
     (preview || sidebarPortalPreviewRef.current) && handleDropElement()
@@ -7981,8 +8497,8 @@ const Content = ({
     const isCanvasElementMove =
       activeDragRef.current?.data?.current?.type === "ELEMENT";
     const rawElement = handleDropElement();
-    if (!isCanvasElementMove && rawElement && !rawElement.container) {
-      startSidebarNativeDragPerf();
+    if (!isCanvasElementMove && rawElement) {
+      startSidebarNativeDragPerf(rawElement);
       const activePerf = sidebarNativeDragPerfRef.current;
       if (activePerf?.dragoverCount === 0) {
         activePerf.startedAt = dragoverStartedAt;
@@ -8937,7 +9453,9 @@ const Content = ({
     });
   };
 
-  const clearSidebarPortalPreview = () => {
+  const clearSidebarPortalPreview = ({
+    deferUnmount = false,
+  } = {}) => {
     const commit = sidebarPreviewMoveRef.current;
     if (commit.frame != null) cancelAnimationFrame(commit.frame);
     commit.frame = null;
@@ -8945,11 +9463,15 @@ const Content = ({
     const host = sidebarPreviewHostRef.current;
     const root = sidebarPreviewRootRef.current;
     sidebarPreviewRootRef.current = null;
-    root?.unmount();
-    if (host) {
-      host.ondragover = null;
-      if (host.parentNode) host.parentNode.removeChild(host);
-    }
+    const unmountPreview = () => {
+      root?.unmount();
+      if (host) {
+        host.ondragover = null;
+        if (host.parentNode) host.parentNode.removeChild(host);
+      }
+    };
+    if (deferUnmount) queueMicrotask(unmountPreview);
+    else unmountPreview();
     if (ghostRef.current === host) ghostRef.current = null;
     sidebarPreviewHostRef.current = null;
     sidebarPortalPreviewRef.current = null;
@@ -9173,7 +9695,7 @@ const Content = ({
     );
   };
 
-  const clearGhost = () => {
+  const clearGhost = ({ deferSidebarPreviewUnmount = false } = {}) => {
     markContentDndLifecycle("post-drop-cleanup");
     finishSidebarNativeDragPerf("clear");
     // The palette template ref can outlive native dragend; it is drop data,
@@ -9188,7 +9710,9 @@ const Content = ({
 
     dragToken.current += 1;
 
-    clearSidebarPortalPreview();
+    clearSidebarPortalPreview({
+      deferUnmount: deferSidebarPreviewUnmount,
+    });
     setPreview(null);
     sidebarNewElementFlipRef.current.previousConI = null;
     sidebarNewElementFlipRef.current.preview = null;
@@ -10354,14 +10878,16 @@ const Content = ({
 
   const updateHoverFromPoint = (x, y, type, element) => {
     const perf = sidebarNativeDragPerfRef.current;
-    if (!perf?.active || type !== "ELEMENT") {
+    const isMeasuredSidebarType = type === "ELEMENT" || type === "SECTION";
+    if (!perf?.active || !isMeasuredSidebarType) {
       return updateHoverFromPointImpl(x, y, type, element);
     }
     const startedAt = performance.now();
-    const previousTargetKey = sidebarNewElementTargetKey(
-      dropTargetRef.current,
-      null
-    );
+    const perfTargetKey = (target) =>
+      target?.type === "SECTION"
+        ? `SECTION:${target.index ?? ""}:${target.isLast ? 1 : 0}`
+        : sidebarNewElementTargetKey(target, null);
+    const previousTargetKey = perfTargetKey(dropTargetRef.current);
     try {
       return updateHoverFromPointImpl(x, y, type, element);
     } finally {
@@ -10369,10 +10895,14 @@ const Content = ({
       perf.hoverUpdateCount += 1;
       perf.hoverUpdateTotalMs += elapsed;
       perf.hoverUpdateMaxMs = Math.max(perf.hoverUpdateMaxMs, elapsed);
-      const nextTargetKey = sidebarNewElementTargetKey(
-        dropTargetRef.current,
-        null
-      );
+      const nextTargetKey = perfTargetKey(dropTargetRef.current);
+      if (
+        type === "SECTION" &&
+        perf.firstPreviewDelayMs == null &&
+        dropTargetRef.current?.type === "SECTION"
+      ) {
+        perf.firstPreviewDelayMs = performance.now() - perf.startedAt;
+      }
       // Preview commits count target transitions. This additionally catches
       // target ref changes made by blocked/pass-through branches.
       if (
@@ -16406,7 +16936,7 @@ const Content = ({
 
     return (
       <div
-        className="preview pointer-events-none border-dashed border-gray-600 relative"
+        className="preview pointer-events-none border border-dashed border-gray-600 relative"
         aria-hidden
         style={{ background: color }}
         onDragOver={(e) => {
@@ -19160,7 +19690,8 @@ const Content = ({
                     : [layout];
                   const requiresDragTargetRender =
                     elementCanvasDragRenderActive ||
-                    sidebarPreviewRenderActive;
+                    sidebarPreviewRenderActive ||
+                    sidebarSectionDropRenderActive;
                   let targetRenderIndex = -1;
                   if (requiresDragTargetRender) {
                     let rawTargetIndex =

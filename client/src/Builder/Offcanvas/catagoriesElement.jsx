@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Box, Stack } from "@mui/material";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -19,10 +26,18 @@ import {
 import lodash from "lodash";
 import Field from "../HTML/Field";
 import Range from "../HTML/Range";
-import MainLabel from "../HTML/MainLabel";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { mergeCatagoriesElement } from "../Layouts/Elements/catagoriesElementConfig";
+import {
+  getBuilderPanelOpenStartedAt,
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
+
+const categoriesPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("categoriesPerf") === "1";
 
 const ITEM_LIST_MAX = 12;
 const ITEM_LIST_MIN = 1;
@@ -51,6 +66,57 @@ const CAT_COLOR_EDIT_MODES = [
   { id: "border", label: "สีขอบ" },
   { id: "text", label: "สีข้อความ" },
 ];
+
+const MainLabel = ({
+  label,
+  value = NaN,
+  mb = 0.75,
+  handleSwitch = null,
+  checked = "-",
+  color = null,
+  typography = null,
+  noLine = false,
+  fontWeight = 600,
+}) => (
+  <div
+    className="flex flex-1 items-center gap-2 text-[13px] tabular-nums text-[var(--dash-panel-heading,#0f172a)] dark:text-[var(--dash-panel-heading,#f8fafc)]"
+    style={{
+      marginBottom: `${Number(mb) * 8}px`,
+      fontWeight,
+    }}
+  >
+    <span className="shrink-0">{label}</span>
+    {!Number.isNaN(Number(value)) ? (
+      <span className="shrink-0 text-slate-400">
+        {Math.round(Number(value))}
+      </span>
+    ) : null}
+    {!noLine ? <div className="dash-heading-rule min-w-0 flex-1 border-b" /> : null}
+    {checked !== "-" ? (
+      <span className="flex shrink-0 items-center gap-2">
+        <label className="relative inline-flex h-4 w-7 cursor-pointer items-center">
+          <input
+            type="checkbox"
+            className="peer sr-only"
+            checked={Boolean(checked)}
+            onChange={handleSwitch}
+            aria-label={typography || label}
+          />
+          <span
+            className="absolute inset-0 rounded-full bg-black/25 transition-colors dark:bg-white/25"
+            style={checked ? { backgroundColor: color || "#0d9488" } : undefined}
+          />
+          <span
+            className={`relative ml-0.5 size-3 rounded-full bg-white shadow-sm transition-transform ${
+              checked ? "translate-x-3" : "translate-x-0"
+            }`}
+          />
+        </label>
+        {typography ? <span className="text-[12px]">{typography}</span> : null}
+      </span>
+    ) : null}
+  </div>
+);
 
 const ActiveItemSelectLine = ({
   prev,
@@ -160,8 +226,17 @@ const CatagoriesElementOffcanvas = ({
   textColor = "#0d9488",
   theme,
 }) => {
-  const layoutSyncRafRef = useRef(0);
+  const currentRenderStartedAt = categoriesPanelPerfEnabled
+    ? performance.now()
+    : 0;
+  const initialRenderStartedAtRef = useRef(
+    categoriesPanelPerfEnabled ? performance.now() : 0
+  );
+  const layoutSyncScheduledRef = useRef(false);
+  const layoutSyncGenerationRef = useRef(0);
   const pendingRef = useRef(null);
+  const initialMergeMsRef = useRef(0);
+  const synchronousRenderMsRef = useRef(0);
   const elementRef = useRef(element);
   elementRef.current = element;
   const tabNodeRefs = useRef(new Map());
@@ -240,26 +315,204 @@ const CatagoriesElementOffcanvas = ({
         type: next?.type ?? base?.type ?? "ctg",
         id: next?.id != null ? next.id : base?.id,
       };
-      pendingRef.current = lodash.cloneDeep(merged);
-      if (layoutSyncRafRef.current) cancelAnimationFrame(layoutSyncRafRef.current);
-      layoutSyncRafRef.current = requestAnimationFrame(() => {
-        layoutSyncRafRef.current = 0;
-        const snapshot = pendingRef.current;
+      const changedFields = Object.keys(next || {}).filter(
+        (key) => !Object.is(base?.[key], merged?.[key])
+      );
+      pendingRef.current = {
+        snapshot: merged,
+        changedFields,
+        queuedAt: categoriesPanelPerfEnabled ? performance.now() : 0,
+      };
+      if (layoutSyncScheduledRef.current) return;
+      layoutSyncScheduledRef.current = true;
+      const generation = layoutSyncGenerationRef.current;
+      queueMicrotask(() => {
+        if (generation !== layoutSyncGenerationRef.current) return;
+        layoutSyncScheduledRef.current = false;
+        const pending = pendingRef.current;
         pendingRef.current = null;
-        if (snapshot) onUpdate?.(snapshot);
+        if (!pending?.snapshot) return;
+        const updateStartedAt = categoriesPanelPerfEnabled
+          ? performance.now()
+          : 0;
+        onUpdate?.(pending.snapshot, {
+          changedFields: pending.changedFields,
+        });
+        if (categoriesPanelPerfEnabled) {
+          console.info("[Categories Panel Perf] update", {
+            target: pending.snapshot?.id,
+            fields: pending.changedFields,
+            queueMs:
+              Math.round((updateStartedAt - pending.queuedAt) * 100) / 100,
+            updateDispatchMs:
+              Math.round((performance.now() - updateStartedAt) * 100) / 100,
+          });
+        }
       });
     },
     [onUpdate]
   );
-  const [data, setData] = useState(() => mergeCatagoriesElement(element));
+  const [data, setData] = useState(() => {
+    const startedAt = categoriesPanelPerfEnabled ? performance.now() : 0;
+    const merged = mergeCatagoriesElement(element);
+    if (categoriesPanelPerfEnabled) {
+      initialMergeMsRef.current = performance.now() - startedAt;
+    }
+    return merged;
+  });
   const [activeColorEditModeIndex, setActiveColorEditModeIndex] = useState(0);
   const [inactiveColorEditModeIndex, setInactiveColorEditModeIndex] = useState(0);
+  const [deferredControlStage, setDeferredControlStage] = useState(-1);
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    getBuilderPanelOpenStartedAt("Catagories", panelTargetId) ??
+      window.__categoriesPanelOpenPerf?.startedAt ??
+      null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "ctg",
+    targetIds: [panelTargetId],
+    data,
+    setData,
+    onCommit: (latest) => scheduleLayoutSync(latest),
+  });
+  const updateRangeField = (field, value) => {
+    updateSlider((prev) =>
+      mergeCatagoriesElement({
+        ...prev,
+        [field]: value,
+      })
+    );
+  };
+  const updateThemeRange = (updater) => {
+    updateSlider((prev) => {
+      const mergedPrev = mergeCatagoriesElement(prev);
+      return mergeCatagoriesElement({
+        ...mergedPrev,
+        catagoriesTabs: mergedPrev.catagoriesTabs.map((tab) => ({
+          ...tab,
+          items: (Array.isArray(tab?.items) ? tab.items : []).map(updater),
+        })),
+      });
+    });
+  };
+  const commitRangeField = (_value, reason) => {
+    commitSlider(reason || "range-commit");
+  };
+  useLayoutEffect(() => {
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (categoriesPanelPerfEnabled) {
+        const now = performance.now();
+        const tabs = Array.isArray(data?.catagoriesTabs)
+          ? data.catagoriesTabs
+          : [];
+        const itemCount = tabs.reduce(
+          (sum, tab) => sum + (Array.isArray(tab?.items) ? tab.items.length : 0),
+          0
+        );
+        const nestedElementCount = tabs.reduce(
+          (sum, tab) =>
+            sum +
+            (Array.isArray(tab?.items) ? tab.items : []).reduce(
+              (itemSum, item) =>
+                itemSum +
+                (Array.isArray(item?.elements) ? item.elements.length : 0),
+              0
+            ),
+          0
+        );
+        const breakdown = {
+          target: String(panelTargetId || ""),
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          initialMergeMs:
+            Math.round(initialMergeMsRef.current * 100) / 100,
+          synchronousRenderMs:
+            Math.round(synchronousRenderMsRef.current * 100) / 100,
+          tabCount: tabs.length,
+          itemCount,
+          activeItemCount: Array.isArray(
+            tabs.find(
+              (tab) =>
+                String(tab?.id) ===
+                String(data?.catagoriesActiveCategoryId)
+            )?.items
+          )
+            ? tabs.find(
+                (tab) =>
+                  String(tab?.id) ===
+                  String(data?.catagoriesActiveCategoryId)
+              ).items.length
+            : 0,
+          nestedElementCount,
+          colorSwatchCount: allColors.length,
+        };
+        queueMicrotask(() => {
+          console.info("[Categories Panel Mount Breakdown]", {
+            ...breakdown,
+            profilerPhase:
+              window.__categoriesPanelProfilerPerf?.phase ?? null,
+            profilerActualMs:
+              window.__categoriesPanelProfilerPerf?.actualDuration ?? null,
+            profilerBaseMs:
+              window.__categoriesPanelProfilerPerf?.baseDuration ?? null,
+          });
+        });
+      }
+    }
+    markBuilderPanelMounted("Catagories", panelTargetId);
+  }, [panelTargetId]);
   useEffect(() => {
     setData(mergeCatagoriesElement(element));
   }, [element]);
+  useEffect(() => {
+    let cancelled = false;
+    let firstFrame = 0;
+    let firstTask = 0;
+    let secondTask = 0;
+    const scheduleIdle = (callback, timeout) => {
+      if (typeof window.requestIdleCallback === "function") {
+        return window.requestIdleCallback(callback, { timeout });
+      }
+      return window.setTimeout(callback, 50);
+    };
+    const cancelIdle = (task) => {
+      if (!task) return;
+      if (typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(task);
+      } else {
+        window.clearTimeout(task);
+      }
+    };
+    firstFrame = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      startTransition(() => setDeferredControlStage(0));
+      firstTask = scheduleIdle(() => {
+        if (cancelled) return;
+        startTransition(() => setDeferredControlStage(1));
+        secondTask = scheduleIdle(() => {
+          if (cancelled) return;
+          startTransition(() => setDeferredControlStage(2));
+        }, 700);
+      }, 350);
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(firstFrame);
+      cancelIdle(firstTask);
+      cancelIdle(secondTask);
+    };
+  }, [panelTargetId]);
   useEffect(
     () => () => {
-      if (layoutSyncRafRef.current) cancelAnimationFrame(layoutSyncRafRef.current);
+      layoutSyncGenerationRef.current += 1;
+      layoutSyncScheduledRef.current = false;
+      pendingRef.current = null;
     },
     []
   );
@@ -517,7 +770,7 @@ const CatagoriesElementOffcanvas = ({
     ((borderWidthValue - borderWidthMin) / (borderWidthMax - borderWidthMin || 1)) *
     100;
 
-  return (
+  const panel = (
     <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
       <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
@@ -554,12 +807,14 @@ const CatagoriesElementOffcanvas = ({
 
       <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-8 w-full">
         <ul className="mt-4 pl-1 space-y-5">
+          {deferredControlStage >= 0 ? (
+            <>
           <li>
             <div className="mb-3 mt-1 flex items-center gap-2">
               <span className="dash-panel-label shrink-0 text-[13px] font-semibold">จำนวนไอเทมที่แสดง</span>
               <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
-            <Stack direction="row" spacing={1} className="w-full">
+            <div className="flex w-full gap-2">
               {CAT_PERVIEW_INPUTS.map(({ id, field, min, max, Icon, deviceLabel }) => (
                 <div key={id} className="dash-input flex h-[34px] min-w-0 flex-1 overflow-hidden rounded-md border border-slate-200 dark:border-white/10">
                   <span className={perViewIconAddonClass} title={deviceLabel} aria-hidden>
@@ -600,7 +855,7 @@ const CatagoriesElementOffcanvas = ({
                   </div>
                 </div>
               ))}
-            </Stack>
+            </div>
           </li>
 
           <li className="!mt-4">
@@ -619,10 +874,12 @@ const CatagoriesElementOffcanvas = ({
                   pos={radiusPos}
                   color={textColor}
                   handleChange={(e) =>
-                    patch({
-                      catagoriesButtonRadius: Number(e.target.value),
-                    })
+                    updateRangeField(
+                      "catagoriesButtonRadius",
+                      Number(e.target.value)
+                    )
                   }
+                  onCommit={commitRangeField}
                 />
               </div>
               <div className="min-w-0">
@@ -639,10 +896,12 @@ const CatagoriesElementOffcanvas = ({
                   pos={fontPos}
                   color={textColor}
                   handleChange={(e) =>
-                    patch({
-                      catagoriesButtonFontSize: Number(e.target.value),
-                    })
+                    updateRangeField(
+                      "catagoriesButtonFontSize",
+                      Number(e.target.value)
+                    )
                   }
+                  onCommit={commitRangeField}
                 />
               </div>
             </div>
@@ -663,10 +922,12 @@ const CatagoriesElementOffcanvas = ({
                 pos={borderWidthPos}
                 color={textColor}
                 handleChange={(e) =>
-                  patch({
-                    catagoriesButtonBorderWidth: Number(e.target.value),
-                  })
+                  updateRangeField(
+                    "catagoriesButtonBorderWidth",
+                    Number(e.target.value)
+                  )
                 }
+                onCommit={commitRangeField}
               />
             </div>
           </li>
@@ -697,10 +958,12 @@ const CatagoriesElementOffcanvas = ({
                         pos={pos}
                         color={textColor}
                         handleChange={(e) =>
-                          patch({
-                            catagoriesButtonPaddingX: Number(e.target.value),
-                          })
+                          updateRangeField(
+                            "catagoriesButtonPaddingX",
+                            Number(e.target.value)
+                          )
                         }
+                        onCommit={commitRangeField}
                       />
                     </>
                   );
@@ -730,10 +993,12 @@ const CatagoriesElementOffcanvas = ({
                         pos={pos}
                         color={textColor}
                         handleChange={(e) =>
-                          patch({
-                            catagoriesButtonPaddingY: Number(e.target.value),
-                          })
+                          updateRangeField(
+                            "catagoriesButtonPaddingY",
+                            Number(e.target.value)
+                          )
                         }
+                        onCommit={commitRangeField}
                       />
                     </>
                   );
@@ -768,10 +1033,12 @@ const CatagoriesElementOffcanvas = ({
                         pos={pos}
                         color={textColor}
                         handleChange={(e) =>
-                          patch({
-                            catagoriesGap: Number(e.target.value),
-                          })
+                          updateRangeField(
+                            "catagoriesGap",
+                            Number(e.target.value)
+                          )
                         }
+                        onCommit={commitRangeField}
                       />
                     </>
                   );
@@ -801,10 +1068,12 @@ const CatagoriesElementOffcanvas = ({
                         pos={pos}
                         color={textColor}
                         handleChange={(e) =>
-                          patch({
-                            catagoriesItemGap: Number(e.target.value),
-                          })
+                          updateRangeField(
+                            "catagoriesItemGap",
+                            Number(e.target.value)
+                          )
                         }
+                        onCommit={commitRangeField}
                       />
                     </>
                   );
@@ -812,7 +1081,11 @@ const CatagoriesElementOffcanvas = ({
               </div>
             </div>
           </li>
+            </>
+          ) : null}
 
+          {deferredControlStage >= 1 ? (
+            <>
           <li className="w-full !mt-4">
             <div className="mb-2 mt-1 flex w-full items-center gap-2">
               <MainLabel
@@ -850,24 +1123,25 @@ const CatagoriesElementOffcanvas = ({
                 step={1}
                 value={currentActiveOpacityValue}
                 handleChange={(e) =>
-                  patchThemeForAllItems((item) => ({
+                  updateThemeRange((item) => ({
                     ...item,
                     ...(activeColorEditMode.id === "fill"
                       ? {
                           catagoriesButtonFillOpacity:
-                            Number(e.target.value) || 255,
+                            Number(e.target.value),
                         }
                       : activeColorEditMode.id === "border"
                         ? {
                             catagoriesButtonBorderOpacity:
-                              Number(e.target.value) || 255,
+                              Number(e.target.value),
                           }
                         : {
                             catagoriesButtonTextOpacity:
-                              Number(e.target.value) || 255,
+                              Number(e.target.value),
                           }),
                   }))
                 }
+                onCommit={commitRangeField}
                 pos={(currentActiveOpacityValue / 255) * 100}
                 color={textColor}
               />
@@ -933,24 +1207,25 @@ const CatagoriesElementOffcanvas = ({
                 step={1}
                 value={currentInactiveOpacityValue}
                 handleChange={(e) =>
-                  patchThemeForAllItems((item) => ({
+                  updateThemeRange((item) => ({
                     ...item,
                     ...(inactiveColorEditMode.id === "fill"
                       ? {
                           catagoriesButtonInactiveFillOpacity:
-                            Number(e.target.value) || 255,
+                            Number(e.target.value),
                         }
                       : inactiveColorEditMode.id === "border"
                         ? {
                             catagoriesButtonInactiveBorderOpacity:
-                              Number(e.target.value) || 255,
+                              Number(e.target.value),
                           }
                         : {
                             catagoriesButtonInactiveTextOpacity:
-                              Number(e.target.value) || 255,
+                              Number(e.target.value),
                           }),
                   }))
                 }
+                onCommit={commitRangeField}
                 pos={(currentInactiveOpacityValue / 255) * 100}
                 color={textColor}
               />
@@ -992,15 +1267,19 @@ const CatagoriesElementOffcanvas = ({
             <div className="grid w-full grid-cols-2 gap-x-3 gap-y-4 px-0.5">
               <div className="min-w-0">
                 <MainLabel label={`ระยะด้านบน ${marginTop}`} mb={0.4} />
-                <Range min={0} max={80} step={1} value={marginTop} handleChange={(e) => patch({ catagoriesMarginTop: Number(e.target.value) || 0 })} pos={(marginTop / 80) * 100} color={textColor} />
+                <Range min={0} max={80} step={1} value={marginTop} handleChange={(e) => updateRangeField("catagoriesMarginTop", Number(e.target.value) || 0)} onCommit={commitRangeField} pos={(marginTop / 80) * 100} color={textColor} />
               </div>
               <div className="min-w-0">
                 <MainLabel label={`ระยะด้านล่าง ${marginBottom}`} mb={0.4} />
-                <Range min={0} max={80} step={1} value={marginBottom} handleChange={(e) => patch({ catagoriesMarginBottom: Number(e.target.value) || 0 })} pos={(marginBottom / 80) * 100} color={textColor} />
+                <Range min={0} max={80} step={1} value={marginBottom} handleChange={(e) => updateRangeField("catagoriesMarginBottom", Number(e.target.value) || 0)} onCommit={commitRangeField} pos={(marginBottom / 80) * 100} color={textColor} />
               </div>
             </div>
           </li>
+            </>
+          ) : null}
 
+          {deferredControlStage >= 2 ? (
+            <>
           <li>
             <div className="mb-3 mt-1 flex items-center gap-2">
               <span className="dash-panel-label shrink-0 text-[13px] font-semibold">หมวดหมู่ทั้งหมด</span>
@@ -1063,7 +1342,7 @@ const CatagoriesElementOffcanvas = ({
                     >
                       {isTabActive ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : idx + 1}
                     </button>
-                    <Box className="flex min-w-0 flex-1 items-center rounded-md border border-slate-200 px-2.5 py-0 dark:border-white/10">
+                    <div className="flex min-w-0 flex-1 items-center rounded-md border border-slate-200 px-2.5 py-0 dark:border-white/10">
                       <Field
                         value={typeof tab?.label === "string" ? tab.label : ""}
                         handleChange={(e) => {
@@ -1081,7 +1360,7 @@ const CatagoriesElementOffcanvas = ({
                         type="text"
                         className="min-w-0 h-8 max-h-8 w-full flex-1 border-0 bg-transparent px-1.5 py-0 text-[12px] leading-tight text-slate-800 shadow-none outline-none ring-0 placeholder:text-slate-400 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 dark:text-white/90 dark:placeholder:text-white/35"
                       />
-                    </Box>
+                    </div>
                     <button
                       type="button"
                       disabled={idx === 0 || Boolean(movingTabId || movingItemId)}
@@ -1213,10 +1492,17 @@ const CatagoriesElementOffcanvas = ({
               })}
             </div>
           </li>
+            </>
+          ) : null}
         </ul>
       </nav>
     </aside>
   );
+  if (categoriesPanelPerfEnabled) {
+    synchronousRenderMsRef.current =
+      performance.now() - currentRenderStartedAt;
+  }
+  return panel;
 };
 
 export default CatagoriesElementOffcanvas;

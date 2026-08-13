@@ -126,6 +126,12 @@ import {
 } from "./panelPreviewStore";
 import ContainerOffcanvas from "./Offcanvas/container";
 import ColumnOffcanvas from "./Offcanvas/column";
+import CatagoriesElementOffcanvas from "./Offcanvas/catagoriesElement";
+import TabsElementOffcanvas from "./Offcanvas/tabsElement";
+import AccordionElementOffcanvas from "./Offcanvas/accordionElement";
+import PostElementOffcanvas from "./Offcanvas/postElement";
+import ListElementOffcanvas from "./Offcanvas/listElement";
+import ButtonGroupElementOffcanvas from "./Offcanvas/buttonGroupElement";
 const Content = lazy(() => import("./content"));
 const PageSettingsPanel = lazy(() => import("./pageSettingsPanel"));
 
@@ -135,21 +141,15 @@ const ButtonElementOffcanvas = lazy(() => import("./Offcanvas/buttonElement"));
 const IconElementOffcanvas = lazy(() => import("./Offcanvas/iconElement"));
 const HeadingElementOffcanvas = lazy(() => import("./Offcanvas/headingElement"));
 const CarouselElementOffcanvas = lazy(() => import("./Offcanvas/carouselElement"));
-const DataSliderElementOffcanvas = lazy(() => import("./Offcanvas/dataSliderElement"));
-const CatagoriesElementOffcanvas = lazy(() => import("./Offcanvas/catagoriesElement"));
+const loadDataSliderElementOffcanvas = () =>
+  import("./Offcanvas/dataSliderElement");
+const DataSliderElementOffcanvas = lazy(loadDataSliderElementOffcanvas);
 const ListBoxElementOffcanvas = lazy(() => import("./Offcanvas/listBoxElement"));
 const CounterElementOffcanvas = lazy(() => import("./Offcanvas/counterElement"));
-const PostElementOffcanvas = lazy(() => import("./Offcanvas/postElement"));
 const TableElementOffcanvas = lazy(() => import("./Offcanvas/tableElement"));
 const BetweenElementOffcanvas = lazy(() => import("./Offcanvas/betweenElement"));
 const DividerElementOffcanvas = lazy(() => import("./Offcanvas/dividerElement"));
 const FormBlockOffcanvas = lazy(() => import("./Offcanvas/formBlock"));
-const ButtonGroupElementOffcanvas = lazy(
-  () => import("./Offcanvas/buttonGroupElement")
-);
-const ListElementOffcanvas = lazy(() => import("./Offcanvas/listElement"));
-const TabsElementOffcanvas = lazy(() => import("./Offcanvas/tabsElement"));
-const AccordionElementOffcanvas = lazy(() => import("./Offcanvas/accordionElement"));
 const FormElementOffcanvas = lazy(() => import("./Offcanvas/formElement"));
 const TopBarOffcanvas = lazy(() => import("./Offcanvas/topBar"));
 const FooterBarOffcanvas = lazy(() => import("./Offcanvas/footerBar"));
@@ -168,6 +168,129 @@ const FORM_ELEMENT_TYPE_SET = new Set([
 ]);
 const PREVIEW_SNAPSHOT_KEY = "wb:preview:snapshot:v1";
 const BUILDER_ACTIVE_PAGE_STORAGE_KEY = "wb:builder:active-page-id";
+const DATA_SLIDER_PERF_QUERY_PARAM = "dataSliderPerf";
+const STRUCTURE_PERF_QUERY_PARAM = "structurePerf";
+const CATEGORIES_PERF_QUERY_PARAM = "categoriesPerf";
+const TABS_PERF_QUERY_PARAM = "tabsPerf";
+const ACCORDION_PERF_QUERY_PARAM = "accordionPerf";
+const POST_PERF_QUERY_PARAM = "postPerf";
+const LIST_ITEMS_PERF_QUERY_PARAM = "listItemsPerf";
+
+function isDataSliderPerfEnabled() {
+  return (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get(
+      DATA_SLIDER_PERF_QUERY_PARAM
+    ) === "1"
+  );
+}
+
+function logDataSliderPerf(stage, details) {
+  if (!isDataSliderPerfEnabled()) return;
+  console.info(`[Data Slider Perf] ${stage}`, details);
+}
+
+function isStructurePerfEnabled() {
+  return (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get(
+      STRUCTURE_PERF_QUERY_PARAM
+    ) === "1"
+  );
+}
+
+function isStructureDragLabel(label) {
+  return label === "Column" || label === "Split";
+}
+
+function logStructurePerf(stage, details) {
+  if (!isStructurePerfEnabled()) return;
+  console.info(`[Structure Perf] ${stage}`, details);
+}
+
+function isCategoriesPerfEnabled() {
+  return (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get(
+      CATEGORIES_PERF_QUERY_PARAM
+    ) === "1"
+  );
+}
+
+function logCategoriesPerf(stage, details) {
+  if (!isCategoriesPerfEnabled()) return;
+  console.info(`[Categories Perf] ${stage}`, details);
+}
+
+function isTabsPerfEnabled() {
+  return (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get(TABS_PERF_QUERY_PARAM) ===
+      "1"
+  );
+}
+
+function logTabsPerf(stage, details) {
+  if (!isTabsPerfEnabled()) return;
+  console.info(`[Tabs Perf] ${stage}`, details);
+}
+
+function isAccordionPerfEnabled() {
+  return (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get(
+      ACCORDION_PERF_QUERY_PARAM
+    ) === "1"
+  );
+}
+
+function logAccordionPerf(stage, details) {
+  if (!isAccordionPerfEnabled()) return;
+  console.info(`[Accordion Perf] ${stage}`, details);
+}
+
+function isPostPerfEnabled() {
+  return (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get(POST_PERF_QUERY_PARAM) ===
+      "1"
+  );
+}
+
+function logPostPerf(stage, details) {
+  if (!isPostPerfEnabled()) return;
+  console.info(`[Post Perf] ${stage}`, details);
+}
+
+function isListItemsPerfEnabled() {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  return (
+    params.get(LIST_ITEMS_PERF_QUERY_PARAM) === "1" ||
+    params.get("listIconsPerf") === "1" ||
+    params.get("buttonGroupPerf") === "1"
+  );
+}
+
+function logListItemsPerf(stage, details) {
+  if (!isListItemsPerfEnabled()) return;
+  const prefix =
+    details?.listVariant === "buttonMulti" ? "Button Group" : "List";
+  console.info(`[${prefix} Perf] ${stage}`, details);
+}
+
+function isListDragLabel(label) {
+  return (
+    label === "List Item" ||
+    label === "List iCons" ||
+    label === "Button Group"
+  );
+}
+
+function getListVariantFromDragLabel(label) {
+  if (label === "Button Group") return "buttonMulti";
+  return label === "List iCons" ? "icons" : "items";
+}
 
 /** หา element ใน layouts ตาม id (คอลัมน์ / span / miniSpan) */
 function findLayoutElementById(layouts, eleId) {
@@ -229,25 +352,210 @@ function findLayoutElementById(layouts, eleId) {
   return null;
 }
 
+function startBuilderNavPerf(nextOpen) {
+  if (
+    typeof window === "undefined" ||
+    new URLSearchParams(window.location.search).get("builderNavPerf") !== "1"
+  ) {
+    return;
+  }
+  const previous = window.__builderNavPerf;
+  if (previous?.frameId != null) cancelAnimationFrame(previous.frameId);
+  if (previous?.timerId != null) clearTimeout(previous.timerId);
+  previous?.longTaskObserver?.disconnect?.();
+
+  const startedAt = performance.now();
+  const perf = {
+    active: true,
+    action: nextOpen ? "open" : "close",
+    startedAt,
+    committedAt: null,
+    firstPaintAt: null,
+    navbarCommits: 0,
+    navbarActualMs: 0,
+    navbarMaxMs: 0,
+    canvasCommits: 0,
+    canvasActualMs: 0,
+    canvasMaxMs: 0,
+    frameCount: 0,
+    frameGapTotalMs: 0,
+    frameGapMaxMs: 0,
+    droppedFrameCount: 0,
+    severeFrameCount: 0,
+    longTaskCount: 0,
+    longTaskTotalMs: 0,
+    longTaskMaxMs: 0,
+    lastFrameAt: startedAt,
+    frameId: null,
+    timerId: null,
+    longTaskObserver: null,
+  };
+  const onFrame = (timestamp) => {
+    if (!perf.active) return;
+    const gap = timestamp - perf.lastFrameAt;
+    perf.frameCount += 1;
+    perf.frameGapTotalMs += gap;
+    perf.frameGapMaxMs = Math.max(perf.frameGapMaxMs, gap);
+    if (gap > 24) perf.droppedFrameCount += 1;
+    if (gap > 50) perf.severeFrameCount += 1;
+    perf.lastFrameAt = timestamp;
+    perf.frameId = requestAnimationFrame(onFrame);
+  };
+  perf.frameId = requestAnimationFrame(onFrame);
+
+  try {
+    if (
+      typeof PerformanceObserver === "function" &&
+      PerformanceObserver.supportedEntryTypes?.includes("longtask")
+    ) {
+      perf.longTaskObserver = new PerformanceObserver((list) => {
+        list.getEntries().forEach((entry) => {
+          perf.longTaskCount += 1;
+          perf.longTaskTotalMs += entry.duration;
+          perf.longTaskMaxMs = Math.max(perf.longTaskMaxMs, entry.duration);
+        });
+      });
+      perf.longTaskObserver.observe({ type: "longtask", buffered: false });
+    }
+  } catch {
+    perf.longTaskObserver = null;
+  }
+
+  perf.timerId = window.setTimeout(() => {
+    perf.active = false;
+    if (perf.frameId != null) cancelAnimationFrame(perf.frameId);
+    perf.longTaskObserver?.disconnect?.();
+    const round = (value) => Math.round((Number(value) || 0) * 100) / 100;
+    console.info("[Builder Nav Panel Perf]", {
+      action: perf.action,
+      toggleToCommitMs:
+        perf.committedAt == null ? null : round(perf.committedAt - startedAt),
+      toggleToFirstPaintMs:
+        perf.firstPaintAt == null ? null : round(perf.firstPaintAt - startedAt),
+      measuredTransitionMs: round(performance.now() - startedAt),
+      navbarProfilerCommits: perf.navbarCommits,
+      navbarProfilerActualMs: round(perf.navbarActualMs),
+      navbarProfilerMaxMs: round(perf.navbarMaxMs),
+      canvasProfilerCommits: perf.canvasCommits,
+      canvasProfilerActualMs: round(perf.canvasActualMs),
+      canvasProfilerMaxMs: round(perf.canvasMaxMs),
+      frameCount: perf.frameCount,
+      frameGapAvgMs: round(
+        perf.frameGapTotalMs / Math.max(1, perf.frameCount)
+      ),
+      frameGapMaxMs: round(perf.frameGapMaxMs),
+      droppedFrameCount: perf.droppedFrameCount,
+      severeFrameCount: perf.severeFrameCount,
+      longTaskCount: perf.longTaskCount,
+      longTaskTotalMs: round(perf.longTaskTotalMs),
+      longTaskMaxMs: round(perf.longTaskMaxMs),
+      paletteItemCount:
+        document.querySelectorAll(".dash-nav-item").length,
+    });
+    if (window.__builderNavPerf === perf) {
+      window.__builderNavPerf = null;
+    }
+  }, 380);
+  window.__builderNavPerf = perf;
+}
+
 const Builder = ()=>{
   const location = useLocation();
   const isPreviewRoute = location.pathname === "/preview";
+  useEffect(() => {
+    if (isPreviewRoute || typeof window === "undefined") return undefined;
+    const preload = () => {
+      loadDataSliderElementOffcanvas().catch(() => {});
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(preload, { timeout: 1500 });
+      return () => window.cancelIdleCallback?.(idleId);
+    }
+    const timeoutId = window.setTimeout(preload, 500);
+    return () => window.clearTimeout(timeoutId);
+  }, [isPreviewRoute]);
   const handleLayoutPanelRender = useCallback(
-    (panelType, phase, actualDuration) => {
+    (panelType, phase, actualDuration, baseDuration) => {
+      const isDataSliderPanel = panelType === "Data Slider";
+      const isCategoriesPanel = panelType === "Catagories";
+      const isTabsPanel = panelType === "Tabs";
+      const isAccordionPanel = panelType === "Accordion";
+      const isPostPanel = panelType === "Post";
+      const isListPanel = panelType === "List";
+      const isButtonGroupPanel = panelType === "Button Group";
       if (
-        phase !== "mount" ||
-        new URLSearchParams(window.location.search).get(
+        (!isDataSliderPanel &&
+          !isCategoriesPanel &&
+          !isTabsPanel &&
+          !isAccordionPanel &&
+          !isPostPanel &&
+          !isListPanel &&
+          !isButtonGroupPanel &&
+          phase !== "mount") ||
+        (new URLSearchParams(window.location.search).get(
           "builderSectionPerf"
-        ) !== "1"
+        ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "dataSliderPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "categoriesPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "tabsPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "accordionPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "postPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "listItemsPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "listIconsPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "buttonGroupPerf"
+          ) !== "1")
       ) {
         return;
       }
-      console.info("[Builder Panel Render Perf]", {
+      if (isCategoriesPanel) {
+        window.__categoriesPanelProfilerPerf = {
+          phase,
+          actualDuration:
+            Math.round((Number(actualDuration) || 0) * 100) / 100,
+          baseDuration:
+            Math.round((Number(baseDuration) || 0) * 100) / 100,
+        };
+      }
+      console.info(
+        isDataSliderPanel
+          ? "[Data Slider Panel Render Perf]"
+          : isCategoriesPanel
+            ? "[Categories Panel Render Perf]"
+          : isTabsPanel
+            ? "[Tabs Panel Render Perf]"
+          : isAccordionPanel
+            ? "[Accordion Panel Render Perf]"
+          : isPostPanel
+            ? "[Post Panel Render Perf]"
+          : isListPanel
+            ? "[List Items Panel Render Perf]"
+          : isButtonGroupPanel
+            ? "[Button Group Panel Render Perf]"
+          : "[Builder Panel Render Perf]",
+        {
         panelType,
         phase,
         actualDuration:
           Math.round((Number(actualDuration) || 0) * 100) / 100,
-      });
+        baseDuration:
+          Math.round((Number(baseDuration) || 0) * 100) / 100,
+        }
+      );
     },
     []
   );
@@ -258,7 +566,39 @@ const Builder = ()=>{
 
 
   const [mobilePage,setMobilePage] = useState(0);
-  const [navOpen, setNavOpen] = useState(false);
+  const [navOpen, setNavOpenState] = useState(false);
+  const navOpenRef = useRef(false);
+  const setNavOpen = useCallback((nextValue) => {
+    const previous = navOpenRef.current;
+    const next =
+      typeof nextValue === "function" ? nextValue(previous) : nextValue;
+    const normalized = Boolean(next);
+    if (normalized === previous) return;
+    navOpenRef.current = normalized;
+    startBuilderNavPerf(normalized);
+    setNavOpenState(normalized);
+  }, []);
+  useLayoutEffect(() => {
+    navOpenRef.current = navOpen;
+    const perf = window.__builderNavPerf;
+    if (!perf?.active || perf.action !== (navOpen ? "open" : "close")) return;
+    perf.committedAt = performance.now();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (perf.active) perf.firstPaintAt = performance.now();
+      });
+    });
+  }, [navOpen]);
+  const recordBuilderNavRender = useCallback(
+    (_id, _phase, actualDuration) => {
+      const perf = window.__builderNavPerf;
+      if (!perf?.active) return;
+      perf.navbarCommits += 1;
+      perf.navbarActualMs += actualDuration;
+      perf.navbarMaxMs = Math.max(perf.navbarMaxMs, actualDuration);
+    },
+    []
+  );
   const [railExpanded, setRailExpanded] = useState(() => {
     try {
       return localStorage.getItem("dash-nav-rail-expanded") === "1";
@@ -669,6 +1009,48 @@ const Builder = ()=>{
     const openOffcavanas = useCallback((type,data,funct)=>{
       if (type) {
         setIsPageSettingsPanelOpen(false);
+        if (type === "Data Slider" && isDataSliderPerfEnabled()) {
+          window.__dataSliderPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Catagories" && isCategoriesPerfEnabled()) {
+          window.__categoriesPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Tabs" && isTabsPerfEnabled()) {
+          window.__tabsPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Accordion" && isAccordionPerfEnabled()) {
+          window.__accordionPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Post" && isPostPerfEnabled()) {
+          window.__postPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "List" && isListItemsPerfEnabled()) {
+          window.__listItemsPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Button Group" && isListItemsPerfEnabled()) {
+          window.__buttonGroupPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
         markBuilderPanelOpen(type, data?.id ?? data?.colData?.id);
       }
       setOffcanvas(type)
@@ -795,6 +1177,7 @@ const Builder = ()=>{
       dataSliderPerViewMobile: e.dataSliderPerViewMobile,
       dataSliderGap: e.dataSliderGap,
       dataSliderNavShape: e.dataSliderNavShape,
+      dataSliderNavShowOnWebsite: e.dataSliderNavShowOnWebsite,
       dataSliderNavColor: e.dataSliderNavColor,
       dataSliderNavColorOpacity: e.dataSliderNavColorOpacity,
       dataSliderNavActiveColor: e.dataSliderNavActiveColor,
@@ -1100,6 +1483,7 @@ const Builder = ()=>{
       tabsAlign: e.tabsAlign,
       tabsLayoutAxis: e.tabsLayoutAxis,
       tabsStyle: e.tabsStyle,
+      tabsTabLabelStyle: e.tabsTabLabelStyle,
       tabsGap: e.tabsGap,
       tabsMarginTop: e.tabsMarginTop,
       tabsMarginBottom: e.tabsMarginBottom,
@@ -1674,19 +2058,161 @@ const Builder = ()=>{
 
     const loadDragElementTemplate = useCallback((label) => {
       if (dragElementTemplateRef.current.has(label)) {
+        if (label === "Data Slider") {
+          logDataSliderPerf("template-cache-hit", { label });
+        } else if (isStructureDragLabel(label)) {
+          logStructurePerf("template-cache-hit", { label });
+        } else if (label === "Catagories") {
+          logCategoriesPerf("template-cache-hit", { label });
+        } else if (label === "Tabs") {
+          logTabsPerf("template-cache-hit", { label });
+        } else if (label === "Accordion") {
+          logAccordionPerf("template-cache-hit", { label });
+        } else if (label === "Post") {
+          logPostPerf("template-cache-hit", { label });
+        } else if (isListDragLabel(label)) {
+          logListItemsPerf("template-cache-hit", {
+            label,
+            listVariant: getListVariantFromDragLabel(label),
+          });
+        }
         return Promise.resolve(dragElementTemplateRef.current.get(label));
       }
       const pending = dragElementPromiseRef.current.get(label);
-      if (pending) return pending;
+      if (pending) {
+        if (label === "Data Slider") {
+          logDataSliderPerf("template-request-reused", { label });
+        } else if (isStructureDragLabel(label)) {
+          logStructurePerf("template-request-reused", { label });
+        } else if (label === "Catagories") {
+          logCategoriesPerf("template-request-reused", { label });
+        } else if (label === "Tabs") {
+          logTabsPerf("template-request-reused", { label });
+        } else if (label === "Accordion") {
+          logAccordionPerf("template-request-reused", { label });
+        } else if (label === "Post") {
+          logPostPerf("template-request-reused", { label });
+        } else if (isListDragLabel(label)) {
+          logListItemsPerf("template-request-reused", {
+            label,
+            listVariant: getListVariantFromDragLabel(label),
+          });
+        }
+        return pending;
+      }
+      const requestStartedAt =
+        (label === "Data Slider" && isDataSliderPerfEnabled()) ||
+        (isStructureDragLabel(label) && isStructurePerfEnabled()) ||
+        (label === "Catagories" && isCategoriesPerfEnabled()) ||
+        (label === "Tabs" && isTabsPerfEnabled()) ||
+        (label === "Accordion" && isAccordionPerfEnabled()) ||
+        (label === "Post" && isPostPerfEnabled()) ||
+        (isListDragLabel(label) && isListItemsPerfEnabled())
+          ? performance.now()
+          : 0;
       const request = createElement(label)
         .then((res) => {
           const template = normalizeDragElementTemplate(res?.data);
           dragElementTemplateRef.current.set(label, template);
           dragElementPromiseRef.current.delete(label);
+          if (label === "Data Slider") {
+            logDataSliderPerf("template-request-complete", {
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              itemCount: template?.dataSliderItems?.length ?? 0,
+            });
+          } else if (isStructureDragLabel(label)) {
+            logStructurePerf("template-request-complete", {
+              label,
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              sectionCount: template?.isSplitLayout
+                ? template?.sections?.length ?? 0
+                : 1,
+            });
+          } else if (label === "Catagories") {
+            logCategoriesPerf("template-request-complete", {
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              itemCount: template?.catagoriesItems?.length ?? 0,
+            });
+          } else if (label === "Tabs") {
+            logTabsPerf("template-request-complete", {
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              itemCount: template?.tabsItems?.length ?? 0,
+            });
+          } else if (label === "Accordion") {
+            logAccordionPerf("template-request-complete", {
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              itemCount: template?.accordionItems?.length ?? 0,
+            });
+          } else if (label === "Post") {
+            logPostPerf("template-request-complete", {
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              itemCount: template?.postElements?.length ?? 0,
+            });
+          } else if (isListDragLabel(label)) {
+            logListItemsPerf("template-request-complete", {
+              label,
+              listVariant: getListVariantFromDragLabel(label),
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              itemCount: template?.listItems?.length ?? 0,
+            });
+          }
           return template;
         })
         .catch((err) => {
           dragElementPromiseRef.current.delete(label);
+          if (label === "Data Slider") {
+            logDataSliderPerf("template-request-error", {
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              message: err?.message || String(err),
+            });
+          } else if (isStructureDragLabel(label)) {
+            logStructurePerf("template-request-error", {
+              label,
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              message: err?.message || String(err),
+            });
+          } else if (label === "Catagories") {
+            logCategoriesPerf("template-request-error", {
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              message: err?.message || String(err),
+            });
+          } else if (label === "Tabs") {
+            logTabsPerf("template-request-error", {
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              message: err?.message || String(err),
+            });
+          } else if (label === "Accordion") {
+            logAccordionPerf("template-request-error", {
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              message: err?.message || String(err),
+            });
+          } else if (label === "Post") {
+            logPostPerf("template-request-error", {
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              message: err?.message || String(err),
+            });
+          } else if (isListDragLabel(label)) {
+            logListItemsPerf("template-request-error", {
+              label,
+              listVariant: getListVariantFromDragLabel(label),
+              requestMs:
+                Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              message: err?.message || String(err),
+            });
+          }
           throw err;
         });
       dragElementPromiseRef.current.set(label, request);
@@ -1716,13 +2242,145 @@ const Builder = ()=>{
       }
       const cached = dragElementTemplateRef.current.get(newElement);
       if (dragElementTemplateRef.current.has(newElement)) {
+        const cloneStartedAt =
+          (newElement === "Data Slider" && isDataSliderPerfEnabled()) ||
+          (isStructureDragLabel(newElement) && isStructurePerfEnabled()) ||
+          (newElement === "Catagories" && isCategoriesPerfEnabled()) ||
+          (newElement === "Tabs" && isTabsPerfEnabled()) ||
+          (newElement === "Accordion" && isAccordionPerfEnabled()) ||
+          (newElement === "Post" && isPostPerfEnabled()) ||
+          (isListDragLabel(newElement) && isListItemsPerfEnabled())
+            ? performance.now()
+            : 0;
         dragElementRef.current = _.cloneDeep(cached);
+        if (newElement === "Data Slider") {
+          logDataSliderPerf("drag-start", {
+            source: "template-cache",
+            cloneMs:
+              Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+            itemCount: dragElementRef.current?.dataSliderItems?.length ?? 0,
+          });
+        } else if (isStructureDragLabel(newElement)) {
+          logStructurePerf("drag-start", {
+            label: newElement,
+            source: "template-cache",
+            cloneMs:
+              Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+          });
+        } else if (newElement === "Catagories") {
+          logCategoriesPerf("drag-start", {
+            source: "template-cache",
+            cloneMs:
+              Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+            itemCount: dragElementRef.current?.catagoriesItems?.length ?? 0,
+          });
+        } else if (newElement === "Tabs") {
+          logTabsPerf("drag-start", {
+            source: "template-cache",
+            cloneMs:
+              Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+            itemCount: dragElementRef.current?.tabsItems?.length ?? 0,
+          });
+        } else if (newElement === "Accordion") {
+          logAccordionPerf("drag-start", {
+            source: "template-cache",
+            cloneMs:
+              Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+            itemCount: dragElementRef.current?.accordionItems?.length ?? 0,
+          });
+        } else if (newElement === "Post") {
+          logPostPerf("drag-start", {
+            source: "template-cache",
+            cloneMs:
+              Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+            itemCount: dragElementRef.current?.postElements?.length ?? 0,
+          });
+        } else if (isListDragLabel(newElement)) {
+          logListItemsPerf("drag-start", {
+            label: newElement,
+            listVariant: getListVariantFromDragLabel(newElement),
+            source: "template-cache",
+            cloneMs:
+              Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+            itemCount: dragElementRef.current?.listItems?.length ?? 0,
+          });
+        }
         return;
       }
+      const waitStartedAt =
+        (newElement === "Data Slider" && isDataSliderPerfEnabled()) ||
+        (isStructureDragLabel(newElement) && isStructurePerfEnabled()) ||
+        (newElement === "Catagories" && isCategoriesPerfEnabled()) ||
+        (newElement === "Tabs" && isTabsPerfEnabled()) ||
+        (newElement === "Accordion" && isAccordionPerfEnabled()) ||
+        (newElement === "Post" && isPostPerfEnabled()) ||
+        (isListDragLabel(newElement) && isListItemsPerfEnabled())
+          ? performance.now()
+          : 0;
       loadDragElementTemplate(newElement)
         .then((template) => {
           if (dragElementRequestTokenRef.current !== token) return;
+          const cloneStartedAt = performance.now();
           dragElementRef.current = _.cloneDeep(template);
+          if (newElement === "Data Slider") {
+            logDataSliderPerf("drag-template-ready", {
+              waitMs:
+                Math.round((cloneStartedAt - waitStartedAt) * 100) / 100,
+              cloneMs:
+                Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+              itemCount: dragElementRef.current?.dataSliderItems?.length ?? 0,
+            });
+          } else if (isStructureDragLabel(newElement)) {
+            logStructurePerf("drag-template-ready", {
+              label: newElement,
+              waitMs:
+                Math.round((cloneStartedAt - waitStartedAt) * 100) / 100,
+              cloneMs:
+                Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+            });
+          } else if (newElement === "Catagories") {
+            logCategoriesPerf("drag-template-ready", {
+              waitMs:
+                Math.round((cloneStartedAt - waitStartedAt) * 100) / 100,
+              cloneMs:
+                Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+              itemCount: dragElementRef.current?.catagoriesItems?.length ?? 0,
+            });
+          } else if (newElement === "Tabs") {
+            logTabsPerf("drag-template-ready", {
+              waitMs:
+                Math.round((cloneStartedAt - waitStartedAt) * 100) / 100,
+              cloneMs:
+                Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+              itemCount: dragElementRef.current?.tabsItems?.length ?? 0,
+            });
+          } else if (newElement === "Accordion") {
+            logAccordionPerf("drag-template-ready", {
+              waitMs:
+                Math.round((cloneStartedAt - waitStartedAt) * 100) / 100,
+              cloneMs:
+                Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+              itemCount: dragElementRef.current?.accordionItems?.length ?? 0,
+            });
+          } else if (newElement === "Post") {
+            logPostPerf("drag-template-ready", {
+              waitMs:
+                Math.round((cloneStartedAt - waitStartedAt) * 100) / 100,
+              cloneMs:
+                Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+              itemCount: dragElementRef.current?.postElements?.length ?? 0,
+            });
+          } else if (isListDragLabel(newElement)) {
+            logListItemsPerf("drag-template-ready", {
+              label: newElement,
+              listVariant: getListVariantFromDragLabel(newElement),
+              waitMs:
+                Math.round((cloneStartedAt - waitStartedAt) * 100) / 100,
+              cloneMs:
+                Math.round((performance.now() - cloneStartedAt) * 100) / 100,
+              itemCount: dragElementRef.current?.listItems?.length ?? 0,
+            });
+          }
         })
         .catch(err=>{
           console.log(err);
@@ -4356,7 +5014,9 @@ useEffect(() => {
 
 
                 {!isPreviewRoute && (
-                  <Navbar handleDragElement={handleDragElement} prepareDragElement={prepareDragElement} isDark={darkMode} selectedMenuId={selectedMenuId} setSelectedMenuId={setSelectedMenuId} updateNewTheme={updateNewTheme} setMobilePage={setMobilePage}  mobilePage={mobilePage}  navOpen={navOpen} setNavOpen={setNavOpen} railExpanded={railExpanded}/>
+                  <Profiler id="BuilderNavPanel" onRender={recordBuilderNavRender}>
+                    <Navbar handleDragElement={handleDragElement} prepareDragElement={prepareDragElement} isDark={darkMode} selectedMenuId={selectedMenuId} setSelectedMenuId={setSelectedMenuId} updateNewTheme={updateNewTheme} setMobilePage={setMobilePage}  mobilePage={mobilePage}  navOpen={navOpen} setNavOpen={setNavOpen} railExpanded={railExpanded}/>
+                  </Profiler>
                 )}
 
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -5427,30 +6087,56 @@ useEffect(() => {
               />
              )}
              {offcanvas === "Data Slider" && (
-              <DataSliderElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="DataSliderPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Data Slider",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <DataSliderElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
              {offcanvas === "Catagories" && (
-              <CatagoriesElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="CategoriesPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Catagories",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <CatagoriesElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
 
              {offcanvas === "List Box" && (
@@ -5468,74 +6154,139 @@ useEffect(() => {
              )}
 
              {offcanvas === "List" && (
-              <ListElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="ListItemsPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "List",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ListElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
              {offcanvas === "Button Group" && (
-              <ButtonGroupElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="ButtonGroupPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Button Group",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ButtonGroupElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
 
              {offcanvas === "Tabs" && (
-              <TabsElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                darkMode={darkMode}
-                theme={theme}
-              />
+              <Profiler
+                id="TabsPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Tabs",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <TabsElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  darkMode={darkMode}
+                  theme={theme}
+                />
+              </Profiler>
              )}
 
              {offcanvas === "Accordion" && (
-              <AccordionElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                darkMode={darkMode}
-                theme={theme}
-              />
+              <Profiler
+                id="AccordionPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Accordion",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <AccordionElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  darkMode={darkMode}
+                  theme={theme}
+                />
+              </Profiler>
              )}
 
              {offcanvas === "Post" && (
-              <PostElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="PostPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Post",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <PostElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
              {offcanvas === "Table" && (
               <TableElementOffcanvas

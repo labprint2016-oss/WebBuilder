@@ -16,6 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { mergeCatagoriesElement } from "./catagoriesElementConfig";
 import { isButtonFullWidthEnabled } from "./buttonElementConfig";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 const catagoriesButtonStripScrollMemory = new Map();
 
@@ -243,6 +244,7 @@ const Catagories = ({
   onUpdate,
   theme,
 }) => {
+  const panelPreview = usePanelPreview("ctg", elementData?.id);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
@@ -259,7 +261,9 @@ const Catagories = ({
     );
   };
   const useLayoutSelectionFrame = builderMode === "Layout Mode" && selected;
-  const data = mergeCatagoriesElement(elementData);
+  const data = mergeCatagoriesElement(
+    panelPreview ? { ...elementData, ...panelPreview } : elementData
+  );
   const tabs = Array.isArray(data.catagoriesTabs) ? data.catagoriesTabs : [];
   const activeCategoryId = tabs.some(
     (tab) => String(tab?.id) === String(data?.catagoriesActiveCategoryId)
