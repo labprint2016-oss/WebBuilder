@@ -403,6 +403,7 @@ export default function RichTextEditorModal({
   const editorBaseFontSizePxRef = useRef(16);
   const lastRangeRef = useRef(null);
   const debounceRef = useRef(null);
+  const openPerfLoggedRef = useRef(false);
 
   fontSizePxRef.current = fontSizePx;
   lineHeightPxRef.current = lineHeightPx;
@@ -469,7 +470,31 @@ export default function RichTextEditorModal({
     if (r && editorRef.current) {
       setDomSelectionRange(editorRef.current, r.start, r.end);
     }
+    const textPerfEnabled =
+      new URLSearchParams(window.location.search).get("textPerf") === "1";
+    const perfSource = sourceRef.current;
+    if (
+      textPerfEnabled &&
+      perfSource?.type === "text" &&
+      !openPerfLoggedRef.current
+    ) {
+      openPerfLoggedRef.current = true;
+      const openPerf = window.__textEditorOpenPerf;
+      console.info("[Text Editor Perf] open", {
+        target: String(perfSource?.id || ""),
+        openToEditorCommitMs:
+          openPerf?.startedAt == null
+            ? null
+            : Number((performance.now() - openPerf.startedAt).toFixed(1)),
+        segments: docRef.current?.segments?.length || 0,
+      });
+      window.__textEditorOpenPerf = null;
+    }
   }, [open, domEpoch, paintEditor]);
+
+  useEffect(() => {
+    if (!open) openPerfLoggedRef.current = false;
+  }, [open]);
 
   const rememberSelection = () => {
     const root = editorRef.current;

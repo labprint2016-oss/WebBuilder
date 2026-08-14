@@ -196,6 +196,12 @@ function ListItemRow({
     : LIST_ELEMENT_DEFAULTS.listTextSize;
 
   const iconContainer = resolveListItemsRowIconContainer(item, sharedData);
+  const listImagePreviewScale =
+    isListImage &&
+    sharedData?.listImageSizePreviewActive === true &&
+    Number.isFinite(Number(sharedData?.containerSize))
+      ? Math.max(28, Number(sharedData.containerSize)) / iconContainer
+      : 1;
 
   const listTextGapAdjust = Number.isFinite(Number(sharedData?.listTextGapAdjust))
     ? Number(sharedData.listTextGapAdjust)
@@ -475,6 +481,13 @@ function ListItemRow({
                       height: iconContainer,
                       minWidth: iconContainer,
                       minHeight: iconContainer,
+                      transform:
+                        listImagePreviewScale !== 1
+                          ? `scale(${listImagePreviewScale})`
+                          : undefined,
+                      transformOrigin: "left center",
+                      willChange:
+                        listImagePreviewScale !== 1 ? "transform" : undefined,
                       ...listImageCornerStyle,
                       backgroundColor: listImageSrc ? "transparent" : "#e5e7eb",
                       cursor: isLayoutMode ? "default" : "pointer",
@@ -1545,7 +1558,10 @@ const ListElement = ({
   }
 
   /* ---- Compound path (shared merge) ---- */
-  const merged = mergeListElement(elementData);
+  const merged =
+    elementData?.listImageSizePreviewActive === true
+      ? elementData
+      : mergeListElement(elementData);
   const items = merged.listItems || [];
 
   /** margin รอบกลุ่ม List ทั้งก้อน (ราก element) — ไม่ใช่ระยะต่อแถว */

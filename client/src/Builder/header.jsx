@@ -1,5 +1,6 @@
 import React, {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   useRef,
@@ -149,6 +150,16 @@ const Header = ({
   const normalizeTopBarIcon = (icon) =>
     icon?.name && icon.name !== "fa0" ? icon : { type: "fas", name: "faHouse" };
   const navigate = useNavigate();
+  const [optimisticBuilderMode, setOptimisticBuilderMode] =
+    useState(builderMode);
+  useEffect(() => {
+    setOptimisticBuilderMode(builderMode);
+  }, [builderMode]);
+  useLayoutEffect(() => {
+    const perf = window.__builderModePerf;
+    if (!perf || perf.to !== optimisticBuilderMode) return;
+    perf.headerCommitMs = performance.now() - perf.startedAt;
+  }, [optimisticBuilderMode]);
 
   const toBoolean = (value) => {
     if (typeof value === "boolean") return value;
@@ -358,10 +369,11 @@ const Header = ({
             type="button"
             disabled={disableModeToggle}
             className={`dash-header-btn-group-btn ${
-              value === builderMode ? "is-active" : ""
+              value === optimisticBuilderMode ? "is-active" : ""
             }`}
             onClick={() => {
               if (disableModeToggle) return;
+              setOptimisticBuilderMode(value);
               setBuilderMode(value);
             }}
           >

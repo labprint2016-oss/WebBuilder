@@ -1,4 +1,4 @@
-import { useEffect, useState,useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState,useRef } from "react";
 import { getTheme } from "../../../Functions/theme";
 import TextField from "@mui/material/TextField";
 import {
@@ -28,10 +28,14 @@ import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckCla
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { panelGroupButtonSx } from "../panelControlSx";
 import {
+  getBuilderPanelOpenStartedAt,
   markBuilderPanelMounted,
   usePanelSliderPreview,
 } from "../panelPreviewStore";
 
+const columnPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("structurePerf") === "1";
 
 const COLUMN_PADDING_MAX = 200;
 const THEME_RANGE_SLIDER_CLASS = `
@@ -126,16 +130,26 @@ const ColumnOffcanvas = ({
   updateColumn: onUpdate,
   close,
   textColor,
+  theme: themeProp,
   panelLabel = "Column",
   elementDataKey = "colData",
   onUpdateWithData = null,
 }) => {
-
-
-
+    const initialRenderStartedAtRef = useRef(
+      columnPanelPerfEnabled ? performance.now() : 0
+    );
+    const panelTargetId = element?.[elementDataKey]?.id;
+    const panelOpenStartedAtRef = useRef(
+      getBuilderPanelOpenStartedAt("Column", panelTargetId) ??
+        window.__columnPanelOpenPerf?.startedAt ??
+        null
+    );
+    const mountBreakdownLoggedRef = useRef(false);
     const [data,setData] = useState(element?.[elementDataKey] || {})
+    const lastCommittedDataRef = useRef(element?.[elementDataKey] || {});
     const [updated, setUpdated] = useState(false);
-    const [theme, setTheme] = useState(null);
+    const [loadedTheme, setLoadedTheme] = useState(null);
+    const theme = themeProp || loadedTheme;
     const [openColorTableBorder, setOpenColorTableBorder] = useState(false);
     const [openColorTable, setOpenColorTable] = useState(false);
     const [openColorTable1, setOpenColorTable1] = useState(false);
@@ -147,8 +161,21 @@ const ColumnOffcanvas = ({
     const anchorRefBorder = useRef(null);
     const anchorRef = useRef(null);
     const anchorRefGradient = useRef(null);
-    const panelTargetId = element?.[elementDataKey]?.id;
-    useEffect(() => {
+    useLayoutEffect(() => {
+      if (!mountBreakdownLoggedRef.current) {
+        mountBreakdownLoggedRef.current = true;
+        if (columnPanelPerfEnabled) {
+          const now = performance.now();
+          console.info("[Column Panel Mount Breakdown]", {
+            target: String(panelTargetId || ""),
+            openToPanelCommitMs: panelOpenStartedAtRef.current
+              ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+              : null,
+            panelRenderToCommitMs:
+              Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          });
+        }
+      }
       markBuilderPanelMounted("Column", panelTargetId);
     }, [panelTargetId]);
     const normalizeForCommit = (value) => {
@@ -160,10 +187,17 @@ const ColumnOffcanvas = ({
     };
     const commitData = (latest) => {
       const normalized = normalizeForCommit(latest);
+      const previous = lastCommittedDataRef.current || {};
+      const changedFields = Object.keys(normalized).filter(
+        (key) => !Object.is(previous?.[key], normalized?.[key])
+      );
+      lastCommittedDataRef.current = normalized;
       if (typeof onUpdateWithData === "function") {
         onUpdateWithData(normalized, element, onUpdate);
       } else {
-        onUpdate(normalized, normalized.id, element?.conID);
+        onUpdate(normalized, normalized.id, element?.conID, {
+          panelChangedFields: changedFields,
+        });
       }
     };
     const {
@@ -180,9 +214,10 @@ const ColumnOffcanvas = ({
 
 
     const loadTheme = () => {
+        if (themeProp) return;
         getTheme("68d37327bedb0efab7dacafb")
           .then((res) => {
-            setTheme(res.data);
+            setLoadedTheme(res.data);
     
           })
           .catch((err) => console.log(err));
@@ -190,7 +225,7 @@ const ColumnOffcanvas = ({
     
       useEffect(() => {
         loadTheme();
-      },[]);
+      },[themeProp]);
 
     const minusPadding = (value) => {
         return value - 1;
@@ -252,7 +287,9 @@ const ColumnOffcanvas = ({
 
       
       useEffect(() => {
-        setData(element?.[elementDataKey] || {});
+        const nextData = element?.[elementDataKey] || {};
+        setData(nextData);
+        lastCommittedDataRef.current = nextData;
         setUpdated(false)
       }, [element?.[elementDataKey]?.id, elementDataKey]);
 
@@ -283,37 +320,24 @@ const ColumnOffcanvas = ({
       
       ];
 
-      const [allColors,setAllColors] = useState([])
-  const basicColors = THEME_PANEL_BASIC_COLOR_SWATCHES
-
-  useEffect(()=>{
-      if(allColors.length === 0 && theme){
-        theme?.mainColor.map((color,i)=>{
-          setAllColors(prev=>{
-            return [...prev,{type:"mainColor",index:i}]
-          })
-        })
-        theme?.textColor.map((color,i)=>{
-          setAllColors(prev=>{
-            return [...prev,{type:"textColor",index:i}]
-          })
-        })
-        theme?.otherColor.map((color,i)=>{
-          setAllColors(prev=>{
-            return [...prev,{type:"otherColor",index:i}]
-          })
-        })
-        basicColors.map((color)=>{
-          setAllColors(prev=>{
-            return [...prev,color]
-          })
-        })
-
-
-      }else return
-       
-    
-  },[theme])
+  const allColors = useMemo(() => {
+    if (!theme) return THEME_PANEL_BASIC_COLOR_SWATCHES;
+    return [
+      ...(theme.mainColor || []).map((_, index) => ({
+        type: "mainColor",
+        index,
+      })),
+      ...(theme.textColor || []).map((_, index) => ({
+        type: "textColor",
+        index,
+      })),
+      ...(theme.otherColor || []).map((_, index) => ({
+        type: "otherColor",
+        index,
+      })),
+      ...THEME_PANEL_BASIC_COLOR_SWATCHES,
+    ];
+  }, [theme]);
   const colorlabels = ["สีพื้นหลังแบบสีพื้น","สีพื้นหลังแบบไล่โทน"]
   const columnGradientGi = columnGradientPicker === "end" ? 1 : 0;
   const columnGradientDeg = Number(data.degrees);

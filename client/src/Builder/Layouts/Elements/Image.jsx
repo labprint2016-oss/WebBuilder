@@ -36,6 +36,7 @@ import { setColor } from "../../../../function";
 import IconAwsome from "../../IconAwsome";
 import { SegmentedRichTextInner } from "../../richText/SegmentedRichText";
 import { migrateLabelToParagraph } from "../../richText/richTextParagraphModel";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 const hasImageSrc = (s) => typeof s === "string" && s.trim() !== "";
 const DEFAULT_IMAGE_HOVER_TEXT =
@@ -46,7 +47,7 @@ const IMAGE_HOVER_EXTRA_BUTTON = "button";
 
 /** ตำแหน่งไอคอนรูป placeholder เมื่อยังไม่มี src — `topRight` ใช้กับ Video/Lightbox */
 const Image = ({
-  elementData,
+  elementData: committedElementData,
   selected,
   hover,
   animationForElement,
@@ -60,6 +61,14 @@ const Image = ({
   isHoverLocked = false,
   prioritizeLoad = false,
 }) => {
+  const panelPreview = usePanelPreview(
+    committedElementData?.type === "imgo" ? "imgo" : "imgh",
+    committedElementData?.type === "imgh" ||
+      committedElementData?.type === "imgo"
+      ? committedElementData?.id
+      : null
+  );
+  const elementData = panelPreview || committedElementData;
   const {
     src,
     id,

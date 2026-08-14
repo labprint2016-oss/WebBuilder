@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Box, Button, ButtonGroup, Stack, Switch, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { panelGroupButtonSx } from "../panelControlSx";
@@ -26,6 +33,15 @@ import {
   mergeListBoxElement,
   migrateListBoxItemsGlyphMainColor0ToWhiteWhenFramingOn,
 } from "../Layouts/Elements/listBoxElementConfig";
+import {
+  getBuilderPanelOpenStartedAt,
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
+
+const listBoxPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("listBoxPerf") === "1";
 
 /** สัดส่วนความกว้างปุ่มรูปแบบ — ให้ข้อความไทยอยู่บรรทัดเดียวในแผง (~400px) */
 const LIST_BOX_VARIANT_BUTTON_FLEX = {
@@ -239,12 +255,130 @@ const THEME_RANGE_INPUT_CLASS = `
 `;
 
 const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) => {
-  const [draft, setDraft] = useState(() => mergeListBoxElement(element));
+  const initialRenderStartedAtRef = useRef(
+    listBoxPanelPerfEnabled ? performance.now() : 0
+  );
+  const rangeGestureActiveRef = useRef(false);
+  const draftRef = useRef(null);
+  const panelDraftFrameRef = useRef(null);
+  const pendingPanelDraftRef = useRef(null);
+  const [draft, setDraftState] = useState(() => mergeListBoxElement(element));
+  draftRef.current = draft;
+  const setDraft = useCallback((update) => {
+    const next =
+      typeof update === "function" ? update(draftRef.current) : update;
+    draftRef.current = next;
+    if (!rangeGestureActiveRef.current) {
+      pendingPanelDraftRef.current = next;
+      if (panelDraftFrameRef.current == null) {
+        panelDraftFrameRef.current = requestAnimationFrame(() => {
+          panelDraftFrameRef.current = null;
+          const pending = pendingPanelDraftRef.current;
+          pendingPanelDraftRef.current = null;
+          if (pending) setDraftState(pending);
+        });
+      }
+    }
+  }, []);
+  const elementRef = useRef(element);
+  elementRef.current = element;
+  const layoutSyncScheduledRef = useRef(false);
+  const pendingLayoutRef = useRef(null);
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    getBuilderPanelOpenStartedAt("List Box", panelTargetId) ??
+      window.__listBoxPanelOpenPerf?.startedAt ??
+      null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (listBoxPanelPerfEnabled) {
+        const now = performance.now();
+        console.info("[List Box Panel Mount Breakdown]", {
+          target: String(panelTargetId || ""),
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          itemCount: Array.isArray(draft?.listBoxItems)
+            ? draft.listBoxItems.length
+            : 0,
+          variant: draft?.listBoxVariant,
+        });
+      }
+    }
+    markBuilderPanelMounted("List Box", panelTargetId);
+  }, [panelTargetId]);
 
   useEffect(() => {
     const merged = mergeListBoxElement(element);
     setDraft((prev) => (lodash.isEqual(prev, merged) ? prev : merged));
   }, [element]);
+
+  useEffect(
+    () => () => {
+      if (panelDraftFrameRef.current != null) {
+        cancelAnimationFrame(panelDraftFrameRef.current);
+      }
+      panelDraftFrameRef.current = null;
+      pendingPanelDraftRef.current = null;
+    },
+    []
+  );
+
+  const scheduleLayoutSync = useCallback(
+    (next) => {
+      const base = elementRef.current || {};
+      const changedFields = Object.keys(next || {}).filter(
+        (key) => !Object.is(base?.[key], next?.[key])
+      );
+      pendingLayoutRef.current = {
+        snapshot: next,
+        changedFields,
+        queuedAt: listBoxPanelPerfEnabled ? performance.now() : 0,
+      };
+      if (layoutSyncScheduledRef.current) return;
+      layoutSyncScheduledRef.current = true;
+      queueMicrotask(() => {
+        layoutSyncScheduledRef.current = false;
+        const pending = pendingLayoutRef.current;
+        pendingLayoutRef.current = null;
+        if (!pending?.snapshot) return;
+        const updateStartedAt = listBoxPanelPerfEnabled
+          ? performance.now()
+          : 0;
+        onUpdate?.(pending.snapshot, {
+          changedFields: pending.changedFields,
+        });
+        if (listBoxPanelPerfEnabled) {
+          console.info("[List Box Panel Perf] update", {
+            target: pending.snapshot?.id,
+            fields: pending.changedFields,
+            queueMs:
+              Math.round((updateStartedAt - pending.queuedAt) * 100) / 100,
+            updateDispatchMs:
+              Math.round((performance.now() - updateStartedAt) * 100) / 100,
+          });
+        }
+      });
+    },
+    [onUpdate]
+  );
+
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "lstb",
+    targetIds: [panelTargetId],
+    data: draft,
+    setData: setDraft,
+    onCommit: (latest) => {
+      setDraft(latest);
+      scheduleLayoutSync(latest);
+    },
+  });
 
   const allColors = useMemo(() => {
     if (!theme?.mainColor?.length) return [];
@@ -265,9 +399,13 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
   const commit = useCallback(
     (next) => {
       const cleaned = mergeListBoxElement(next);
-      onUpdate?.(cleaned);
+      if (rangeGestureActiveRef.current) {
+        updateSlider(() => cleaned);
+        return;
+      }
+      scheduleLayoutSync(cleaned);
     },
-    [onUpdate]
+    [scheduleLayoutSync, updateSlider]
   );
 
   const items = draft.listBoxItems || [];
@@ -363,6 +501,45 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
     <aside
       className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
       style={{ color: textColor || undefined }}
+      onPointerDownCapture={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          rangeGestureActiveRef.current = true;
+        }
+      }}
+      onInputCapture={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          const min = Number(event.target.min);
+          const max = Number(event.target.max);
+          const value = Number(event.target.value);
+          if (
+            Number.isFinite(min) &&
+            Number.isFinite(max) &&
+            max > min &&
+            Number.isFinite(value)
+          ) {
+            event.target.style.setProperty(
+              "--pos",
+              `${((value - min) / (max - min)) * 100}%`
+            );
+          }
+        }
+      }}
+      onPointerUp={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointerup");
+      }}
+      onPointerCancel={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointercancel");
+      }}
     >
       <div className="flex shrink-0 items-center justify-between dash-panel-header bg-gray-100 px-6 pb-3 pt-5 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
@@ -511,7 +688,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                         min={0}
                         max={LISTBOX_MARGIN_SLIDER_MAX}
                         step={1}
-                        value={listBoxMarginTop}
+                        defaultValue={listBoxMarginTop}
                         onChange={(e) => {
                           const n = Number(e.target.value);
                           const v = Number.isFinite(n)
@@ -540,7 +717,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                         min={0}
                         max={LISTBOX_MARGIN_SLIDER_MAX}
                         step={1}
-                        value={listBoxMarginBottom}
+                        defaultValue={listBoxMarginBottom}
                         onChange={(e) => {
                           const n = Number(e.target.value);
                           const v = Number.isFinite(n)
@@ -719,7 +896,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                               min={LISTBOX_ICON_CORNER_SLIDER_MIN}
                               max={LISTBOX_ICON_CORNER_SLIDER_MAX}
                               step={1}
-                              value={listBoxIconCornerRadius}
+                              defaultValue={listBoxIconCornerRadius}
                               onChange={(e) => {
                                 const n = Number(e.target.value);
                                 const v = Number.isFinite(n)
@@ -776,7 +953,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                           min={LISTBOX_ICON_BG_SLIDER_MIN}
                           max={LISTBOX_ICON_BG_SLIDER_MAX}
                           step={1}
-                          value={listBoxIconBgWidth}
+                          defaultValue={listBoxIconBgWidth}
                           onChange={(e) => {
                             const n = Number(e.target.value);
                             const v = Number.isFinite(n)
@@ -817,7 +994,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                         min={LISTBOX_ICON_SIZE_SLIDER_MIN}
                         max={LISTBOX_ICON_SIZE_SLIDER_MAX}
                         step={1}
-                        value={listBoxIconSize}
+                        defaultValue={listBoxIconSize}
                         onChange={(e) => {
                           const n = Number(e.target.value);
                           const v = Number.isFinite(n)
@@ -932,7 +1109,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                         min={0}
                         max={255}
                         step={1}
-                        value={
+                        defaultValue={
                           Number.isFinite(Number(draft.listBoxGridDividerOpacity))
                             ? Number(draft.listBoxGridDividerOpacity)
                             : 255

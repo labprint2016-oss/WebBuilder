@@ -1,15 +1,30 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Box, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { Switch } from "@mui/material";
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Check, Minus, Plus, Trash2 } from "lucide-react";
-import lodash from "lodash";
 import Range from "../HTML/Range";
 import MainLabel from "../HTML/MainLabel";
 import SelectLine from "../HTML/SelectLine";
 import { mergeTableElement } from "../Layouts/Elements/tableElementConfig";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
+import {
+  getBuilderPanelOpenStartedAt,
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
+
+const dataTablePanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("dataTablePerf") === "1";
 
 /* ─── Color modes ─── */
 const TABLE_COLOR_MODES = [
@@ -54,32 +69,54 @@ const TblPanelSwitch = styled(Switch, {
 }));
 
 /* ─── Range row ─── */
-const RangeRow = ({ label, value, min, max, step = 1, onChange, accentColor, mt = 2 }) => (
-  <Box sx={{ width: "100%", px: 0.25, mt }} aria-label={label}>
-    {label != null && (
-      <div className="mb-1">
-        <Typography component="div" sx={{
-          display: "flex", alignItems: "center", gap: 1, flex: 1,
-          fontSize: 13, fontWeight: 600, color: "var(--dash-panel-heading, #0f172a)", mb: 0.35,
-          fontVariantNumeric: "tabular-nums",
-          ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
-        }}>
-          {label}{" "}
-          <span className="text-slate-400 dark:text-slate-400">{Math.round(value)}</span>
-          <div className="dash-heading-rule min-w-0 flex-1 border-b" />
-        </Typography>
+const RangeRow = ({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  onChange,
+  accentColor,
+  mt = 2,
+}) => {
+  const [displayValue, setDisplayValue] = useState(value);
+  useEffect(() => {
+    setDisplayValue(value);
+  }, [value]);
+  return (
+    <Box sx={{ width: "100%", px: 0.25, mt }} aria-label={label}>
+      {label != null && (
+        <div className="mb-1">
+          <Typography component="div" sx={{
+            display: "flex", alignItems: "center", gap: 1, flex: 1,
+            fontSize: 13, fontWeight: 600, color: "var(--dash-panel-heading, #0f172a)", mb: 0.35,
+            fontVariantNumeric: "tabular-nums",
+            ".dark &": { color: "var(--dash-panel-heading, #f8fafc)" },
+          }}>
+            {label}{" "}
+            <span className="text-slate-400 dark:text-slate-400">
+              {Math.round(displayValue)}
+            </span>
+            <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+          </Typography>
+        </div>
+      )}
+      <div className="w-full px-[2px] pt-[2px] pb-[2px]">
+        <Range
+          min={min} max={max} step={step} value={displayValue}
+          uncontrolled
+          handleChange={(e) => {
+            const next = Number(e.target.value);
+            setDisplayValue(next);
+            onChange(next);
+          }}
+          pos={((displayValue - min) / (max - min)) * 100}
+          color={accentColor || "#0d9488"}
+        />
       </div>
-    )}
-    <div className="w-full px-[2px] pt-[2px] pb-[2px]">
-      <Range
-        min={min} max={max} step={step} value={value}
-        handleChange={(e) => onChange(Number(e.target.value))}
-        pos={((value - min) / (max - min)) * 100}
-        color={accentColor || "#0d9488"}
-      />
-    </div>
-  </Box>
-);
+    </Box>
+  );
+};
 
 /* ─── Color row ─── */
 const ColorRow = ({ label, value, onChange }) => (
@@ -186,8 +223,43 @@ function WidthInput({ value, onChange }) {
 
 /* ─── Main component ─── */
 const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) => {
+  const initialRenderStartedAtRef = useRef(
+    dataTablePanelPerfEnabled ? performance.now() : 0
+  );
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    getBuilderPanelOpenStartedAt("Table", panelTargetId) ??
+      window.__tablePanelOpenPerf?.startedAt ??
+      null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
   const accent = textColor || "#0d9488";
-  const [data, setData] = useState(() => mergeTableElement(element));
+  const rangeGestureActiveRef = useRef(false);
+  const dataRef = useRef(null);
+  const panelDataFrameRef = useRef(null);
+  const pendingPanelDataRef = useRef(null);
+  const [data, setDataState] = useState(() => mergeTableElement(element));
+  dataRef.current = data;
+  const setData = useCallback((update) => {
+    const next =
+      typeof update === "function" ? update(dataRef.current) : update;
+    dataRef.current = next;
+    if (!rangeGestureActiveRef.current) {
+      pendingPanelDataRef.current = next;
+      if (panelDataFrameRef.current == null) {
+        panelDataFrameRef.current = requestAnimationFrame(() => {
+          panelDataFrameRef.current = null;
+          const pending = pendingPanelDataRef.current;
+          pendingPanelDataRef.current = null;
+          if (pending) setDataState(pending);
+        });
+      }
+    }
+  }, []);
+  const elementRef = useRef(element);
+  elementRef.current = element;
+  const layoutSyncScheduledRef = useRef(false);
+  const pendingLayoutRef = useRef(null);
   const [colorModeIdx, setColorModeIdx] = useState(0);
   // Keeps a growing cache of row data so that decreasing then increasing the
   // row-count slider restores previously-entered rows instead of blanks.
@@ -196,6 +268,28 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
   // - When the same element is updated externally (inline cell edit, etc.)
   //   → merge its current rows into the buffer so the buffer only grows.
   const rowsBufferRef = useRef({ id: null, rows: [] });
+
+  useLayoutEffect(() => {
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (dataTablePanelPerfEnabled) {
+        const now = performance.now();
+        console.info("[Data Table Panel Mount Breakdown]", {
+          target: String(panelTargetId || ""),
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          rowCount: Array.isArray(data?.tableRows) ? data.tableRows.length : 0,
+          columnCount: Array.isArray(data?.tableColumns)
+            ? data.tableColumns.length
+            : 0,
+        });
+      }
+    }
+    markBuilderPanelMounted("Table", panelTargetId);
+  }, [panelTargetId]);
 
   useEffect(() => {
     const next = mergeTableElement(element);
@@ -216,6 +310,17 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
     }
   }, [element]);
 
+  useEffect(
+    () => () => {
+      if (panelDataFrameRef.current != null) {
+        cancelAnimationFrame(panelDataFrameRef.current);
+      }
+      panelDataFrameRef.current = null;
+      pendingPanelDataRef.current = null;
+    },
+    []
+  );
+
   const merged = useMemo(() => mergeTableElement(data), [data]);
 
   const allColors = useMemo(() => {
@@ -226,11 +331,68 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
     return [...mc, ...tc, ...oc, ...THEME_PANEL_BASIC_COLOR_SWATCHES];
   }, [theme]);
 
-  const patch = useCallback((partial) => {
-    const next = mergeTableElement({ ...data, ...partial });
-    setData(next);
-    onUpdate?.(lodash.cloneDeep(next));
-  }, [data, onUpdate]);
+  const scheduleLayoutSync = useCallback(
+    (next) => {
+      const base = elementRef.current || {};
+      const changedFields = Object.keys(next || {}).filter(
+        (key) => !Object.is(base?.[key], next?.[key])
+      );
+      pendingLayoutRef.current = {
+        snapshot: next,
+        changedFields,
+        queuedAt: dataTablePanelPerfEnabled ? performance.now() : 0,
+      };
+      if (layoutSyncScheduledRef.current) return;
+      layoutSyncScheduledRef.current = true;
+      queueMicrotask(() => {
+        layoutSyncScheduledRef.current = false;
+        const pending = pendingLayoutRef.current;
+        pendingLayoutRef.current = null;
+        if (!pending?.snapshot) return;
+        const updateStartedAt = dataTablePanelPerfEnabled
+          ? performance.now()
+          : 0;
+        onUpdate?.(pending.snapshot, {
+          changedFields: pending.changedFields,
+        });
+        if (dataTablePanelPerfEnabled) {
+          console.info("[Data Table Panel Perf] update", {
+            target: pending.snapshot?.id,
+            fields: pending.changedFields,
+            queueMs:
+              Math.round((updateStartedAt - pending.queuedAt) * 100) / 100,
+            updateDispatchMs:
+              Math.round((performance.now() - updateStartedAt) * 100) / 100,
+          });
+        }
+      });
+    },
+    [onUpdate]
+  );
+
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "tbl",
+    targetIds: [panelTargetId],
+    data,
+    setData,
+    onCommit: (latest) => {
+      setData(latest);
+      scheduleLayoutSync(latest);
+    },
+  });
+
+  const patch = useCallback(
+    (partial) => {
+      const next = mergeTableElement({ ...data, ...partial });
+      setData(next);
+      if (rangeGestureActiveRef.current) {
+        updateSlider(() => next);
+        return;
+      }
+      scheduleLayoutSync(next);
+    },
+    [data, scheduleLayoutSync, setData, updateSlider]
+  );
 
   const patchColumn = (index, partial) => {
     const cols = merged.tableColumns.map((c, i) => i === index ? { ...c, ...partial } : c);
@@ -281,7 +443,48 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
   };
 
   return (
-    <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
+    <aside
+      className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
+      onPointerDownCapture={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          rangeGestureActiveRef.current = true;
+        }
+      }}
+      onInputCapture={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          const min = Number(event.target.min);
+          const max = Number(event.target.max);
+          const value = Number(event.target.value);
+          if (
+            Number.isFinite(min) &&
+            Number.isFinite(max) &&
+            max > min &&
+            Number.isFinite(value)
+          ) {
+            event.target.style.setProperty(
+              "--pos",
+              `${((value - min) / (max - min)) * 100}%`
+            );
+          }
+        }
+      }}
+      onPointerUp={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointerup");
+      }}
+      onPointerCancel={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointercancel");
+      }}
+    >
 
       {/* Header */}
       <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">

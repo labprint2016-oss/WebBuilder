@@ -1142,19 +1142,6 @@ const pages = ["Page1","Page2","Page3"]
       special: specialAll.filter((item) => !sectionSpecialLabelSet.has(item.label)),
     };
   }, [data.Elements]);
-  const formBuilderPreviewElements = useMemo(
-    () => [
-      { label: "Input", icon: "text_fields", dragLabel: "Form Input" },
-      { label: "Text", icon: "format_size", dragLabel: "Form Text" },
-      { label: "Textarea", icon: "subject", dragLabel: "Form Textarea" },
-      { label: "Select", icon: "arrow_drop_down_circle", dragLabel: "Form Select" },
-      { label: "Radio", icon: "radio_button_checked", dragLabel: "Form Radio" },
-      { label: "Checkbox", icon: "check_box", dragLabel: "Form Checkbox" },
-      { label: "Submit", icon: "send", dragLabel: "Form Submit" },
-    ],
-    []
-  );
-
   return (
     <>
       <aside
@@ -1378,35 +1365,6 @@ const pages = ["Page1","Page2","Page3"]
                           </div>
                         </>
                       )}
-                    </>
-                  )}
-                  {formBuilderPreviewElements.length > 0 && (
-                    <>
-                      <MainLabel label="Form" />
-                      <div className="grid grid-cols-2 gap-3 mx-0">
-                        {formBuilderPreviewElements.map((items, index) => (
-                          <div
-                            className="dash-nav-item rounded-md border px-3 py-2 text-center cursor-grab active:cursor-grabbing"
-                            style={{ background: "var(--dash-nav-panel-item-bg)", borderColor: "var(--dash-nav-panel-item-border)" }}
-                            key={`builder-form-preview-${items.label}-${index}`}
-                            title="ลากวางลงคอลัมน์"
-                            draggable
-                            onPointerEnter={() => prepareDragElement?.(items.dragLabel ?? items.label)}
-                            onPointerDown={() => prepareDragElement?.(items.dragLabel ?? items.label)}
-                            onDragStart={() => {
-                              handleDragElement(items.dragLabel ?? items.label);
-                            }}
-                            onDragEnd={() => {
-                              handleDragElement(null);
-                            }}
-                          >
-                            <BuilderPaletteElementIcon item={items} />
-                            <p className="dash-muted text-[12px] antialiased whitespace-nowrap">
-                              {items.label}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
                     </>
                   )}
                 </>

@@ -14,6 +14,7 @@ const EMPTY_SNAPSHOT = null;
 const perfEnabled =
   typeof window !== "undefined" &&
   (new URLSearchParams(window.location.search).get("builderSectionPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("structurePerf") === "1" ||
     new URLSearchParams(window.location.search).get("dataSliderPerf") === "1" ||
     new URLSearchParams(window.location.search).get("categoriesPerf") === "1" ||
     new URLSearchParams(window.location.search).get("tabsPerf") === "1" ||
@@ -21,6 +22,15 @@ const perfEnabled =
     new URLSearchParams(window.location.search).get("postPerf") === "1" ||
     new URLSearchParams(window.location.search).get("listItemsPerf") === "1" ||
     new URLSearchParams(window.location.search).get("listIconsPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("listImagesPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("listBoxPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("carouselPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("dataTablePerf") === "1" ||
+    new URLSearchParams(window.location.search).get("betweenPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("imageHoverPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("overlayPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("textPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("headingPerf") === "1" ||
     new URLSearchParams(window.location.search).get("buttonGroupPerf") === "1");
 
 let activeSliderPerf = null;
@@ -567,6 +577,7 @@ export function usePanelSliderPreview({
   setData,
   onCommit,
   disabled = false,
+  minPreviewIntervalMs = 0,
 }) {
   const rawIds = (Array.isArray(targetIds) ? targetIds : [targetIds])
     .filter(Boolean)
@@ -588,6 +599,8 @@ export function usePanelSliderPreview({
   const activeRef = useRef(false);
   const frameRef = useRef(null);
   const clearFrameRef = useRef(null);
+  const publishPreviewRef = useRef(true);
+  const lastPreviewPublishedAtRef = useRef(0);
   const generationRef = useRef(0);
   const gestureIdRef = useRef(null);
 
@@ -631,7 +644,7 @@ export function usePanelSliderPreview({
   }, []);
 
   const updateSlider = useCallback(
-    (updater) => {
+    (updater, options = undefined) => {
       if (disabled) return latestRef.current;
       const previous = latestRef.current;
       const next =
@@ -645,18 +658,44 @@ export function usePanelSliderPreview({
       }
       recordPanelSliderInputUpdate(gestureIdRef.current);
       latestRef.current = next;
-      setData(next);
+      publishPreviewRef.current = options?.publish !== false;
+      if (options?.setData !== false) {
+        setData(next);
+      }
+      if (options?.publish === false) {
+        recordPanelSliderPreviewUpdate(gestureIdRef.current);
+        return next;
+      }
       if (frameRef.current == null) {
         const gestureId = gestureIdRef.current;
-        frameRef.current = requestAnimationFrame(() => {
+        const publishOnFrame = (now) => {
+          const elapsed = now - lastPreviewPublishedAtRef.current;
+          if (
+            minPreviewIntervalMs > 0 &&
+            lastPreviewPublishedAtRef.current > 0 &&
+            elapsed < minPreviewIntervalMs
+          ) {
+            frameRef.current = requestAnimationFrame(publishOnFrame);
+            return;
+          }
           frameRef.current = null;
+          lastPreviewPublishedAtRef.current = now;
           publishLatest(gestureId);
           recordPanelSliderPreviewUpdate(gestureId);
-        });
+        };
+        frameRef.current = requestAnimationFrame(publishOnFrame);
       }
       return next;
     },
-    [cancelScheduledClear, disabled, normalizedIds, publishLatest, setData, type]
+    [
+      cancelScheduledClear,
+      disabled,
+      minPreviewIntervalMs,
+      normalizedIds,
+      publishLatest,
+      setData,
+      type,
+    ]
   );
 
   const commitSlider = useCallback(
@@ -671,7 +710,9 @@ export function usePanelSliderPreview({
         cancelAnimationFrame(frameRef.current);
         frameRef.current = null;
       }
-      publishLatest(gestureId);
+      if (publishPreviewRef.current) {
+        publishLatest(gestureId);
+      }
       beginPanelSliderFinalCommit(gestureId, reason);
       beginPanelLayoutCommit();
       const startedAt = performance.now();
@@ -687,6 +728,8 @@ export function usePanelSliderPreview({
           if (gestureIdRef.current === gestureId) gestureIdRef.current = null;
         });
       });
+      publishPreviewRef.current = true;
+      lastPreviewPublishedAtRef.current = 0;
       return true;
     },
     [cancelScheduledClear, clearLatest, disabled, publishLatest]

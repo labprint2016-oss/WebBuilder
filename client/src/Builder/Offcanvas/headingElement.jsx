@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Box, Button, ButtonGroup, Stack, Typography } from "@mui/material";
 import Switch from "@mui/material/Switch";
 import { styled } from "@mui/material/styles";
@@ -23,6 +30,10 @@ import {
   HEADING_DIVIDER_SPAN_WIDE_THRESHOLD,
   mergeHeadingElement,
 } from "../Layouts/Elements/headingElementConfig";
+import {
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
 
 const HEADING_ALIGN_OPTIONS = [
   { value: "left", ariaLabel: "ชิดซ้าย", Icon: AlignLeft },
@@ -173,6 +184,7 @@ const MainLabel = ({
   switchLabel = null,
   /** แสดงค่าข้างหัวข้อแบบกำหนดเอง (เช่นทศนิยม) — ถ้าไม่ส่งใช้ Math.round */
   formatValue = null,
+  valueRef = null,
 }) => {
   const trackAccent = accent || "#0d9488";
   return (
@@ -193,7 +205,10 @@ const MainLabel = ({
     >
       {label}{" "}
       {!isNaN(value) && (
-        <span className="text-slate-400 dark:text-slate-400">
+        <span
+          ref={valueRef}
+          className="text-slate-400 dark:text-slate-400"
+        >
           {formatValue ? formatValue(value) : Math.round(value)}
         </span>
       )}
@@ -250,6 +265,7 @@ const FullWidthRangeRow = ({
   step = 1,
   value,
   onChange,
+  onCommit,
   posPct,
   trackAriaLabel,
   accentColor,
@@ -258,7 +274,18 @@ const FullWidthRangeRow = ({
   labelMb = 1.25,
   rangeWrapClassName = "w-full pt-[2px] pb-[2px] px-[2px]",
   formatLabelValue = null,
-}) => (
+}) => {
+  const valueTextRef = useRef(null);
+  const handleRangeChange = (nextValue) => {
+    if (valueTextRef.current && valueForLabel != null) {
+      valueTextRef.current.textContent = formatLabelValue
+        ? formatLabelValue(nextValue)
+        : Math.round(nextValue);
+    }
+    onChange(nextValue);
+  };
+
+  return (
   <Box sx={{ width: "100%", px: 0.25, mt }} aria-label={trackAriaLabel}>
     {mainLabel != null ? (
       <MainLabel
@@ -266,6 +293,7 @@ const FullWidthRangeRow = ({
         value={valueForLabel}
         mb={labelMb}
         formatValue={formatLabelValue}
+        valueRef={valueTextRef}
       />
     ) : null}
     <div className={rangeWrapClassName}>
@@ -274,14 +302,17 @@ const FullWidthRangeRow = ({
         max={max}
         step={step}
         value={value}
-        handleChange={(e) => onChange(Number(e.target.value))}
+        uncontrolled
+        handleChange={(e) => handleRangeChange(Number(e.target.value))}
+        onCommit={onCommit}
         pos={posPct}
         color={accentColor || "#0d9488"}
         className={THEME_RANGE_INPUT_CLASS}
       />
     </div>
   </Box>
-);
+  );
+};
 
 const BOLD_BTN_ACTIVE =
   "border-transparent text-white shadow-sm";
@@ -299,11 +330,13 @@ const HeadingElementOffcanvas = ({
 }) => {
   const layoutSyncRafRef = useRef(0);
   const pendingLayoutRef = useRef(null);
+  const pendingChangedFieldsRef = useRef(new Set());
+  const marginPreviewNodesRef = useRef([]);
   const elementRef = useRef(element);
   elementRef.current = element;
 
   const scheduleLayoutSync = useCallback(
-    (next) => {
+    (next, changedFields = []) => {
       const base = elementRef.current || {};
       const merged = {
         ...base,
@@ -311,15 +344,18 @@ const HeadingElementOffcanvas = ({
         type: next?.type ?? base.type ?? "heading",
         id: next?.id != null ? next.id : base?.id,
       };
-      pendingLayoutRef.current = lodash.cloneDeep(merged);
-      if (layoutSyncRafRef.current) {
-        cancelAnimationFrame(layoutSyncRafRef.current);
-      }
+      pendingLayoutRef.current = { ...merged };
+      changedFields.forEach((field) =>
+        pendingChangedFieldsRef.current.add(field)
+      );
+      if (layoutSyncRafRef.current) return;
       layoutSyncRafRef.current = requestAnimationFrame(() => {
         layoutSyncRafRef.current = 0;
         const snapshot = pendingLayoutRef.current;
+        const fields = Array.from(pendingChangedFieldsRef.current);
         pendingLayoutRef.current = null;
-        if (snapshot) onUpdate?.(snapshot);
+        pendingChangedFieldsRef.current.clear();
+        if (snapshot) onUpdate?.(snapshot, { changedFields: fields });
       });
     },
     [onUpdate]
@@ -327,6 +363,12 @@ const HeadingElementOffcanvas = ({
 
   const [data, setData] = useState(element);
   const [headingGradientPicker, setHeadingGradientPicker] = useState("start");
+  const sliderChangedFieldsRef = useRef(new Set());
+
+  useLayoutEffect(() => {
+    if (!element?.id) return;
+    markBuilderPanelMounted("Heading", element.id);
+  }, [element?.id]);
 
   useEffect(() => {
     if (!element?.id) return;
@@ -342,11 +384,76 @@ const HeadingElementOffcanvas = ({
     }
   }, [data?.id, data?.headingTextGradient]);
 
+  const previewMarginTopDirectly = useCallback((nextMarginTop) => {
+    const targetId = String(elementRef.current?.id ?? "");
+    if (!targetId) return;
+    if (marginPreviewNodesRef.current.length === 0) {
+      marginPreviewNodesRef.current = Array.from(
+        document.querySelectorAll("[data-heading-margin-id]")
+      ).filter(
+        (node) => node.getAttribute("data-heading-margin-id") === targetId
+      );
+    }
+    marginPreviewNodesRef.current.forEach((node) => {
+      node.style.setProperty("margin-top", `${nextMarginTop}px`);
+    });
+  }, []);
+
+  const commitMarginTopDirectly = useCallback((nextMarginTop) => {
+    const targetId = String(elementRef.current?.id ?? "");
+    if (!targetId) return;
+    const nodes =
+      marginPreviewNodesRef.current.length > 0
+        ? marginPreviewNodesRef.current
+        : Array.from(
+            document.querySelectorAll("[data-heading-margin-id]")
+          ).filter(
+            (node) => node.getAttribute("data-heading-margin-id") === targetId
+          );
+    nodes.forEach((node) => {
+      node.style.setProperty("margin-top", `${nextMarginTop}px`);
+    });
+    marginPreviewNodesRef.current = [];
+  }, []);
+
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "heading",
+    targetIds: [element?.id],
+    data,
+    setData,
+    onCommit: (latest) => {
+      const changedFields = Array.from(sliderChangedFieldsRef.current);
+      sliderChangedFieldsRef.current.clear();
+      if (changedFields.includes("headingMarginTop")) {
+        commitMarginTopDirectly(Number(latest?.headingMarginTop) || 0);
+      }
+      setData(latest);
+      scheduleLayoutSync(latest, changedFields);
+    },
+  });
+
   const patch = (partial) => {
+    const changedFields = Object.keys(partial);
     setData((prev) => {
       const next = { ...prev, ...partial };
-      scheduleLayoutSync(next);
+      scheduleLayoutSync(next, changedFields);
       return next;
+    });
+  };
+
+  const patchSlider = (partial) => {
+    const fields = Object.keys(partial);
+    fields.forEach((field) =>
+      sliderChangedFieldsRef.current.add(field)
+    );
+    const directMarginTopPreview =
+      fields.length === 1 && fields[0] === "headingMarginTop";
+    if (directMarginTopPreview) {
+      previewMarginTopDirectly(Number(partial.headingMarginTop) || 0);
+    }
+    updateSlider((prev) => ({ ...prev, ...partial }), {
+      setData: false,
+      publish: !directMarginTopPreview,
     });
   };
 
@@ -551,8 +658,9 @@ const HeadingElementOffcanvas = ({
                 step={1}
                 value={fontSize}
                 onChange={(v) =>
-                  patch({ headingFontSize: Number(v) || 12 })
+                  patchSlider({ headingFontSize: Number(v) || 12 })
                 }
+                onCommit={(_, reason) => commitSlider(reason)}
                 posPct={((fontSize - 12) / 60) * 100}
                 trackAriaLabel="ขนาดตัวอักษร"
                 accentColor={textColor}
@@ -651,12 +759,14 @@ const HeadingElementOffcanvas = ({
                     min={0}
                     max={255}
                     value={headingOpacity}
+                    uncontrolled
                     step={1}
                     handleChange={(e) =>
-                      patch({
+                      patchSlider({
                         headingColorOpacity: Number(e.target.value) || 0,
                       })
                     }
+                    onCommit={(_, reason) => commitSlider(reason)}
                     pos={(headingOpacity / 255) * 100}
                     color={textColor || "#0d9488"}
                     className={THEME_RANGE_INPUT_CLASS}
@@ -711,13 +821,14 @@ const HeadingElementOffcanvas = ({
                   step={1}
                   value={headingGradientDeg}
                   onChange={(v) =>
-                    patch({
+                    patchSlider({
                       headingGradientDegrees: Math.min(
                         360,
                         Math.max(0, Number(v) || 0)
                       ),
                     })
                   }
+                  onCommit={(_, reason) => commitSlider(reason)}
                   posPct={(headingGradientDeg / 360) * 100}
                   trackAriaLabel="องศาไล่โทน"
                   accentColor={textColor}
@@ -858,13 +969,14 @@ const HeadingElementOffcanvas = ({
                         step={1}
                         value={dividerWidth}
                         onChange={(v) =>
-                          patch({
+                          patchSlider({
                             headingDividerWidth: Math.min(
                               12,
                               Math.max(1, Number(v) || 1)
                             ),
                           })
                         }
+                        onCommit={(_, reason) => commitSlider(reason)}
                         posPct={((dividerWidth - 1) / 11) * 100}
                         trackAriaLabel="ความหนาเส้นคั่น"
                         accentColor={textColor}
@@ -880,13 +992,14 @@ const HeadingElementOffcanvas = ({
                         step={1}
                         value={dividerGap}
                         onChange={(v) =>
-                          patch({
+                          patchSlider({
                             headingDividerGap: Math.min(
                               32,
                               Math.max(0, Number(v) || 0)
                             ),
                           })
                         }
+                        onCommit={(_, reason) => commitSlider(reason)}
                         posPct={(dividerGap / 32) * 100}
                         trackAriaLabel="ระยะห่างเส้นคั่นกับข้อความ"
                         accentColor={textColor}
@@ -904,13 +1017,15 @@ const HeadingElementOffcanvas = ({
                         min={0}
                         max={255}
                         value={dividerOpacity}
+                        uncontrolled
                         step={1}
                         handleChange={(e) =>
-                          patch({
+                          patchSlider({
                             headingDividerOpacity:
                               Number(e.target.value) || 0,
                           })
                         }
+                        onCommit={(_, reason) => commitSlider(reason)}
                         pos={(dividerOpacity / 255) * 100}
                         color={textColor || "#0d9488"}
                         className={THEME_RANGE_INPUT_CLASS}
@@ -973,8 +1088,9 @@ const HeadingElementOffcanvas = ({
                 step={0.5}
                 value={letterSpacing}
                 onChange={(v) =>
-                  patch({ headingLetterSpacing: Number(v) || 0 })
+                  patchSlider({ headingLetterSpacing: Number(v) || 0 })
                 }
+                onCommit={(_, reason) => commitSlider(reason)}
                 posPct={((letterSpacing + 2) / 10) * 100}
                 trackAriaLabel="ระยะห่างตัวอักษร"
                 accentColor={textColor}
@@ -990,10 +1106,11 @@ const HeadingElementOffcanvas = ({
                 value={lineGapFromHeading}
                 onChange={(px) => {
                   const gap = Math.min(32, Math.max(0, Number(px) || 0));
-                  patch({
+                  patchSlider({
                     headingDividerGap: gap,
                   });
                 }}
+                onCommit={(_, reason) => commitSlider(reason)}
                 posPct={(lineGapFromHeading / 32) * 100}
                 trackAriaLabel="ระยะห่างเส้นคั่น"
                 accentColor={textColor}
@@ -1008,8 +1125,9 @@ const HeadingElementOffcanvas = ({
                 step={1}
                 value={merged.headingMarginTop ?? 0}
                 onChange={(v) =>
-                  patch({ headingMarginTop: Number(v) || 0 })
+                  patchSlider({ headingMarginTop: Number(v) || 0 })
                 }
+                onCommit={(_, reason) => commitSlider(reason)}
                 posPct={((merged.headingMarginTop ?? 0) / 80) * 100}
                 trackAriaLabel="ระยะด้านบน"
                 accentColor={textColor}
@@ -1024,8 +1142,9 @@ const HeadingElementOffcanvas = ({
                 step={1}
                 value={merged.headingMarginBottom ?? 0}
                 onChange={(v) =>
-                  patch({ headingMarginBottom: Number(v) || 0 })
+                  patchSlider({ headingMarginBottom: Number(v) || 0 })
                 }
+                onCommit={(_, reason) => commitSlider(reason)}
                 posPct={((merged.headingMarginBottom ?? 0) / 80) * 100}
                 trackAriaLabel="ระยะด้านล่าง"
                 accentColor={textColor}

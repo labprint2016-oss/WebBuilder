@@ -1,6 +1,7 @@
 import { memo, useRef } from "react";
 import { mergeTableElement } from "./tableElementConfig";
 import { setFont } from "../../../../function";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 const alignClass = (align) => {
   if (align === "center") return "text-center";
@@ -24,7 +25,7 @@ function hexWithOpacity(hex, opacity) {
 }
 
 const TableElement = ({
-  elementData,
+  elementData: rawElementData,
   selected,
   hover,
   animationForElement,
@@ -32,6 +33,10 @@ const TableElement = ({
   onUpdate,
   theme,
 }) => {
+  const panelPreview = usePanelPreview("tbl", rawElementData?.id);
+  const elementData = panelPreview
+    ? { ...rawElementData, ...panelPreview }
+    : rawElementData;
   const data = mergeTableElement(elementData);
   const {
     tableColumns,

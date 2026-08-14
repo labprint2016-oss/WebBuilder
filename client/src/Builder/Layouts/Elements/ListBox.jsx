@@ -23,6 +23,7 @@ import {
   listBoxItemIconElWithFramelessGlyphDefault,
   mergeListBoxElement,
 } from "./listBoxElementConfig";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 function perViewForDevice(device, s) {
   if (device === "Mobile") return s.listBoxPerViewMobile;
@@ -266,7 +267,11 @@ const ListBox = ({
   onListBoxEditImage,
   animationForElement = "transition-all duration-200 ease-in-out will-change-transform",
 }) => {
-  const s = mergeListBoxElement(elementData);
+  const panelPreview = usePanelPreview("lstb", elementData?.id);
+  const liveElementData = panelPreview
+    ? { ...elementData, ...panelPreview }
+    : elementData;
+  const s = mergeListBoxElement(liveElementData);
   const items = s.listBoxItems || [];
   const pv = Math.max(1, perViewForDevice(device, s));
   const variant = s.listBoxVariant || "icon_text";

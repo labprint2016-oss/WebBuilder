@@ -4,6 +4,7 @@ import {
   mergeHeadingElement,
 } from "./headingElementConfig";
 import HeadingDividerTextBlock from "./HeadingDividerTextBlock";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 const Heading = ({
   elementData,
@@ -13,8 +14,10 @@ const Heading = ({
   animationForElement,
   builderMode,
 }) => {
-  const { id } = elementData;
-  const h = mergeHeadingElement(elementData);
+  const previewData = usePanelPreview("heading", elementData?.id);
+  const liveElementData = previewData || elementData;
+  const { id } = liveElementData;
+  const h = mergeHeadingElement(liveElementData);
   const label =
     typeof h.label === "string" ? h.label : HEADING_ELEMENT_DEFAULTS.label;
 
@@ -64,6 +67,7 @@ const Heading = ({
 
   return (
     <div
+      data-heading-margin-id={String(id ?? "")}
       style={{
         marginTop: h.headingMarginTop ?? 0,
         marginBottom: h.headingMarginBottom ?? 0,
@@ -78,7 +82,9 @@ const Heading = ({
       }}
       onMouseLeave={() => hover(false)}
     >
-      <div className={useLayoutSelectionFrame ? "relative block w-fit max-w-full" : ""}>
+      <div
+        className={useLayoutSelectionFrame ? "relative block w-fit max-w-full" : ""}
+      >
         <div
           className={
             useLayoutSelectionFrame
@@ -88,7 +94,7 @@ const Heading = ({
         >
           <HeadingDividerTextBlock
             theme={theme}
-            elementData={elementData}
+            elementData={liveElementData}
             colorStyle={colorStyle}
             fontSize={fontSize}
             fontWeight={h.headingBold ? 700 : 500}

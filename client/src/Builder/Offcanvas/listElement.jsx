@@ -41,7 +41,11 @@ import {
 const listItemsPanelPerfEnabled =
   typeof window !== "undefined" &&
   (new URLSearchParams(window.location.search).get("listItemsPerf") === "1" ||
-    new URLSearchParams(window.location.search).get("listIconsPerf") === "1");
+    new URLSearchParams(window.location.search).get("listIconsPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("listImagesPerf") === "1");
+
+const getListPanelPerfName = (data) =>
+  data?.listImageElement ? "List Images" : "List Items";
 
 const Box = ({ component: Component = "div", sx: _sx, ...props }) => (
   <Component {...props} />
@@ -480,6 +484,8 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
   const elementRef = useRef(element);
   elementRef.current = element;
   const rangeGestureActiveRef = useRef(false);
+  const listImageSizeValueRef = useRef(null);
+  const listImageSizeInputRef = useRef(null);
   const [draft, setDraft] = useState(() => mergeListElement(element));
   const itemNodeRefs = useRef(new Map());
   const itemStableKeysRef = useRef([]);
@@ -538,7 +544,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
           changedFields: pending.changedFields,
         });
         if (listItemsPanelPerfEnabled) {
-          console.info("[List Items Panel Perf] update", {
+          console.info(`[${getListPanelPerfName(pending.snapshot)} Panel Perf] update`, {
             target: pending.snapshot?.id,
             listVariant: pending.snapshot?.buttonMultiElement
               ? "buttonMulti"
@@ -571,7 +577,26 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
     targetIds: [panelTargetId],
     data: draft,
     setData: setDraft,
-    onCommit: (latest) => scheduleLayoutSync(latest),
+    onCommit: (latest) => {
+      if (latest?.listImageSizePreviewActive === true) {
+        const nextSize = Number(latest.containerSize);
+        const finalized = mergeListElement({
+          ...latest,
+          listImageSizePreviewActive: undefined,
+          listItems: Array.isArray(latest.listItems)
+            ? latest.listItems.map((item) => ({
+                ...item,
+                containerSize: nextSize,
+              }))
+            : latest.listItems,
+        });
+        delete finalized.listImageSizePreviewActive;
+        setDraft(finalized);
+        scheduleLayoutSync(finalized);
+        return;
+      }
+      scheduleLayoutSync(latest);
+    },
   });
 
   const commit = useCallback(
@@ -591,7 +616,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
       mountBreakdownLoggedRef.current = true;
       if (listItemsPanelPerfEnabled) {
         const now = performance.now();
-        console.info("[List Items Panel Mount Breakdown]", {
+        console.info(`[${getListPanelPerfName(draft)} Panel Mount Breakdown]`, {
           target: String(panelTargetId || ""),
           listVariant: draft?.buttonMultiElement
             ? "buttonMulti"
@@ -1195,17 +1220,20 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                         <span className="dash-panel-label shrink-0 text-[12px] font-semibold tabular-nums">
                           ขนาดรูปภาพ{" "}
                           <span className="text-slate-400 dark:text-slate-400">
-                            {Math.round(imageSizeVal)}
+                            <span ref={listImageSizeValueRef}>
+                              {Math.round(imageSizeVal)}
+                            </span>
                           </span>
                         </span>
                         <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                       </div>
                       <input
+                        ref={listImageSizeInputRef}
                         type="range"
                         min={LIST_IMAGE_SIZE_MIN}
                         max={LIST_IMAGE_SIZE_MAX}
                         step={2}
-                        value={imageSizeVal}
+                        defaultValue={imageSizeVal}
                         className={THEME_RANGE_INPUT_CLASS}
                         style={{
                           "--fill": textColor || "#0d9488",
@@ -1217,15 +1245,40 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                             LIST_IMAGE_SIZE_MIN,
                             Math.min(LIST_IMAGE_SIZE_MAX, Number(e.target.value))
                           );
-                          const nextItems = items.map((it) => ({
-                            ...it,
-                            containerSize: nextSize,
-                          }));
+                          const isPreviewGesture =
+                            rangeGestureActiveRef.current;
+                          if (isPreviewGesture) {
+                            e.currentTarget.style.setProperty(
+                              "--pos",
+                              `${((nextSize - LIST_IMAGE_SIZE_MIN) /
+                                (LIST_IMAGE_SIZE_MAX -
+                                  LIST_IMAGE_SIZE_MIN)) *
+                                100}%`
+                            );
+                            if (listImageSizeValueRef.current) {
+                              listImageSizeValueRef.current.textContent =
+                                String(Math.round(nextSize));
+                            }
+                            const previewDraft = {
+                              ...draft,
+                              containerSize: nextSize,
+                              listImageSizePreviewActive: true,
+                            };
+                            updateSlider(() => previewDraft, {
+                              setData: false,
+                            });
+                            return;
+                          }
                           const m = mergeListElement({
                             ...draft,
                             containerSize: nextSize,
-                            listItems: nextItems,
+                            listImageSizePreviewActive: undefined,
+                            listItems: items.map((it) => ({
+                              ...it,
+                              containerSize: nextSize,
+                            })),
                           });
+                          delete m.listImageSizePreviewActive;
                           setDraft(m);
                           commit(m);
                         }}

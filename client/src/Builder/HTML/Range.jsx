@@ -1,4 +1,25 @@
-const Range = ({ min, max, step, value, handleChange, onCommit, pos, color }) => {
+const Range = ({
+  min,
+  max,
+  step,
+  value,
+  handleChange,
+  onCommit,
+  pos,
+  color,
+  uncontrolled = false,
+}) => {
+  const change = (e) => {
+    const next = Number(e.currentTarget.value);
+    if (Number.isFinite(next) && Number(max) !== Number(min)) {
+      const nextPos = ((next - Number(min)) / (Number(max) - Number(min))) * 100;
+      e.currentTarget.style.setProperty(
+        "--pos",
+        `${Math.max(0, Math.min(100, nextPos))}%`
+      );
+    }
+    handleChange?.(e);
+  };
   const commit = (e, reason) => {
     if (!onCommit) return;
     const n = Number(e.currentTarget.value);
@@ -31,9 +52,9 @@ const Range = ({ min, max, step, value, handleChange, onCommit, pos, color }) =>
       type="range"
       min={min}
       max={max}
-      value={value}
+      {...(uncontrolled ? { defaultValue: value } : { value })}
       step={step}
-      onChange={handleChange}
+      onChange={change}
       onPointerUp={onCommit ? (e) => commit(e, "pointerup") : undefined}
       onPointerCancel={
         onCommit ? (e) => commit(e, "pointercancel") : undefined

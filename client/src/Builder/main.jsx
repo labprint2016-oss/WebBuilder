@@ -1,6 +1,7 @@
 import React, {
   Profiler,
   Suspense,
+  startTransition,
   lazy,
   useEffect,
   useLayoutEffect,
@@ -132,22 +133,22 @@ import AccordionElementOffcanvas from "./Offcanvas/accordionElement";
 import PostElementOffcanvas from "./Offcanvas/postElement";
 import ListElementOffcanvas from "./Offcanvas/listElement";
 import ButtonGroupElementOffcanvas from "./Offcanvas/buttonGroupElement";
+import ListBoxElementOffcanvas from "./Offcanvas/listBoxElement";
+import CarouselElementOffcanvas from "./Offcanvas/carouselElement";
+import TableElementOffcanvas from "./Offcanvas/tableElement";
+import BetweenElementOffcanvas from "./Offcanvas/betweenElement";
+import ImageElementOffcanvas from "./Offcanvas/imageElement";
+import HeadingElementOffcanvas from "./Offcanvas/headingElement";
 const Content = lazy(() => import("./content"));
 const PageSettingsPanel = lazy(() => import("./pageSettingsPanel"));
 
 const HeaderOffcanvas = lazy(() => import("./Offcanvas/header"));
-const ImageElementOffcanvas = lazy(() => import("./Offcanvas/imageElement"));
 const ButtonElementOffcanvas = lazy(() => import("./Offcanvas/buttonElement"));
 const IconElementOffcanvas = lazy(() => import("./Offcanvas/iconElement"));
-const HeadingElementOffcanvas = lazy(() => import("./Offcanvas/headingElement"));
-const CarouselElementOffcanvas = lazy(() => import("./Offcanvas/carouselElement"));
 const loadDataSliderElementOffcanvas = () =>
   import("./Offcanvas/dataSliderElement");
 const DataSliderElementOffcanvas = lazy(loadDataSliderElementOffcanvas);
-const ListBoxElementOffcanvas = lazy(() => import("./Offcanvas/listBoxElement"));
 const CounterElementOffcanvas = lazy(() => import("./Offcanvas/counterElement"));
-const TableElementOffcanvas = lazy(() => import("./Offcanvas/tableElement"));
-const BetweenElementOffcanvas = lazy(() => import("./Offcanvas/betweenElement"));
 const DividerElementOffcanvas = lazy(() => import("./Offcanvas/dividerElement"));
 const FormBlockOffcanvas = lazy(() => import("./Offcanvas/formBlock"));
 const FormElementOffcanvas = lazy(() => import("./Offcanvas/formElement"));
@@ -268,6 +269,15 @@ function isListItemsPerfEnabled() {
   return (
     params.get(LIST_ITEMS_PERF_QUERY_PARAM) === "1" ||
     params.get("listIconsPerf") === "1" ||
+    params.get("listImagesPerf") === "1" ||
+    params.get("listBoxPerf") === "1" ||
+    params.get("carouselPerf") === "1" ||
+    params.get("dataTablePerf") === "1" ||
+    params.get("betweenPerf") === "1" ||
+    params.get("imageHoverPerf") === "1" ||
+    params.get("overlayPerf") === "1" ||
+    params.get("textPerf") === "1" ||
+    params.get("headingPerf") === "1" ||
     params.get("buttonGroupPerf") === "1"
   );
 }
@@ -275,7 +285,27 @@ function isListItemsPerfEnabled() {
 function logListItemsPerf(stage, details) {
   if (!isListItemsPerfEnabled()) return;
   const prefix =
-    details?.listVariant === "buttonMulti" ? "Button Group" : "List";
+    details?.listVariant === "buttonMulti"
+      ? "Button Group"
+      : details?.listVariant === "imageHover"
+        ? "Image Hover"
+      : details?.listVariant === "overlay"
+        ? "Overlay"
+      : details?.listVariant === "text"
+        ? "Text"
+      : details?.listVariant === "heading"
+        ? "Heading"
+      : details?.listVariant === "between"
+        ? "Between"
+      : details?.listVariant === "dataTable"
+        ? "Data Table"
+      : details?.listVariant === "carousel"
+        ? "Carousel"
+      : details?.listVariant === "listBox"
+        ? "List Box"
+      : details?.listVariant === "image"
+        ? "List Images"
+        : "List";
   console.info(`[${prefix} Perf] ${stage}`, details);
 }
 
@@ -283,12 +313,30 @@ function isListDragLabel(label) {
   return (
     label === "List Item" ||
     label === "List iCons" ||
+    label === "List iMage" ||
+    label === "List Box" ||
+    label === "Carousel" ||
+    label === "Data Table" ||
+    label === "Between" ||
+    label === "Image Hover" ||
+    label === "Overlay" ||
+    label === "Text" ||
+    label === "Heading" ||
     label === "Button Group"
   );
 }
 
 function getListVariantFromDragLabel(label) {
   if (label === "Button Group") return "buttonMulti";
+  if (label === "Image Hover") return "imageHover";
+  if (label === "Overlay") return "overlay";
+  if (label === "Text") return "text";
+  if (label === "Heading") return "heading";
+  if (label === "Between") return "between";
+  if (label === "Data Table") return "dataTable";
+  if (label === "Carousel") return "carousel";
+  if (label === "List Box") return "listBox";
+  if (label === "List iMage") return "image";
   return label === "List iCons" ? "icons" : "items";
 }
 
@@ -482,7 +530,17 @@ const Builder = ()=>{
       const isAccordionPanel = panelType === "Accordion";
       const isPostPanel = panelType === "Post";
       const isListPanel = panelType === "List";
+      const isListImagesPanel = panelType === "List Images";
+      const isListBoxPanel = panelType === "List Box";
+      const isCarouselPanel = panelType === "Carousel";
+      const isTablePanel = panelType === "Table";
+      const isBetweenPanel = panelType === "Between";
+      const isImageHoverPanel = panelType === "Image Hover";
+      const isOverlayPanel = panelType === "Overlay";
+      const isColumnPanel = panelType === "Column";
+      const isSectionPanel = panelType === "Container";
       const isButtonGroupPanel = panelType === "Button Group";
+      const isHeadingPanel = panelType === "Heading";
       if (
         (!isDataSliderPanel &&
           !isCategoriesPanel &&
@@ -490,7 +548,17 @@ const Builder = ()=>{
           !isAccordionPanel &&
           !isPostPanel &&
           !isListPanel &&
+          !isListImagesPanel &&
+          !isListBoxPanel &&
+          !isCarouselPanel &&
+          !isTablePanel &&
+          !isBetweenPanel &&
+          !isImageHoverPanel &&
+          !isOverlayPanel &&
+          !isColumnPanel &&
+          !isSectionPanel &&
           !isButtonGroupPanel &&
+          !isHeadingPanel &&
           phase !== "mount") ||
         (new URLSearchParams(window.location.search).get(
           "builderSectionPerf"
@@ -517,9 +585,39 @@ const Builder = ()=>{
             "listIconsPerf"
           ) !== "1" &&
           new URLSearchParams(window.location.search).get(
+            "listImagesPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "listBoxPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "carouselPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "dataTablePerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "betweenPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "imageHoverPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "overlayPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "structurePerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
+            "headingPerf"
+          ) !== "1" &&
+          new URLSearchParams(window.location.search).get(
             "buttonGroupPerf"
           ) !== "1")
       ) {
+        return;
+      }
+      if (isHeadingPanel && phase !== "mount") {
         return;
       }
       if (isCategoriesPanel) {
@@ -544,8 +642,28 @@ const Builder = ()=>{
             ? "[Post Panel Render Perf]"
           : isListPanel
             ? "[List Items Panel Render Perf]"
+          : isListImagesPanel
+            ? "[List Images Panel Render Perf]"
+          : isListBoxPanel
+            ? "[List Box Panel Render Perf]"
+          : isCarouselPanel
+            ? "[Carousel Panel Render Perf]"
+          : isTablePanel
+            ? "[Data Table Panel Render Perf]"
+          : isBetweenPanel
+            ? "[Between Panel Render Perf]"
+          : isImageHoverPanel
+            ? "[Image Hover Panel Render Perf]"
+          : isOverlayPanel
+            ? "[Overlay Panel Render Perf]"
+          : isColumnPanel
+            ? "[Column Panel Render Perf]"
+          : isSectionPanel
+            ? "[Section Panel Render Perf]"
           : isButtonGroupPanel
             ? "[Button Group Panel Render Perf]"
+          : isHeadingPanel
+            ? "[Heading Panel Render Perf]"
           : "[Builder Panel Render Perf]",
         {
         panelType,
@@ -674,7 +792,63 @@ const Builder = ()=>{
 
 
     const [selectedMenuId,setSelectedMenuId] = useState(getLatestPage())
-    const [builderMode, setBuilderMode] = useState("Layout Mode");
+    const [canvasBuilderMode, setCanvasBuilderMode] = useState("Layout Mode");
+    const builderModeRef = useRef("Layout Mode");
+    const changeBuilderMode = useCallback((nextMode) => {
+      if (!nextMode || nextMode === builderModeRef.current) return;
+      if (
+        new URLSearchParams(window.location.search).get("modePerf") === "1"
+      ) {
+        window.__builderModePerf = {
+          from: builderModeRef.current,
+          to: nextMode,
+          startedAt: performance.now(),
+          canvasCommits: 0,
+          canvasActualMs: 0,
+          canvasMaxMs: 0,
+        };
+      }
+      builderModeRef.current = nextMode;
+      startTransition(() => {
+        setCanvasBuilderMode(nextMode);
+      });
+    }, []);
+    const recordBuilderModeCanvasRender = useCallback(
+      (_id, _phase, actualDuration) => {
+        const perf = window.__builderModePerf;
+        if (!perf) return;
+        perf.canvasCommits += 1;
+        perf.canvasActualMs += actualDuration;
+        perf.canvasMaxMs = Math.max(perf.canvasMaxMs, actualDuration);
+      },
+      []
+    );
+    useLayoutEffect(() => {
+      const perf = window.__builderModePerf;
+      if (!perf || perf.to !== canvasBuilderMode) return;
+      perf.stateCommitMs = performance.now() - perf.startedAt;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (window.__builderModePerf !== perf) return;
+          console.info("[Builder Mode Perf]", {
+            from: perf.from,
+            to: perf.to,
+            updateToPaintMs: Number(
+              (performance.now() - perf.startedAt).toFixed(1)
+            ),
+            stateCommitMs: Number(perf.stateCommitMs.toFixed(1)),
+            headerCommitMs:
+              perf.headerCommitMs == null
+                ? null
+                : Number(perf.headerCommitMs.toFixed(1)),
+            canvasProfilerCommits: perf.canvasCommits,
+            canvasProfilerActualMs: Number(perf.canvasActualMs.toFixed(1)),
+            canvasProfilerMaxMs: Number(perf.canvasMaxMs.toFixed(1)),
+          });
+          window.__builderModePerf = null;
+        });
+      });
+    }, [canvasBuilderMode]);
     // Payload ชั่วคราวระหว่างลากจาก palette ไม่ควร trigger render Builder ทั้งหน้า
     const dragElementRef = useRef(null);
     const [darkMode,setDarkMode] = useState(getMode().mode);
@@ -1051,6 +1225,54 @@ const Builder = ()=>{
             startedAt: performance.now(),
           };
         }
+        if (type === "List Box" && isListItemsPerfEnabled()) {
+          window.__listBoxPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Carousel" && isListItemsPerfEnabled()) {
+          window.__carouselPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Table" && isListItemsPerfEnabled()) {
+          window.__tablePanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Between" && isListItemsPerfEnabled()) {
+          window.__betweenPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Image Hover" && isListItemsPerfEnabled()) {
+          window.__imageHoverPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Overlay" && isListItemsPerfEnabled()) {
+          window.__overlayPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Column" && isStructurePerfEnabled()) {
+          window.__columnPanelOpenPerf = {
+            target: String(data?.colData?.id || data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
+        if (type === "Container" && isStructurePerfEnabled()) {
+          window.__sectionPanelOpenPerf = {
+            target: String(data?.id || ""),
+            startedAt: performance.now(),
+          };
+        }
         markBuilderPanelOpen(type, data?.id ?? data?.colData?.id);
       }
       setOffcanvas(type)
@@ -1066,12 +1288,12 @@ const Builder = ()=>{
     }, [page?._id]);
 
     useEffect(() => {
-      if (builderMode !== "Editor Mode") return;
+      if (canvasBuilderMode !== "Editor Mode") return;
       if (offcanvas !== "Image Hover" && offcanvas !== "Overlay") return;
       setOffcanvas(null);
       setElementData(null);
       elementFunction.current = null;
-    }, [builderMode, offcanvas]);
+    }, [canvasBuilderMode, offcanvas]);
 
     /** แผง Section ไม่ sync จาก layouts อัตโนมัติ — หลังโคลนคอลัมน์ latestColID ใน layout เดินไปข้างหน้า ต้องดึงมาไม่งั้นบันทึก Section จะเขียนทับด้วยค่าเก่าและ id คอลัมน์ซ้ำ */
     useEffect(() => {
@@ -5034,8 +5256,8 @@ useEffect(() => {
                       openBar={offcanvas}
                       isDark={darkMode}
                       menus={menus}
-                      setBuilderMode={setBuilderMode}
-                      builderMode={builderMode}
+                      setBuilderMode={changeBuilderMode}
+                      builderMode={canvasBuilderMode}
                       deviceType={device}
                       setDevice={setDevice}
                       pageName={page.pageName}
@@ -5369,26 +5591,31 @@ useEffect(() => {
                       index
                       element={
                         hasSelectedBuilderPage ? (
-                          <Content
-                            builderMode={builderMode}
-                            handleDropElement={handleDropElement}
-                            device={device}
-                            openOffcavanas={openOffcavanas}
-                            offcanvasID={
-                              offcanvas &&
-                              offcanvas !== "Container" &&
-                              offcanvas !== "Column"
-                                ? elementData?.id ?? null
-                                : null
-                            }
-                            layouts={layouts}
-                            setLayout={updateLayout}
-                            theme={theme}
-                            setPage={setPage}
-                            page={page}
-                            patchElementRef={patchElementRef}
-                            openListBoxTextEditRef={openListBoxTextEditRef}
-                          />
+                          <Profiler
+                            id="BuilderModeCanvas"
+                            onRender={recordBuilderModeCanvasRender}
+                          >
+                            <Content
+                              builderMode={canvasBuilderMode}
+                              handleDropElement={handleDropElement}
+                              device={device}
+                              openOffcavanas={openOffcavanas}
+                              offcanvasID={
+                                offcanvas &&
+                                offcanvas !== "Container" &&
+                                offcanvas !== "Column"
+                                  ? elementData?.id ?? null
+                                  : null
+                              }
+                              layouts={layouts}
+                              setLayout={updateLayout}
+                              theme={theme}
+                              setPage={setPage}
+                              page={page}
+                              patchElementRef={patchElementRef}
+                              openListBoxTextEditRef={openListBoxTextEditRef}
+                            />
+                          </Profiler>
                         ) : (
                           <div
                             className="flex h-full min-h-0 w-full items-center justify-center px-6 py-10"
@@ -5518,8 +5745,24 @@ useEffect(() => {
 >
 <Suspense fallback={<div className="h-full min-h-0 flex-1 bg-transparent" />}>
 {offcanvas === "Container" && (
-              <Profiler id="Container" onRender={handleLayoutPanelRender}>
-                <ContainerOffcanvas element={elementData} updateContainer={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
+              <Profiler
+                id="Container"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Container",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ContainerOffcanvas
+                  element={elementData}
+                  updateContainer={elementFunction.current}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
               </Profiler>
              )}
               {offcanvas === "Header" && (
@@ -5535,8 +5778,24 @@ useEffect(() => {
               />
              )}
               {offcanvas === "Column" && (
-              <Profiler id="Column" onRender={handleLayoutPanelRender}>
-                <ColumnOffcanvas element={elementData} updateColumn={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
+              <Profiler
+                id="Column"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Column",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ColumnOffcanvas
+                  element={elementData}
+                  updateColumn={elementFunction.current}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
               </Profiler>
              )}
              {offcanvas === "Image" && (
@@ -5621,34 +5880,60 @@ useEffect(() => {
              )}
 
              {offcanvas === "Image Hover" && (
-              <ImageElementOffcanvas
-                element={elementData}
-                layoutElementType="imgh"
-                panelTitle="Image Hover"
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="ImageHoverPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Image Hover",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ImageElementOffcanvas
+                  element={elementData}
+                  layoutElementType="imgh"
+                  panelTitle="Image Hover"
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
              {offcanvas === "Overlay" && (
-              <ImageElementOffcanvas
-                element={elementData}
-                layoutElementType="imgo"
-                panelTitle="Overlay"
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="OverlayPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Overlay",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ImageElementOffcanvas
+                  element={elementData}
+                  layoutElementType="imgo"
+                  panelTitle="Overlay"
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
 
              {offcanvas === "Lightbox" && (
@@ -6046,17 +6331,30 @@ useEffect(() => {
              )}
 
              {offcanvas === "Heading" && (
-              <HeadingElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="HeadingPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Heading",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <HeadingElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
 
              {offcanvas === "Counter" && (
@@ -6074,17 +6372,30 @@ useEffect(() => {
              )}
 
              {offcanvas === "Carousel" && (
-              <CarouselElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="CarouselPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Carousel",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <CarouselElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
              {offcanvas === "Data Slider" && (
               <Profiler
@@ -6140,17 +6451,30 @@ useEffect(() => {
              )}
 
              {offcanvas === "List Box" && (
-              <ListBoxElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="ListBoxPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "List Box",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ListBoxElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
 
              {offcanvas === "List" && (
@@ -6158,7 +6482,7 @@ useEffect(() => {
                 id="ListItemsPanel"
                 onRender={(_id, phase, actualDuration, baseDuration) =>
                   handleLayoutPanelRender(
-                    "List",
+                    elementData?.listImageElement ? "List Images" : "List",
                     phase,
                     actualDuration,
                     baseDuration
@@ -6289,30 +6613,56 @@ useEffect(() => {
               </Profiler>
              )}
              {offcanvas === "Table" && (
-              <TableElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="TablePanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Table",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <TableElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
              {offcanvas === "Between" && (
-              <BetweenElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="BetweenPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Between",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <BetweenElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload, meta) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                      panelChangedFields: meta?.changedFields,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
              {offcanvas === "Divider" && (
               <DividerElementOffcanvas

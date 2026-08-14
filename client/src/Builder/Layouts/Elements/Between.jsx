@@ -4,6 +4,7 @@ import IconAwsome from "../../IconAwsome";
 import { mergeBetweenElement } from "./betweenElementConfig";
 import { SegmentedRichTextInner } from "../../richText/SegmentedRichText";
 import { normalizeParagraph } from "../../richText/richTextParagraphModel";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 const BetweenTextBlock = ({
   side,
@@ -58,7 +59,8 @@ const BetweenElement = ({
   theme,
   builderMode,
 }) => {
-  const data = mergeBetweenElement(elementData);
+  const previewData = usePanelPreview("btw", elementData?.id);
+  const data = mergeBetweenElement(previewData || elementData);
   const useLayoutSelectionFrame = builderMode === "Layout Mode" && selected;
   const showLeftText = data.betweenTextMode === "left" || data.betweenTextMode === "both";
   const showRightText = data.betweenTextMode === "right" || data.betweenTextMode === "both";

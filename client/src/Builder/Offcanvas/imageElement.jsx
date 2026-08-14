@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState,Fragment } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,Fragment } from "react";
 import { Box, Button, ButtonGroup, Stack, Typography } from "@mui/material";
 import Switch from "@mui/material/Switch";
 import { styled } from "@mui/material/styles";
@@ -46,6 +46,16 @@ import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckCla
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { setColor } from "../../../function";
 import ImageBadge from "../Layouts/Elements/ImageBadge";
+import {
+  getBuilderPanelOpenStartedAt,
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
+
+const imageHoverPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  (new URLSearchParams(window.location.search).get("imageHoverPerf") === "1" ||
+    new URLSearchParams(window.location.search).get("overlayPerf") === "1");
 
 /** โหมดแก้สี badge — เลื่อนซ้าย/ขวาเหมือนตำแหน่ง/ขนาด */
 const BADGE_COLOR_MODES = [
@@ -410,15 +420,38 @@ const ImageElementOffcanvas = ({
   panelTitle = "Image",
   showImageLink = true,
 }) => {
+  const measuredPanelType =
+    layoutElementType === "imgo"
+      ? "Overlay"
+      : layoutElementType === "imgh"
+        ? "Image Hover"
+        : null;
+  const initialRenderStartedAtRef = useRef(
+    imageHoverPanelPerfEnabled ? performance.now() : 0
+  );
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    measuredPanelType
+      ? getBuilderPanelOpenStartedAt(measuredPanelType, panelTargetId) ??
+          (measuredPanelType === "Overlay"
+            ? window.__overlayPanelOpenPerf?.startedAt
+            : window.__imageHoverPanelOpenPerf?.startedAt) ??
+          null
+      : null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
   const layoutSyncRafRef = useRef(0);
+  const layoutSyncScheduledRef = useRef(false);
   const pendingLayoutRef = useRef(null);
+  const rangeGestureActiveRef = useRef(false);
+  const sliderChangedFieldsRef = useRef([]);
   /** อ้างอิง element จาก parent ล่าสุด — กันชน rAF แล้ว snapshot ไม่มี src/type */
   const elementRef = useRef(element);
   elementRef.current = element;
 
   /** ห้ามเรียก onUpdate ภายใน setState updater — รวมเฟรมด้วย rAF ลดการชนกันของ snapshot */
   const scheduleLayoutSync = useCallback(
-    (next) => {
+    (next, changedFields = []) => {
       const base = elementRef.current || {};
       const merged = {
         ...base,
@@ -427,18 +460,40 @@ const ImageElementOffcanvas = ({
         id: next?.id != null ? next.id : base?.id,
         src: next?.src != null && next.src !== "" ? next.src : base?.src,
       };
-      pendingLayoutRef.current = lodash.cloneDeep(merged);
+      const priorFields = pendingLayoutRef.current?.changedFields || [];
+      pendingLayoutRef.current = {
+        snapshot:
+          measuredPanelType ? merged : lodash.cloneDeep(merged),
+        changedFields: Array.from(
+          new Set([...priorFields, ...changedFields])
+        ),
+      };
+      if (measuredPanelType) {
+        if (layoutSyncScheduledRef.current) return;
+        layoutSyncScheduledRef.current = true;
+        queueMicrotask(() => {
+          layoutSyncScheduledRef.current = false;
+          const pending = pendingLayoutRef.current;
+          pendingLayoutRef.current = null;
+          if (pending?.snapshot) {
+            onUpdate?.(pending.snapshot, {
+              changedFields: pending.changedFields,
+            });
+          }
+        });
+        return;
+      }
       if (layoutSyncRafRef.current) {
         cancelAnimationFrame(layoutSyncRafRef.current);
       }
       layoutSyncRafRef.current = requestAnimationFrame(() => {
         layoutSyncRafRef.current = 0;
-        const snapshot = pendingLayoutRef.current;
+        const pending = pendingLayoutRef.current;
         pendingLayoutRef.current = null;
-        if (snapshot) onUpdate?.(snapshot);
+        if (pending?.snapshot) onUpdate?.(pending.snapshot);
       });
     },
-    [onUpdate, layoutElementType]
+    [measuredPanelType, onUpdate, layoutElementType]
   );
 
   const [data, setData] = useState(element);
@@ -447,6 +502,38 @@ const ImageElementOffcanvas = ({
     BADGE_COLOR_MODES[0].value
   );
   const [cornerTarget, setCornerTarget] = useState("all");
+
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: layoutElementType === "imgo" ? "imgo" : "imgh",
+    targetIds: [panelTargetId],
+    data,
+    setData,
+    onCommit: (latest) => {
+      const changedFields = sliderChangedFieldsRef.current;
+      sliderChangedFieldsRef.current = [];
+      scheduleLayoutSync(latest, changedFields);
+    },
+  });
+
+  useLayoutEffect(() => {
+    if (!measuredPanelType) return;
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (imageHoverPanelPerfEnabled) {
+        const now = performance.now();
+        console.info(`[${measuredPanelType} Panel Mount Breakdown]`, {
+          target: String(panelTargetId || ""),
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          colorSwatchCount: allColors.length,
+        });
+      }
+    }
+    markBuilderPanelMounted(measuredPanelType, panelTargetId);
+  }, [measuredPanelType, panelTargetId]);
 
   const currentAspect = data?.aspectRatio ?? IMAGE_ASPECT_DEFAULT;
   const brightness =
@@ -487,7 +574,7 @@ const ImageElementOffcanvas = ({
   const handleSrcChange = (src) => {
     setData((prev) => {
       const next = { ...prev, src };
-      scheduleLayoutSync(next);
+      scheduleLayoutSync(next, ["src"]);
       return next;
     });
   };
@@ -495,17 +582,22 @@ const ImageElementOffcanvas = ({
   const handleAspectRatioChange = (aspectRatio) => {
     setData((prev) => {
       const next = { ...prev, aspectRatio };
-      scheduleLayoutSync(next);
+      scheduleLayoutSync(next, ["aspectRatio"]);
       return next;
     });
   };
 
   const handleBrightnessChange = (value) => {
-    setData((prev) => {
-      const next = { ...prev, brightness: value };
-      scheduleLayoutSync(next);
-      return next;
-    });
+    const next = { ...data, brightness: value };
+    setData(next);
+    if (measuredPanelType && rangeGestureActiveRef.current) {
+      sliderChangedFieldsRef.current = Array.from(
+        new Set([...sliderChangedFieldsRef.current, "brightness"])
+      );
+      updateSlider(() => next);
+      return;
+    }
+    scheduleLayoutSync(next, ["brightness"]);
   };
 
   const BANNER_CAPTION_FONT_MIN = 12;
@@ -647,14 +739,23 @@ const ImageElementOffcanvas = ({
   };
 
   const handleCornerRadiusChange = (value) => {
-    setData((prev) => {
-      const next = {
-        ...prev,
-        borderRadius: patchImageCornerRadius(prev?.borderRadius, cornerTarget, value),
-      };
-      scheduleLayoutSync(next);
-      return next;
-    });
+    const next = {
+      ...data,
+      borderRadius: patchImageCornerRadius(
+        data?.borderRadius,
+        cornerTarget,
+        value
+      ),
+    };
+    setData(next);
+    if (measuredPanelType && rangeGestureActiveRef.current) {
+      sliderChangedFieldsRef.current = Array.from(
+        new Set([...sliderChangedFieldsRef.current, "borderRadius"])
+      );
+      updateSlider(() => next);
+      return;
+    }
+    scheduleLayoutSync(next, ["borderRadius"]);
   };
 
   const handleBadgePatch = (patch) => {
@@ -673,11 +774,17 @@ const ImageElementOffcanvas = ({
   };
 
   const handleLinkPatch = (patch) => {
-    setData((prev) => {
-      const next = { ...prev, ...patch };
-      scheduleLayoutSync(next);
-      return next;
-    });
+    const next = { ...data, ...patch };
+    const changedFields = Object.keys(patch || {});
+    setData(next);
+    if (measuredPanelType && rangeGestureActiveRef.current) {
+      sliderChangedFieldsRef.current = Array.from(
+        new Set([...sliderChangedFieldsRef.current, ...changedFields])
+      );
+      updateSlider(() => next);
+      return;
+    }
+    scheduleLayoutSync(next, changedFields);
   };
 
   const cycleBadgeOption = (key, list, delta) => {
@@ -834,14 +941,8 @@ const ImageElementOffcanvas = ({
           next = [...current.filter((v) => v !== "none"), value];
         }
 
-        scheduleLayoutSync({
-          id: prev?.id,
-          type: prev?.type,
-          imageHoverExtras: next,
-        });
-
         const n = { ...prev, imageHoverExtras: next };
-        scheduleLayoutSync(n);
+        scheduleLayoutSync(n, ["imageHoverExtras"]);
         return n;
       }
 
@@ -866,7 +967,7 @@ const ImageElementOffcanvas = ({
       }
 
       const n = { ...prev, imageHoverExtras: next };
-      scheduleLayoutSync(n);
+      scheduleLayoutSync(n, ["imageHoverExtras"]);
       return n;
     });
   };
@@ -921,6 +1022,25 @@ const ImageElementOffcanvas = ({
     <aside
       className={`
      dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10 `}
+      onPointerDownCapture={(event) => {
+        if (
+          Boolean(measuredPanelType) &&
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          rangeGestureActiveRef.current = true;
+        }
+      }}
+      onPointerUp={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointerup");
+      }}
+      onPointerCancel={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointercancel");
+      }}
     >
       <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100">
         <div className="flex min-w-0 items-center gap-2">

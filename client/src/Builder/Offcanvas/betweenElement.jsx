@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Box, Button, ButtonGroup, Switch, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { Check } from "lucide-react";
@@ -14,6 +21,15 @@ import {
   BETWEEN_ELEMENT_DEFAULTS,
   mergeBetweenElement,
 } from "../Layouts/Elements/betweenElementConfig";
+import {
+  getBuilderPanelOpenStartedAt,
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
+
+const betweenPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("betweenPerf") === "1";
 
 const THEME_RANGE_INPUT_CLASS = `
   w-full cursor-pointer appearance-none h-2 rounded-full
@@ -119,7 +135,41 @@ const BetweenPanelSwitch = styled(Switch, {
 }));
 
 const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) => {
+  const initialRenderStartedAtRef = useRef(
+    betweenPanelPerfEnabled ? performance.now() : 0
+  );
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    getBuilderPanelOpenStartedAt("Between", panelTargetId) ??
+      window.__betweenPanelOpenPerf?.startedAt ??
+      null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
   const [data, setData] = useState(() => mergeBetweenElement(element));
+  const rangeGestureActiveRef = useRef(false);
+  const sliderChangedFieldsRef = useRef([]);
+  const layoutSyncScheduledRef = useRef(false);
+  const pendingLayoutRef = useRef(null);
+
+  useLayoutEffect(() => {
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (betweenPanelPerfEnabled) {
+        const now = performance.now();
+        console.info("[Between Panel Mount Breakdown]", {
+          target: String(panelTargetId || ""),
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          textMode: data?.betweenTextMode,
+          frameEnabled: data?.betweenFrameEnabled === true,
+        });
+      }
+    }
+    markBuilderPanelMounted("Between", panelTargetId);
+  }, [panelTargetId]);
 
   useEffect(() => {
     setData(mergeBetweenElement(element));
@@ -127,13 +177,71 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
 
   const merged = useMemo(() => mergeBetweenElement(data), [data]);
 
+  const scheduleLayoutSync = useCallback(
+    (next, changedFields = []) => {
+      const pendingFields = pendingLayoutRef.current?.changedFields || [];
+      pendingLayoutRef.current = {
+        snapshot: next,
+        changedFields: Array.from(
+          new Set([...pendingFields, ...changedFields])
+        ),
+        queuedAt: betweenPanelPerfEnabled ? performance.now() : 0,
+      };
+      if (layoutSyncScheduledRef.current) return;
+      layoutSyncScheduledRef.current = true;
+      queueMicrotask(() => {
+        layoutSyncScheduledRef.current = false;
+        const pending = pendingLayoutRef.current;
+        pendingLayoutRef.current = null;
+        if (!pending?.snapshot) return;
+        const updateStartedAt = betweenPanelPerfEnabled
+          ? performance.now()
+          : 0;
+        onUpdate?.(pending.snapshot, {
+          changedFields: pending.changedFields,
+        });
+        if (betweenPanelPerfEnabled) {
+          console.info("[Between Panel Perf] update", {
+            target: pending.snapshot?.id,
+            fields: pending.changedFields,
+            queueMs:
+              Math.round((updateStartedAt - pending.queuedAt) * 100) / 100,
+            updateDispatchMs:
+              Math.round((performance.now() - updateStartedAt) * 100) / 100,
+          });
+        }
+      });
+    },
+    [onUpdate]
+  );
+
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "btw",
+    targetIds: [panelTargetId],
+    data,
+    setData,
+    onCommit: (latest) => {
+      const changedFields = sliderChangedFieldsRef.current;
+      sliderChangedFieldsRef.current = [];
+      scheduleLayoutSync(latest, changedFields);
+    },
+  });
+
   const patch = useCallback(
     (partial) => {
+      const changedFields = Object.keys(partial || {});
       const next = mergeBetweenElement({ ...data, ...partial });
       setData(next);
-      onUpdate?.(lodash.cloneDeep(next));
+      if (rangeGestureActiveRef.current) {
+        sliderChangedFieldsRef.current = Array.from(
+          new Set([...sliderChangedFieldsRef.current, ...changedFields])
+        );
+        updateSlider(() => next);
+        return;
+      }
+      scheduleLayoutSync(next, changedFields);
     },
-    [data, onUpdate]
+    [data, scheduleLayoutSync, updateSlider]
   );
 
   const allColors = useMemo(() => {
@@ -185,7 +293,27 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
   const insetY = Math.min(16, Math.max(0, Number(merged.betweenInsetY) ?? 0));
 
   return (
-    <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
+    <aside
+      className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
+      onPointerDownCapture={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          rangeGestureActiveRef.current = true;
+        }
+      }}
+      onPointerUp={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointerup");
+      }}
+      onPointerCancel={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointercancel");
+      }}
+    >
       <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
           <span className="shrink-0 font-bold tracking-wide">

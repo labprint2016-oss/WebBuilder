@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Box, Button, ButtonGroup, Stack, Typography } from "@mui/material";
 import Switch from "@mui/material/Switch";
 import { styled } from "@mui/material/styles";
@@ -25,6 +32,15 @@ import {
 } from "../Layouts/Elements/carouselElementConfig";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
+import {
+  getBuilderPanelOpenStartedAt,
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
+
+const carouselPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("carouselPerf") === "1";
 
 /** โหมดไอเทม — ปุ่มข้อความ สไตล์เดียวกับ Section «รูปแบบการแสดงผล» (container.jsx) */
 const CAROUSEL_VARIANT_OPTIONS = [
@@ -267,7 +283,7 @@ const CarouselMarginRange = ({ value, onChange, textColor }) => (
     min={0}
     max={CAROUSEL_MARGIN_SLIDER_MAX}
     step={1}
-    value={value}
+    defaultValue={value}
     onChange={onChange}
     className={THEME_RANGE_INPUT_CLASS}
     style={{
@@ -367,7 +383,7 @@ function CarouselNavDualThemeColorBlock({
           min={0}
           max={255}
           step={1}
-          value={opacityVal}
+          defaultValue={opacityVal}
           onChange={(e) => onOpacityChange(Number(e.target.value))}
           className={rangeClass}
           style={{
@@ -427,6 +443,16 @@ const CarouselElementOffcanvas = ({
   textColor,
   theme,
 }) => {
+  const initialRenderStartedAtRef = useRef(
+    carouselPanelPerfEnabled ? performance.now() : 0
+  );
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    getBuilderPanelOpenStartedAt("Carousel", panelTargetId) ??
+      window.__carouselPanelOpenPerf?.startedAt ??
+      null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
   /** Switch แบบ Panel Section «สีพื้นหลังแบบสีพื้น» (container.jsx MainLabel) */
   const AntSwitch = useMemo(() => {
     const accent = textColor || "#0d9488";
@@ -473,18 +499,130 @@ const CarouselElementOffcanvas = ({
     }));
   }, [textColor]);
 
-  const [draft, setDraft] = useState(() => mergeCarouselElement(element));
+  const rangeGestureActiveRef = useRef(false);
+  const draftRef = useRef(null);
+  const panelDraftFrameRef = useRef(null);
+  const pendingPanelDraftRef = useRef(null);
+  const [draft, setDraftState] = useState(() => mergeCarouselElement(element));
+  draftRef.current = draft;
+  const setDraft = useCallback((update) => {
+    const next =
+      typeof update === "function" ? update(draftRef.current) : update;
+    draftRef.current = next;
+    if (!rangeGestureActiveRef.current) {
+      pendingPanelDraftRef.current = next;
+      if (panelDraftFrameRef.current == null) {
+        panelDraftFrameRef.current = requestAnimationFrame(() => {
+          panelDraftFrameRef.current = null;
+          const pending = pendingPanelDraftRef.current;
+          pendingPanelDraftRef.current = null;
+          if (pending) setDraftState(pending);
+        });
+      }
+    }
+  }, []);
+  const elementRef = useRef(element);
+  elementRef.current = element;
+  const layoutSyncScheduledRef = useRef(false);
+  const pendingLayoutRef = useRef(null);
+
+  useLayoutEffect(() => {
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (carouselPanelPerfEnabled) {
+        const now = performance.now();
+        console.info("[Carousel Panel Mount Breakdown]", {
+          target: String(panelTargetId || ""),
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+          slideCount: Array.isArray(draft?.carouselSlides)
+            ? draft.carouselSlides.length
+            : 0,
+          variant: draft?.carouselVariant,
+        });
+      }
+    }
+    markBuilderPanelMounted("Carousel", panelTargetId);
+  }, [panelTargetId]);
 
   useEffect(() => {
     setDraft(mergeCarouselElement(element));
   }, [element]);
 
+  useEffect(
+    () => () => {
+      if (panelDraftFrameRef.current != null) {
+        cancelAnimationFrame(panelDraftFrameRef.current);
+      }
+      panelDraftFrameRef.current = null;
+      pendingPanelDraftRef.current = null;
+    },
+    []
+  );
+
+  const scheduleLayoutSync = useCallback(
+    (next) => {
+      const base = elementRef.current || {};
+      const changedFields = Object.keys(next || {}).filter(
+        (key) => !Object.is(base?.[key], next?.[key])
+      );
+      pendingLayoutRef.current = {
+        snapshot: next,
+        changedFields,
+        queuedAt: carouselPanelPerfEnabled ? performance.now() : 0,
+      };
+      if (layoutSyncScheduledRef.current) return;
+      layoutSyncScheduledRef.current = true;
+      queueMicrotask(() => {
+        layoutSyncScheduledRef.current = false;
+        const pending = pendingLayoutRef.current;
+        pendingLayoutRef.current = null;
+        if (!pending?.snapshot) return;
+        const updateStartedAt = carouselPanelPerfEnabled
+          ? performance.now()
+          : 0;
+        onUpdate?.(pending.snapshot, {
+          changedFields: pending.changedFields,
+        });
+        if (carouselPanelPerfEnabled) {
+          console.info("[Carousel Panel Perf] update", {
+            target: pending.snapshot?.id,
+            fields: pending.changedFields,
+            queueMs:
+              Math.round((updateStartedAt - pending.queuedAt) * 100) / 100,
+            updateDispatchMs:
+              Math.round((performance.now() - updateStartedAt) * 100) / 100,
+          });
+        }
+      });
+    },
+    [onUpdate]
+  );
+
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "crl",
+    targetIds: [panelTargetId],
+    data: draft,
+    setData: setDraft,
+    onCommit: (latest) => {
+      setDraft(latest);
+      scheduleLayoutSync(latest);
+    },
+  });
+
   const commit = useCallback(
     (next) => {
       const cleaned = mergeCarouselElement(next);
-      onUpdate?.(cleaned);
+      if (rangeGestureActiveRef.current) {
+        updateSlider(() => cleaned);
+        return;
+      }
+      scheduleLayoutSync(cleaned);
     },
-    [onUpdate]
+    [scheduleLayoutSync, updateSlider]
   );
 
   const slides = draft.carouselSlides || [];
@@ -525,6 +663,45 @@ const CarouselElementOffcanvas = ({
     <aside
       className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
       style={{ color: textColor || undefined }}
+      onPointerDownCapture={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          rangeGestureActiveRef.current = true;
+        }
+      }}
+      onInputCapture={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          const min = Number(event.target.min);
+          const max = Number(event.target.max);
+          const value = Number(event.target.value);
+          if (
+            Number.isFinite(min) &&
+            Number.isFinite(max) &&
+            max > min &&
+            Number.isFinite(value)
+          ) {
+            event.target.style.setProperty(
+              "--pos",
+              `${((value - min) / (max - min)) * 100}%`
+            );
+          }
+        }
+      }}
+      onPointerUp={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointerup");
+      }}
+      onPointerCancel={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointercancel");
+      }}
     >
       <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100">
         <div className="flex min-w-0 items-center gap-2">

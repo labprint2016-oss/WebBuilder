@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getTheme } from "../../../Functions/theme";
 import { panelGroupButtonSx } from "../panelControlSx";
 import {
@@ -29,10 +29,16 @@ import {
 } from "../Layouts/sectionOverlapDevice";
 import Range from "../HTML/Range";
 import ImageModal from "../imageModal";
+import { setColor } from "../../../function";
 import {
+  getBuilderPanelOpenStartedAt,
   markBuilderPanelMounted,
   usePanelSliderPreview,
 } from "../panelPreviewStore";
+
+const sectionPanelPerfEnabled =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("structurePerf") === "1";
 
 /** ระยะห่าง Section ด้านบน/ล่าง: อย่างน้อย 0–200; ถ้าข้อมูลเดิมเกิน 200 จะขยาย max ของ slider ให้ลากลงมาได้ */
 const SECTION_VERTICAL_PADDING_MAX = 200;
@@ -183,9 +189,18 @@ const ContainerOffcanvas = ({
   updateContainer: onUpdate,
   close,
   textColor,
+  theme: themeProp,
 }) => {
-
-
+  const initialRenderStartedAtRef = useRef(
+    sectionPanelPerfEnabled ? performance.now() : 0
+  );
+  const panelTargetId = element?.id;
+  const panelOpenStartedAtRef = useRef(
+    getBuilderPanelOpenStartedAt("Container", panelTargetId) ??
+      window.__sectionPanelOpenPerf?.startedAt ??
+      null
+  );
+  const mountBreakdownLoggedRef = useRef(false);
   const [darkTextColor,setDarkTextColor] = useState(localStorage.getItem("darkTextColor"))
 
 
@@ -193,15 +208,34 @@ const ContainerOffcanvas = ({
   const [data, setData] = useState(() =>
     normalizeContainerOverlapFields(element ?? {})
   );
-  const [theme, setTheme] = useState(null);
+  const lastCommittedDataRef = useRef(
+    normalizeContainerOverlapFields(element ?? {})
+  );
+  const pendingChangedFieldsRef = useRef([]);
+  const dividerLengthValueRef = useRef(null);
+  const [loadedTheme, setLoadedTheme] = useState(null);
+  const theme = themeProp || loadedTheme;
   const [updated, setUpdated] = useState(false);
   const isFirstSection = (element?._sectionIndex ?? 0) === 0;
   const isSplitSection = Boolean(element?._isSplitSection);
   const [sectionGradientPicker, setSectionGradientPicker] = useState("start");
   const [backgroundPickerOpen, setBackgroundPickerOpen] = useState(false);
   const [overlapDeviceTab, setOverlapDeviceTab] = useState("desktop");
-  const panelTargetId = element?.id;
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!mountBreakdownLoggedRef.current) {
+      mountBreakdownLoggedRef.current = true;
+      if (sectionPanelPerfEnabled) {
+        const now = performance.now();
+        console.info("[Section Panel Mount Breakdown]", {
+          target: String(panelTargetId || ""),
+          openToPanelCommitMs: panelOpenStartedAtRef.current
+            ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
+            : null,
+          panelRenderToCommitMs:
+            Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
+        });
+      }
+    }
     markBuilderPanelMounted("Container", panelTargetId);
   }, [panelTargetId]);
   const splitPreviewTargetIds =
@@ -209,12 +243,30 @@ const ContainerOffcanvas = ({
     element._previewTargetIds.length > 0
       ? element._previewTargetIds
       : [element?.id];
+  const getSectionCanvasNode = () =>
+    typeof document !== "undefined" && data?.id
+      ? document.getElementById(String(data.id))
+      : null;
+  const clearDividerCssPreview = () => {
+    const node = getSectionCanvasNode();
+    node?.style.removeProperty("--section-divider-length");
+    node?.style.removeProperty("--section-divider-color");
+  };
   const normalizeForCommit = (value) => {
     const normalized = lodash.cloneDeep(value);
     for (const key in normalized) {
       if (normalized[key] === "") normalized[key] = 0;
     }
     return normalized;
+  };
+  const commitData = (latest) => {
+    const normalized = normalizeForCommit(latest);
+    const changedFields = pendingChangedFieldsRef.current;
+    pendingChangedFieldsRef.current = [];
+    lastCommittedDataRef.current = normalized;
+    onUpdate(normalized, normalized.id, {
+      panelChangedFields: changedFields,
+    });
   };
   const {
     updateSlider,
@@ -227,18 +279,25 @@ const ContainerOffcanvas = ({
       (id) => String(id) !== String(element?.id)
     ),
     selectMirroredData: selectSplitSectionPreview,
+    minPreviewIntervalMs: isSplitSection ? 32 : 0,
     data,
     setData,
-    onCommit: (latest) => onUpdate(normalizeForCommit(latest), latest.id),
+    onCommit: (latest) => {
+      setData(latest);
+      commitData(latest);
+    },
   });
-  const handleRangeCommit = (_value, reason) =>
+  const handleRangeCommit = (_value, reason) => {
+    clearDividerCssPreview();
     commitSlider(reason || "range-commit");
+  };
 
 
   const loadTheme = () => {
+    if (themeProp) return;
     getTheme("68d37327bedb0efab7dacafb")
       .then((res) => {
-        setTheme(res.data);
+        setLoadedTheme(res.data);
 
       })
       .catch((err) => console.log(err));
@@ -246,12 +305,13 @@ const ContainerOffcanvas = ({
 
   useEffect(() => {
     loadTheme();
-  },[]);
+  },[themeProp]);
 
   const sectionPaddingSliderMax = (v) =>
     Math.max(SECTION_VERTICAL_PADDING_MAX, Number(v) || 0);
 
   const handlePadding = (field, valueOrUpdater) => {
+    pendingChangedFieldsRef.current = [field];
     updateSlider((prev) => {
       const current = prev[field];
       let next =
@@ -276,6 +336,7 @@ const ContainerOffcanvas = ({
   };
 
   const changeFluid = (value) => {
+    pendingChangedFieldsRef.current = ["isFluid"];
     setData((prev) => {
       return { ...prev, isFluid: value };
     });
@@ -284,8 +345,7 @@ const ContainerOffcanvas = ({
 
   useEffect(() => {
     if (!updated) return;
-    const clonedData = normalizeForCommit(data);
-    onUpdate(clonedData, data.id);
+    commitData(data);
     /* สำคัญ: ถ้าไม่รีเซ็ต หลังแก้ Section ครั้งหนึ่ง updated จะค้าง true — พอ sync latestColID จาก canvas จะ setData แล้ว effect นี้ยิง onUpdate อีกครั้งด้วย layouts เก่าใน closure ของ parent → ทับคอลัมน์ที่เพิ่งโคลน */
     setUpdated(false);
   }, [data]);
@@ -293,6 +353,9 @@ const ContainerOffcanvas = ({
   
 
   const handleColor = (value,index=null) => {
+    pendingChangedFieldsRef.current = [
+      isNull(index) ? "backgroundColor" : "backgroundColorGradient",
+    ];
     if(!isNull(index)){
 
       setData((prev)=>{
@@ -308,6 +371,24 @@ const ContainerOffcanvas = ({
 
 
   const handleOpacity = (field,value,index=null) => {
+    pendingChangedFieldsRef.current = [field];
+    if (field === "columnDividerOpacity" && isNull(index)) {
+      const node = getSectionCanvasNode();
+      const color = setColor(
+        theme,
+        data?.columnDividerColor ??
+          THEME_PANEL_BASIC_COLOR_SWATCHES[2],
+        value
+      );
+      if (color) {
+        node?.style.setProperty("--section-divider-color", color);
+      }
+      updateSlider(
+        (prev) => ({ ...prev, [field]: value }),
+        { publish: false, setData: false }
+      );
+      return;
+    }
     if(!isNull(index)){
       updateSlider((prev)=>{
         const opct = [...(prev[field] || [])]
@@ -320,7 +401,10 @@ const ContainerOffcanvas = ({
   }
 
   useEffect(() => {
-    setData(normalizeContainerOverlapFields(element ?? {}));
+    const nextData = normalizeContainerOverlapFields(element ?? {});
+    setData(nextData);
+    lastCommittedDataRef.current = nextData;
+    pendingChangedFieldsRef.current = [];
     setUpdated(false);
     setSectionGradientPicker("start");
     setOverlapDeviceTab("desktop");
@@ -332,6 +416,8 @@ const ContainerOffcanvas = ({
   );
   const setOverlapForTab = (tab, v) => {
     const key = overlapFieldKeyForTab(tab);
+    pendingChangedFieldsRef.current =
+      tab === "desktop" ? [key, "sectionOverlapTop"] : [key];
     updateSlider((prev) => {
       const next = { ...prev, [key]: v };
       if (tab === "desktop") {
@@ -353,39 +439,28 @@ const ContainerOffcanvas = ({
     });
   }, [element?.id, element?.latestColID]);
 
-  const [allColors,setAllColors] = useState([])
   const basicColors = THEME_PANEL_BASIC_COLOR_SWATCHES;
   /** สีเส้นคั่นเริ่มต้น = basicColors[2] เทาอ่อน (รายการก่อนสีขาว) — ตรงช่องที่ติ๊กในแผง */
   const defaultColumnDividerSwatchColor = basicColors[2];
 
-  useEffect(()=>{
-      if(allColors.length === 0 && theme){
-        theme?.mainColor.map((color,i)=>{
-          setAllColors(prev=>{
-            return [...prev,{type:"mainColor",index:i}]
-          })
-        })
-        theme?.textColor.map((color,i)=>{
-          setAllColors(prev=>{
-            return [...prev,{type:"textColor",index:i}]
-          })
-        })
-        theme?.otherColor.map((color,i)=>{
-          setAllColors(prev=>{
-            return [...prev,{type:"otherColor",index:i}]
-          })
-        })
-        basicColors.map((color)=>{
-          setAllColors(prev=>{
-            return [...prev,color]
-          })
-        })
-
-
-      }else return
-       
-    
-  },[theme])
+  const allColors = useMemo(() => {
+    if (!theme) return basicColors;
+    return [
+      ...(theme.mainColor || []).map((_, index) => ({
+        type: "mainColor",
+        index,
+      })),
+      ...(theme.textColor || []).map((_, index) => ({
+        type: "textColor",
+        index,
+      })),
+      ...(theme.otherColor || []).map((_, index) => ({
+        type: "otherColor",
+        index,
+      })),
+      ...basicColors,
+    ];
+  }, [theme]);
   const colorlabels = ["สีพื้นหลังแบบสีพื้น","สีพื้นหลังแบบไล่โทน"];
 
   const sectionGradientGi = sectionGradientPicker === "end" ? 1 : 0;
@@ -874,6 +949,7 @@ const ContainerOffcanvas = ({
                       value={sectionGradientDeg}
                       handleChange={(e) => {
                         const v = Number(e.target.value);
+                        pendingChangedFieldsRef.current = ["degrees"];
                         updateSlider((prev) => ({
                           ...prev,
                           degrees: Math.min(
@@ -936,6 +1012,10 @@ const ContainerOffcanvas = ({
         lineHeight: 1.2,
       }}
       onClick={() => {
+        pendingChangedFieldsRef.current = [
+          "backgroundImage",
+          "opacityImage",
+        ];
         setData((prev=>{
           setUpdated(true)
           return {...prev,backgroundImage:"",opacityImage:1}
@@ -1104,6 +1184,9 @@ const ContainerOffcanvas = ({
                         key={opt.value}
                         color="inherit"
                         onClick={() => {
+                          pendingChangedFieldsRef.current = [
+                            "columnDividerStyle",
+                          ];
                           setUpdated(true);
                           setData((prev) => ({
                             ...prev,
@@ -1138,7 +1221,10 @@ const ContainerOffcanvas = ({
                     }}
                   >
                     <span className="shrink-0">ความยาวเส้นคั่น (ตั้ง-นอน)</span>
-                    <span className="text-slate-400 dark:text-slate-400 tabular-nums">
+                    <span
+                      ref={dividerLengthValueRef}
+                      className="text-slate-400 dark:text-slate-400 tabular-nums"
+                    >
                       {Math.round(columnDividerVerticalLengthPct)}%
                     </span>
                     <div className="dash-heading-rule min-w-0 flex-1 border-b" />
@@ -1151,13 +1237,32 @@ const ContainerOffcanvas = ({
                       value={columnDividerVerticalLengthPct}
                       handleChange={(e) => {
                         const v = Number(e.target.value);
-                        updateSlider((prev) => ({
-                          ...prev,
-                          columnDividerVerticalLengthPercent: Math.min(
-                            100,
-                            Math.max(10, Number.isFinite(v) ? v : 100)
-                          ),
-                        }));
+                        pendingChangedFieldsRef.current = [
+                          "columnDividerVerticalLengthPercent",
+                        ];
+                        const nextLength = Math.min(
+                          100,
+                          Math.max(10, Number.isFinite(v) ? v : 100)
+                        );
+                        getSectionCanvasNode()?.style.setProperty(
+                          "--section-divider-length",
+                          `${nextLength}%`
+                        );
+                        if (dividerLengthValueRef.current) {
+                          dividerLengthValueRef.current.textContent =
+                            `${Math.round(nextLength)}%`;
+                        }
+                        e.currentTarget.style.setProperty(
+                          "--pos",
+                          `${((nextLength - 10) / 90) * 100}%`
+                        );
+                        updateSlider(
+                          (prev) => ({
+                            ...prev,
+                            columnDividerVerticalLengthPercent: nextLength,
+                          }),
+                          { publish: false, setData: false }
+                        );
                       }}
                       onCommit={handleRangeCommit}
                       pos={
@@ -1193,12 +1298,17 @@ const ContainerOffcanvas = ({
                       max={255}
                       value={Number(columnDividerOpacity) || 0}
                       step={1}
-                      handleChange={(e) =>
+                      handleChange={(e) => {
+                        const nextOpacity = Number(e.target.value);
+                        e.currentTarget.style.setProperty(
+                          "--pos",
+                          `${(nextOpacity / 255) * 100}%`
+                        );
                         handleOpacity(
                           "columnDividerOpacity",
-                          Number(e.target.value)
-                        )
-                      }
+                          nextOpacity
+                        );
+                      }}
                       onCommit={handleRangeCommit}
                       pos={
                         ((Number(columnDividerOpacity) || 0) / 255) * 100
@@ -1228,6 +1338,9 @@ const ContainerOffcanvas = ({
                             className="flex size-[25px] items-center justify-center rounded-full border border-slate-200 dark:border-white/15"
                             style={{ backgroundColor: bgColor }}
                             onClick={() => {
+                              pendingChangedFieldsRef.current = [
+                                "columnDividerColor",
+                              ];
                               setUpdated(true);
                               setData((prev) => ({
                                 ...prev,
@@ -1261,6 +1374,7 @@ const ContainerOffcanvas = ({
         openModal={backgroundPickerOpen}
         setOpenModal={setBackgroundPickerOpen}
         handleChange={(url) => {
+          pendingChangedFieldsRef.current = ["backgroundImage"];
           setUpdated(true);
           setData((prev) => ({ ...prev, backgroundImage: url }));
         }}
@@ -1317,21 +1431,45 @@ const ContainerOffcanvas = ({
         />
         {colorSwitch && (
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <AntSwitch  inputProps={{ 'aria-label': 'ant design' }} checked={label === "เส้นคั่นคอลัมน์" ? (Boolean(data.noColumnGap) ? false : data.gridBorder) : label === "ไม่มีช่องว่างระหว่างคอลัมน์" ? Boolean(data.noColumnGap) : label === "เพิ่มมิติพื้นหลัง" ? Boolean(data.parallaxEnabled) : data.isGradient} onChange={()=>{
-              setData(prev=>{
-                setUpdated(true)
-                if(label === "เส้นคั่นคอลัมน์"){
-                  if (Boolean(prev.noColumnGap)) return prev;
-                  return {...prev,gridBorder:!prev.gridBorder}
-                }else if(label === "ไม่มีช่องว่างระหว่างคอลัมน์"){
-                  const nextNoGap = !Boolean(prev.noColumnGap);
-                  return {...prev,noColumnGap:nextNoGap,gridBorder:nextNoGap ? false : prev.gridBorder}
-                }else if(label === "เพิ่มมิติพื้นหลัง"){
-                  return {...prev,parallaxEnabled:!Boolean(prev.parallaxEnabled)}
-                }else{
-                  return {...prev,isGradient:!prev.isGradient}
-                }
-              })
+            <AntSwitch
+              disableRipple
+              inputProps={{ 'aria-label': 'ant design' }}
+              sx={{
+                "& .MuiSwitch-switchBase": { transition: "none" },
+                "& .MuiSwitch-thumb": { transition: "none" },
+                "& .MuiSwitch-track": { transition: "none" },
+              }}
+              checked={label === "เส้นคั่นคอลัมน์" ? (Boolean(data.noColumnGap) ? false : data.gridBorder) : label === "ไม่มีช่องว่างระหว่างคอลัมน์" ? Boolean(data.noColumnGap) : label === "เพิ่มมิติพื้นหลัง" ? Boolean(data.parallaxEnabled) : data.isGradient}
+              onChange={()=>{
+              pendingChangedFieldsRef.current =
+                label === "เส้นคั่นคอลัมน์"
+                  ? ["gridBorder"]
+                  : label === "ไม่มีช่องว่างระหว่างคอลัมน์"
+                    ? ["noColumnGap", "gridBorder"]
+                    : label === "เพิ่มมิติพื้นหลัง"
+                      ? ["parallaxEnabled"]
+                      : ["isGradient"];
+              let next;
+              if (label === "ไม่มีช่องว่างระหว่างคอลัมน์") {
+                const nextNoGap = !Boolean(data.noColumnGap);
+                next = {
+                  ...data,
+                  noColumnGap: nextNoGap,
+                  gridBorder: nextNoGap ? false : data.gridBorder,
+                };
+              } else if (label === "เส้นคั่นคอลัมน์") {
+                if (Boolean(data.noColumnGap)) return;
+                next = { ...data, gridBorder: !data.gridBorder };
+              } else if (label === "เพิ่มมิติพื้นหลัง") {
+                next = {
+                  ...data,
+                  parallaxEnabled: !Boolean(data.parallaxEnabled),
+                };
+              } else {
+                next = { ...data, isGradient: !data.isGradient };
+              }
+              setData(next);
+              commitData(next);
                 
                 
              }}/>

@@ -18,6 +18,7 @@ import {
   mergeCarouselElement,
   sliceSlideIconForPanel,
 } from "./carouselElementConfig";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 /** ข้อความ placeholder จากค่าเริ่มต้นรายการไอเทม — แสดงบนแคนวาสเป็น demo caption แทน */
 const ITEM_CAPTION_PLACEHOLDER_RE = /^iTem\s*-\s*\d+$/i;
@@ -115,7 +116,7 @@ function resolveCarouselNavVisualColor(
 }
 
 const Carousel = ({
-  elementData,
+  elementData: rawElementData,
   selected,
   hover,
   builderMode,
@@ -126,6 +127,10 @@ const Carousel = ({
   animationForElement = "transition-all duration-200 ease-in-out will-change-transform",
   editorHoverMeta,
 }) => {
+  const panelPreview = usePanelPreview("crl", rawElementData?.id);
+  const elementData = panelPreview
+    ? { ...rawElementData, ...panelPreview }
+    : rawElementData;
   const s = mergeCarouselElement(elementData);
   const slides = s.carouselSlides || [];
   const perView = perViewForDevice(device, s);

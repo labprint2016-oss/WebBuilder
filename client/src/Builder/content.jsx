@@ -3140,6 +3140,15 @@ const Content = ({
       return (
         params.get(LIST_ITEMS_PERF_QUERY_PARAM) === "1" ||
         params.get("listIconsPerf") === "1" ||
+        params.get("listImagesPerf") === "1" ||
+        params.get("listBoxPerf") === "1" ||
+        params.get("carouselPerf") === "1" ||
+        params.get("dataTablePerf") === "1" ||
+        params.get("betweenPerf") === "1" ||
+        params.get("imageHoverPerf") === "1" ||
+        params.get("overlayPerf") === "1" ||
+        params.get("textPerf") === "1" ||
+        params.get("headingPerf") === "1" ||
         params.get("buttonGroupPerf") === "1"
       );
     }
@@ -3865,11 +3874,22 @@ const Content = ({
     type: activeDragType,
   };
 
+  const getSectionColumnVisualCacheKey = (container) =>
+    JSON.stringify([
+      container?.noColumnGap,
+      container?.gridBorder,
+      container?.columnDividerStyle,
+      container?.columnDividerOpacity,
+      container?.columnDividerColor,
+      container?.columnDividerVerticalLengthPercent,
+    ]);
+
   const renderCachedColumnSubtree = (
     {
       branch,
       sectionId,
       column,
+      sectionVisualKey,
       sectionIndex,
       columnIndex,
       splitIndex = -1,
@@ -3905,6 +3925,8 @@ const Content = ({
         missReason = "preview-mode-changed";
       } else if (cached.theme !== theme) {
         missReason = "theme-changed";
+      } else if (cached.sectionVisualKey !== sectionVisualKey) {
+        missReason = "section-column-visual-changed";
       } else if (
         cached.controlsVisible !== structuralRenderRevision.controlsVisible
       ) {
@@ -3919,7 +3941,18 @@ const Content = ({
     cacheStats.rebuiltColumnCount += 1;
     cacheStats.columnRenderCacheMissReasons[missReason] =
       (cacheStats.columnRenderCacheMissReasons[missReason] || 0) + 1;
-    const element = render();
+    let element = render();
+    if (
+      missReason === "section-column-visual-changed" &&
+      React.isValidElement(cached?.element) &&
+      React.isValidElement(element)
+    ) {
+      element = React.cloneElement(
+        element,
+        undefined,
+        cached.element.props.children
+      );
+    }
     if (cacheEnabled) {
       canvasColumnRenderCacheRef.current.set(cacheKey, {
         element,
@@ -3932,6 +3965,7 @@ const Content = ({
         builderMode,
         isPreview,
         theme,
+        sectionVisualKey,
         controlsVisible: structuralRenderRevision.controlsVisible,
       });
     }
@@ -4220,7 +4254,16 @@ const Content = ({
       (tabsPerfEnabled && elementType === "tabs") ||
       (accordionPerfEnabled && elementType === "acc") ||
       (postPerfEnabled && elementType === "post") ||
-      (listItemsPerfEnabled && elementType === "list") ||
+      (listItemsPerfEnabled &&
+        (elementType === "list" ||
+          elementType === "lstb" ||
+          elementType === "crl" ||
+          elementType === "tbl" ||
+          elementType === "btw" ||
+          elementType === "imgh" ||
+          elementType === "imgo" ||
+          elementType === "text" ||
+          elementType === "heading")) ||
       (structurePerfEnabled && isStructureDrag);
     if (!shouldMeasure || sidebarNativeDragPerfRef.current?.active) {
       return;
@@ -4229,7 +4272,23 @@ const Content = ({
       active: true,
       elementType,
       listVariant:
-        elementType === "list"
+        elementType === "text"
+          ? "text"
+          : elementType === "heading"
+          ? "heading"
+          : elementType === "imgo"
+          ? "overlay"
+          : elementType === "imgh"
+          ? "imageHover"
+          : elementType === "btw"
+          ? "between"
+          : elementType === "tbl"
+          ? "dataTable"
+          : elementType === "crl"
+          ? "carousel"
+          : elementType === "lstb"
+          ? "listBox"
+          : elementType === "list"
           ? element?.buttonMultiElement
             ? "buttonMulti"
             : element?.listImageElement
@@ -4391,8 +4450,26 @@ const Content = ({
                   ? "Button Group"
                   : perf.listVariant === "icons"
                     ? "List Icons"
+                    : perf.listVariant === "image"
+                      ? "List Images"
                     : "List Items"
               } Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "lstb"
+            ? `[List Box Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "crl"
+            ? `[Carousel Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "tbl"
+            ? `[Data Table Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "btw"
+            ? `[Between Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "imgh"
+            ? `[Image Hover Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "imgo"
+            ? `[Overlay Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "text"
+            ? `[Text Perf] drop summary / ${summary.elements} canvas elements`
+          : perf.elementType === "heading"
+            ? `[Heading Perf] drop summary / ${summary.elements} canvas elements`
           : perf.elementType === "column" || perf.elementType === "split"
             ? `[Structure Perf] ${perf.elementType} drop summary / ${summary.elements} canvas elements`
           : `[Builder Sidebar DnD Perf] ${summary.elements} elements`
@@ -5004,6 +5081,9 @@ const Content = ({
           console.info(`[${dataSliderPanelPerf.panelType} Panel Perf] commit`, {
             target: dataSliderPanelPerf.target,
             fields: dataSliderPanelPerf.fields,
+            ...(Number.isFinite(dataSliderPanelPerf.queueMs)
+              ? { queueMs: round(dataSliderPanelPerf.queueMs) }
+              : {}),
             updateToPaintMs: round(
               performance.now() - dataSliderPanelPerf.startedAt
             ),
@@ -5515,11 +5595,36 @@ const Content = ({
         (tabsPerfEnabled && data?.type === "tabs") ||
         (accordionPerfEnabled && data?.type === "acc") ||
         (postPerfEnabled && data?.type === "post") ||
-        (listItemsPerfEnabled && data?.type === "list")
+        (listItemsPerfEnabled &&
+          (data?.type === "list" ||
+            data?.type === "lstb" ||
+            data?.type === "crl" ||
+            data?.type === "tbl" ||
+            data?.type === "btw" ||
+            data?.type === "imgh" ||
+            data?.type === "imgo" ||
+            data?.type === "text" ||
+            data?.type === "heading"))
           ? {
               panelType:
                 data?.type === "ctg"
                   ? "Categories"
+                  : data?.type === "heading"
+                    ? "Heading"
+                  : data?.type === "text"
+                    ? "Text Editor"
+                  : data?.type === "imgo"
+                    ? "Overlay"
+                  : data?.type === "imgh"
+                    ? "Image Hover"
+                  : data?.type === "btw"
+                    ? "Between"
+                  : data?.type === "tbl"
+                    ? "Data Table"
+                  : data?.type === "crl"
+                    ? "Carousel"
+                  : data?.type === "lstb"
+                    ? "List Box"
                   : data?.type === "tabs"
                     ? "Tabs"
                     : data?.type === "acc"
@@ -5531,6 +5636,8 @@ const Content = ({
                             ? "Button Group"
                             : data?.listIconsElement
                             ? "List Icons"
+                            : data?.listImageElement
+                              ? "List Images"
                             : "List Items"
                     : "Data Slider",
               target: String(eleID),
@@ -5583,6 +5690,15 @@ const Content = ({
         }
         if (cleaned.listItems && Array.isArray(cleaned.listItems)) {
           list[i].listItems = lodash.cloneDeep(cleaned.listItems);
+        }
+        if (cleaned.listBoxItems && Array.isArray(cleaned.listBoxItems)) {
+          list[i].listBoxItems = lodash.cloneDeep(cleaned.listBoxItems);
+        }
+        if (cleaned.tableColumns && Array.isArray(cleaned.tableColumns)) {
+          list[i].tableColumns = lodash.cloneDeep(cleaned.tableColumns);
+        }
+        if (cleaned.tableRows && Array.isArray(cleaned.tableRows)) {
+          list[i].tableRows = lodash.cloneDeep(cleaned.tableRows);
         }
         if (cleaned.tabsItems && Array.isArray(cleaned.tabsItems)) {
           list[i].tabsItems = lodash.cloneDeep(cleaned.tabsItems);
@@ -5996,7 +6112,15 @@ const Content = ({
           data?.type === "tabs" ||
           data?.type === "acc" ||
           data?.type === "post" ||
-          data?.type === "list"
+          data?.type === "list" ||
+          data?.type === "lstb" ||
+          data?.type === "crl" ||
+          data?.type === "tbl" ||
+          data?.type === "btw" ||
+          data?.type === "imgh" ||
+          data?.type === "imgo" ||
+          data?.type === "text" ||
+          data?.type === "heading"
         ) {
           let targetPath = null;
           for (let conI = 0; conI < prev.length && !targetPath; conI += 1) {
@@ -7496,7 +7620,11 @@ const Content = ({
   }; // แปลงค่า Opacity ให้เป็น Hex
 
   /** สไตล์เส้นคั่นคอลัมน์ของ Section — ใช้กับคอลัมน์หลัก (+ อ่าน noColumnGap แบบ strict สำหรับ Span/Mini) */
-  const getSectionColumnDividerVisual = (layouts, IDX, theme) => {
+  const getSectionColumnDividerVisual = (
+    layouts,
+    IDX,
+    theme
+  ) => {
     const sectionCont = layouts[IDX]?.container;
     /* Boolean("false") === true — อ่านค่า toggle จาก API/JSON ให้ตรง */
     const strictLayoutBool = (v) =>
@@ -11542,9 +11670,11 @@ const Content = ({
     };
   };
 
-  const updateContainer = (data, id) => {
+  const updateContainer = (data, id, options = null) => {
+    const queuedAt = structurePerfEnabled ? performance.now() : 0;
     /* ต้องใช้ updater — ถ้าใช้ layouts จาก closure จะทับ layout ล่าสุด (เช่น หลังโคลนคอลัมน์) เมื่อแผง Section ยิง onUpdate จาก setData sync */
     setLayout((prev) => {
+      const patchStartedAt = structurePerfEnabled ? performance.now() : 0;
       const idx = prev.findIndex((l) => l.container.id === id);
       if (idx === -1) return prev;
       const newLayouts = [...prev];
@@ -11577,6 +11707,29 @@ const Content = ({
         }
       }
 
+      const panelChangedFields = Array.isArray(options?.panelChangedFields)
+        ? options.panelChangedFields
+        : null;
+      if (structurePerfEnabled && panelChangedFields) {
+        dataSliderPanelUpdatePerfRef.current = {
+          panelType: "Section",
+          target: String(id || ""),
+          fields: panelChangedFields,
+          startedAt: queuedAt,
+          queueMs: patchStartedAt - queuedAt,
+          patchMs: performance.now() - patchStartedAt,
+          canvasCommits: 0,
+          canvasActualMs: 0,
+          canvasMaxMs: 0,
+          sectionCacheHits: 0,
+          sectionCacheMisses: 0,
+          sectionCacheMissReasons: {},
+          logScheduled: false,
+        };
+      }
+      canvasSectionRenderCacheRef.current.delete(
+        String(currentLayout?.splitRowId || currentLayout?.container?.id || id)
+      );
       markScopedLayoutSnapshot(newLayouts);
       return newLayouts;
     });
@@ -11909,7 +12062,8 @@ const Content = ({
   };
 
   const updateColumn = (data, id, conID, options = null) => {
-    const startedAt = builderSectionPerfEnabled ? performance.now() : 0;
+    const startedAt =
+      builderSectionPerfEnabled || structurePerfEnabled ? performance.now() : 0;
     const currentLayouts = layoutsRef.current;
     if (!Array.isArray(currentLayouts)) return;
     const IDX = currentLayouts.findIndex(
@@ -12149,11 +12303,34 @@ const Content = ({
         return;
       }
     }
+    const panelChangedFields = Array.isArray(options?.panelChangedFields)
+      ? options.panelChangedFields
+      : null;
+    if (structurePerfEnabled && panelChangedFields) {
+      dataSliderPanelUpdatePerfRef.current = {
+        panelType: "Column",
+        target: String(id || ""),
+        fields: panelChangedFields,
+        startedAt,
+        patchMs: performance.now() - startedAt,
+        canvasCommits: 0,
+        canvasActualMs: 0,
+        canvasMaxMs: 0,
+        sectionCacheHits: 0,
+        sectionCacheMisses: 0,
+        sectionCacheMissReasons: {},
+        logScheduled: false,
+      };
+    }
     const newColumns = [...currentLayout.columns];
     newColumns[idx] = newColumn;
     const newLayout = { ...currentLayout, columns: newColumns };
     const newLayouts = [...currentLayouts];
     newLayouts[IDX] = newLayout;
+    if (dataSliderPanelUpdatePerfRef.current?.panelType === "Column") {
+      dataSliderPanelUpdatePerfRef.current.patchMs =
+        performance.now() - startedAt;
+    }
     if (builderSectionPerfEnabled && isSplitToggle) {
       const fromSpanCount = Array.isArray(prevColumn.spans)
         ? prevColumn.spans.length
@@ -13713,7 +13890,6 @@ const Content = ({
 
     const IDX = layouts.findIndex((l) => l.container.id === containerId);
     const idx = layouts[IDX].columns.findIndex((c) => c.id == id);
-    const sectionCont = layouts[IDX].container;
     const {
       gridBorder,
       noColumnGap,
@@ -13905,11 +14081,11 @@ const Content = ({
               >
                 <span
                   style={{
-                    height: `${columnDividerVerticalLengthPct}%`,
+                    height: `var(--section-divider-length, ${columnDividerVerticalLengthPct}%)`,
                     width: 0,
                     borderRightWidth: 1,
                     borderRightStyle: verticalDividerBorderStyle,
-                    borderRightColor: verticalDividerColor,
+                    borderRightColor: `var(--section-divider-color, ${verticalDividerColor})`,
                     boxSizing: "border-box",
                   }}
                 />
@@ -13923,11 +14099,11 @@ const Content = ({
               >
                 <span
                   style={{
-                    width: `${columnDividerVerticalLengthPct}%`,
+                    width: `var(--section-divider-length, ${columnDividerVerticalLengthPct}%)`,
                     height: 0,
                     borderBottomWidth: 1,
                     borderBottomStyle: verticalDividerBorderStyle,
-                    borderBottomColor: verticalDividerColor,
+                    borderBottomColor: `var(--section-divider-color, ${verticalDividerColor})`,
                     boxSizing: "border-box",
                   }}
                 />
@@ -15635,6 +15811,21 @@ const Content = ({
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
             setPositionElementSetting({ x: null, y: null });
+            if (
+              new URLSearchParams(window.location.search).get("textPerf") ===
+              "1"
+            ) {
+              window.__textEditorOpenPerf = {
+                target: String(elementData?.id || ""),
+                startedAt: performance.now(),
+              };
+              window.__textEditorRenderPerf = {
+                commits: 0,
+                totalMs: 0,
+                maxMs: 0,
+                maxCommitLatencyMs: 0,
+              };
+            }
             setTextEditModal({ elementData });
             return;
           }
@@ -19781,6 +19972,7 @@ const Content = ({
                     !forceDragTargetRender &&
                     !forceDragSourceRender &&
                     sidebarPreviousTargetIndex !== I &&
+                    cachedSection?.renderIndex === I &&
                     cacheLayoutMatches
                   ) {
                     cacheStats.cacheHits += 1;
@@ -19790,6 +19982,8 @@ const Content = ({
                     recordCacheMiss("no-entry");
                   } else if (!cacheLayoutMatches) {
                     recordCacheMiss("layout-reference-changed");
+                  } else if (cachedSection.renderIndex !== I) {
+                    recordCacheMiss("section-index-changed");
                   } else if (!canReuseSectionCache) {
                     recordCacheMiss("drag-inactive-bypass");
                   } else if (forceDragTargetRender) {
@@ -19955,6 +20149,10 @@ const Content = ({
                                               branch: "split",
                                               sectionId: secID,
                                               column: col,
+                                              sectionVisualKey:
+                                                getSectionColumnVisualCacheKey(
+                                                  sec?.container
+                                                ),
                                               sectionIndex: secI,
                                               columnIndex: ci,
                                               splitIndex: splitIdx,
@@ -19964,7 +20162,15 @@ const Content = ({
                                           const { id: colId, elements, isSpan, spans = [] } = col;
                                           const eleID = !isSpan ? elements.map((e) => e.id) : [];
                                           return (
-                                            <StructuralColumnItem key={colId} id={colId} containerId={secID} elementData={col}>
+                                            <StructuralColumnItem
+                                              key={colId}
+                                              id={colId}
+                                              containerId={secID}
+                                              elementData={col}
+                                              sectionVisualKey={getSectionColumnVisualCacheKey(
+                                                sec?.container
+                                              )}
+                                            >
                                               {!isSpan ? (
                                                 <SortableContext items={eleID} strategy={verticalListSortingStrategy} disabled={!isLayoutMode}>
                                                   {elements.length > 0 ? (
@@ -20353,6 +20559,10 @@ const Content = ({
                                       branch: "normal",
                                       sectionId: ID,
                                       column: col,
+                                      sectionVisualKey:
+                                        getSectionColumnVisualCacheKey(
+                                          layout?.container
+                                        ),
                                       sectionIndex: I,
                                       columnIndex: i,
                                     },
@@ -20368,6 +20578,9 @@ const Content = ({
                                 id={id}
                                 containerId={ID}
                                 elementData={col}
+                                sectionVisualKey={getSectionColumnVisualCacheKey(
+                                  layout?.container
+                                )}
                               >
                                 {isSpan ? (
                                   <>
@@ -21314,6 +21527,7 @@ const Content = ({
                   ) {
                     canvasSectionRenderCacheRef.current.set(cacheKey, {
                       layouts: sectionLayoutRefs,
+                      renderIndex: I,
                       element: profiledSection,
                     });
                   }
@@ -21588,7 +21802,35 @@ const Content = ({
       </footer>
       )}
 
-      <RichTextEditorModal
+      <React.Profiler
+        id="text-editor"
+        onRender={(
+          _id,
+          phase,
+          actualDuration,
+          baseDuration,
+          startTime,
+          commitTime
+        ) => {
+          if (
+            textEditModal?.elementData?.type !== "text" ||
+            new URLSearchParams(window.location.search).get("textPerf") !== "1"
+          ) {
+            return;
+          }
+          const renderPerf = window.__textEditorRenderPerf;
+          if (!renderPerf) return;
+          const commitLatencyMs = commitTime - startTime;
+          renderPerf.commits += 1;
+          renderPerf.totalMs += actualDuration;
+          renderPerf.maxMs = Math.max(renderPerf.maxMs, actualDuration);
+          renderPerf.maxCommitLatencyMs = Math.max(
+            renderPerf.maxCommitLatencyMs,
+            commitLatencyMs
+          );
+        }}
+      >
+        <RichTextEditorModal
         open={Boolean(textEditModal)}
         onClose={() => setTextEditModal(null)}
         sourceElement={textEditModal?.elementData}
@@ -21773,16 +22015,49 @@ const Content = ({
             setTextEditModal(null);
             return;
           }
+          const saveStartedAt = performance.now();
           patchLayoutElement(
             {
+              id,
+              type: "text",
               textParagraph: serializeParagraphForSave(nextParagraph),
               label: plain,
             },
-            { eleID: id }
+            {
+              eleID: id,
+              panelChangedFields: ["textParagraph", "label"],
+            }
           );
+          if (
+            new URLSearchParams(window.location.search).get("textPerf") === "1"
+          ) {
+            const renderPerf = window.__textEditorRenderPerf;
+            console.info("[Text Editor Perf] save", {
+              target: String(id),
+              saveSyncMs: Number(
+                (performance.now() - saveStartedAt).toFixed(1)
+              ),
+              characters: plain.length,
+              segments: nextParagraph?.segments?.length || 0,
+              editorRenderCommits: renderPerf?.commits || 0,
+              editorRenderAvgMs: renderPerf?.commits
+                ? Number(
+                    (renderPerf.totalMs / renderPerf.commits).toFixed(1)
+                  )
+                : 0,
+              editorRenderMaxMs: Number(
+                (renderPerf?.maxMs || 0).toFixed(1)
+              ),
+              editorCommitLatencyMaxMs: Number(
+                (renderPerf?.maxCommitLatencyMs || 0).toFixed(1)
+              ),
+            });
+            window.__textEditorRenderPerf = null;
+          }
           setTextEditModal(null);
         }}
-      />
+        />
+      </React.Profiler>
       <Modal
         open={Boolean(columnPresetModal?.open)}
         onClose={(_, reason) => {
