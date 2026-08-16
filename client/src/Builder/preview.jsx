@@ -56,7 +56,7 @@ function PreviewRuntime() {
       if (parsed && parsed.layouts && parsed.page && parsed.theme) {
         setSnapshot(parsed);
       }
-    } catch (_) {
+    } catch {
       setSnapshot(null);
     } finally {
       setIsSnapshotLoading(false);
@@ -74,7 +74,7 @@ function PreviewRuntime() {
           return;
         }
         setSnapshot(null);
-      } catch (_) {
+      } catch {
         setSnapshot(null);
       }
     };

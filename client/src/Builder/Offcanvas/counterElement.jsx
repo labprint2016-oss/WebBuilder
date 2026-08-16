@@ -19,6 +19,11 @@ import {
 } from "../Layouts/Elements/counterElementConfig";
 import { PANEL_BTN_GROUP, panelGroupButtonSx } from "../panelControlSx";
 
+const finiteNumberOr = (value, fallback) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+
 /** กล่อง input group — พื้นหลัง/กรอบตาม Dashboard (dash-input) */
 const INPUT_GROUP_CLASS =
   "dash-input flex h-10 min-w-0 flex-1 items-stretch overflow-hidden rounded-md border border-slate-200 bg-white text-left dark:border-white/10 dark:bg-[#27272a]";
@@ -342,18 +347,21 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
     120,
     Math.max(12, Number(merged.counterFontSize) || 42)
   );
-  const opacity = Math.min(255, Math.max(0, Number(merged.counterColorOpacity) ?? 255));
+  const opacity = Math.min(
+    255,
+    Math.max(0, finiteNumberOr(merged.counterColorOpacity, 255))
+  );
   const compositionFontSize = Math.min(
     120,
     Math.max(10, Number(merged.counterCompositionFontSize) || 18)
   );
   const compositionOpacity = Math.min(
     255,
-    Math.max(0, Number(merged.counterCompositionColorOpacity) ?? 255)
+    Math.max(0, finiteNumberOr(merged.counterCompositionColorOpacity, 255))
   );
   const compositionGapPx = Math.min(
     64,
-    Math.max(0, Number(merged.counterCompositionGapPx) ?? 32)
+    Math.max(0, finiteNumberOr(merged.counterCompositionGapPx, 32))
   );
   const marginTopRaw = Number(merged.counterMarginTop);
   const marginBottomRaw = Number(merged.counterMarginBottom);
@@ -539,7 +547,7 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                     aria-label="ตัวหนา"
                     aria-pressed={Boolean(merged.counterBold)}
                     onClick={() =>
-                      patch({ counterBold: !Boolean(merged.counterBold) })
+                      patch({ counterBold: !merged.counterBold })
                     }
                     className={BOLD_BTN_BASE}
                     style={optionChipStyle(Boolean(merged.counterBold))}
@@ -938,7 +946,7 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                       onClick={() => patch({ counterAlign: value })}
                       sx={{ ...groupButtonSx(sel, textColor), minHeight: 36 }}
                     >
-                      <Icon size={15} strokeWidth={3.5} />
+                      <Icon size={(void Icon, 15)} strokeWidth={3.5} />
                     </Button>
                   );
                 })}

@@ -483,6 +483,7 @@ function ServiceLayout({
                         <Tooltip title="แยกเซลล์" {...SMALL_TOOLTIP_PROPS}>
                           <button
                             className="bg-gray-900 px-[3px] py-1 text-white"
+                            data-builder-performance-owned="canvas-column-split"
                             onClick={splitColumnCells}
                             aria-label="แยกเซลล์"
                           >
@@ -698,6 +699,7 @@ function ServiceLayout({
                         type="button"
                         className=" bg-gray-900  text-white  px-[3px] py-1"
                         draggable={false}
+                        data-builder-performance-owned="canvas-clone-span"
                         onClick={() => {
                           cloneSpn(getID("S"));
                         }}
@@ -787,6 +789,7 @@ function ServiceLayout({
                   type="button"
                   className=" bg-gray-900  text-white  px-[3px] py-1"
                   draggable={false}
+                  data-builder-performance-owned="canvas-clone-span"
                   onClick={() => { cloneSpn(getID()); }}
                 >
                   <Grid2X2Plus className="size-[17px] m-[4.5px]" />

@@ -370,6 +370,13 @@ const CatagoriesElementOffcanvas = ({
       null
   );
   const mountBreakdownLoggedRef = useRef(false);
+  const initialDataRef = useRef(data);
+  const initialColorCountRef = useRef(
+    (theme?.mainColor?.length || 0) +
+      (theme?.textColor?.length || 0) +
+      (theme?.otherColor?.length || 0) +
+      THEME_PANEL_BASIC_COLOR_SWATCHES.length
+  );
   const { updateSlider, commitSlider } = usePanelSliderPreview({
     type: "ctg",
     targetIds: [panelTargetId],
@@ -405,8 +412,9 @@ const CatagoriesElementOffcanvas = ({
       mountBreakdownLoggedRef.current = true;
       if (categoriesPanelPerfEnabled) {
         const now = performance.now();
-        const tabs = Array.isArray(data?.catagoriesTabs)
-          ? data.catagoriesTabs
+        const initialData = initialDataRef.current;
+        const tabs = Array.isArray(initialData?.catagoriesTabs)
+          ? initialData.catagoriesTabs
           : [];
         const itemCount = tabs.reduce(
           (sum, tab) => sum + (Array.isArray(tab?.items) ? tab.items.length : 0),
@@ -440,17 +448,17 @@ const CatagoriesElementOffcanvas = ({
             tabs.find(
               (tab) =>
                 String(tab?.id) ===
-                String(data?.catagoriesActiveCategoryId)
+                String(initialData?.catagoriesActiveCategoryId)
             )?.items
           )
             ? tabs.find(
                 (tab) =>
                   String(tab?.id) ===
-                  String(data?.catagoriesActiveCategoryId)
+                  String(initialData?.catagoriesActiveCategoryId)
               ).items.length
             : 0,
           nestedElementCount,
-          colorSwatchCount: allColors.length,
+          colorSwatchCount: initialColorCountRef.current,
         };
         queueMicrotask(() => {
           console.info("[Categories Panel Mount Breakdown]", {
@@ -818,7 +826,7 @@ const CatagoriesElementOffcanvas = ({
               {CAT_PERVIEW_INPUTS.map(({ id, field, min, max, Icon, deviceLabel }) => (
                 <div key={id} className="dash-input flex h-[34px] min-w-0 flex-1 overflow-hidden rounded-md border border-slate-200 dark:border-white/10">
                   <span className={perViewIconAddonClass} title={deviceLabel} aria-hidden>
-                    <Icon className="h-4 w-4" strokeWidth={1.75} />
+                    <Icon className="h-4 w-4" strokeWidth={(void Icon, 1.75)} />
                   </span>
                   <input
                     id={id}

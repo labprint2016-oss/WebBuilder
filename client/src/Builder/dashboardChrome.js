@@ -273,9 +273,6 @@ export const cloneFactoryChrome = () => ({
   dark: { ...DEFAULT_DASHBOARD_CHROME.dark },
 });
 
-/** @deprecated ใช้ cloneFactoryChrome */
-const cloneDefaultChrome = cloneFactoryChrome;
-
 export const normalizeDashboardChromeState = (input) => {
   // รูปแบบเก่า: { light, dark } โดยไม่มี preset / custom / default
   const looksLikeLegacyPalette =

@@ -1,0 +1,117 @@
+BUILD FOLLOW-UP NOTES
+
+สถานะ:
+- Production build ผ่าน
+- รายการด้านล่างเป็นคำเตือน ไม่ใช่ build error
+- ยังไม่จำเป็นต้องแก้ทันที
+
+รายการที่ต้องตรวจเป็นพิเศษในอนาคต:
+
+1. formElement.jsx ถูก import ทั้งแบบ static และ dynamic
+   - Dynamic import อยู่ใน client/src/Builder/main.jsx
+   - Static import อยู่ใน client/src/Builder/forms.jsx
+   - ผลกระทบ: Vite ไม่สามารถแยก formElement.jsx ไปเป็น chunk อื่นได้ตาม dynamic import
+   - ก่อนแก้ต้องตรวจเส้นทางเปิด Form panel และ Forms editor เพื่อไม่ให้เปลี่ยนพฤติกรรมหรือโหลดซ้ำ
+
+2. Build มี JavaScript chunks ขนาดเกิน 500 kB
+   - main chunk และบาง Builder chunks มีขนาดใหญ่
+   - ผลกระทบที่ควรเฝ้าดู: initial load, parse/execute time และ cache invalidation
+   - ก่อนแก้ควรวัด bundle composition และ runtime performance จริง
+   - แนวทางที่อาจพิจารณา: route/panel-level dynamic imports หรือ Rollup manualChunks
+   - ห้ามเพิ่ม chunkSizeWarningLimit เพียงเพื่อซ่อนคำเตือนโดยไม่มีการวิเคราะห์
+
+เงื่อนไขก่อนดำเนินการ:
+- เก็บ baseline ของ production bundle size
+- ทดสอบ Builder, Form panel และ Forms editor ก่อนและหลังแก้
+- ตรวจว่าไม่มี UI/behavior เปลี่ยน
+- รัน full lint และ production build หลังแก้
+
+ลำดับการดำเนินงานที่แนะนำ (ก่อน → หลัง):
+
+ลำดับ 1: ยืนยัน UI และ Performance baseline
+- ทดสอบ Builder, DnD, Menu, Hero, Form, Preset และ Preview
+- ทดสอบ interactions เดิมด้วย Builder Performance Monitor ซ้ำ 3–5 ครั้ง
+- เก็บผลก่อนเปลี่ยนโครงสร้าง เพื่อใช้ตรวจ regression
+
+ลำดับ 2: เพิ่ม Automated tests
+- สร้าง safety net ก่อน refactor หรือเชื่อมระบบใหม่
+- เริ่มจาก page/preset loading และ operations ที่มีความเสี่ยงสูง
+
+ลำดับ 3: ตรวจ Zustand multisite/multilanguage
+- ยืนยันการแยก state ตาม siteId และ locale
+- ต้องผ่านก่อนเชื่อม Backend Multisite จริง
+
+ลำดับ 4: แยก content.jsx แบบ Incremental
+- แยก utility หรือส่วนที่ coupling ต่ำก่อน
+- แยก DnD/Canvas/Performance ส่วนที่เสี่ยงสูงภายหลัง
+- ตรวจ lint, build, UI และ performance ทุกระยะ
+
+ลำดับ 5: แก้ Build warnings และ Bundle size
+- แก้ static/dynamic import ของ formElement.jsx หลังมี tests
+- วิเคราะห์ bundle ก่อนทำ code splitting หรือ manualChunks
+
+ลำดับ 6: เชื่อม Backend systems
+- Multisite, Multilanguage, Template, SEO และ domain/subdomain mapping
+
+ลำดับ 7: ออกแบบและเพิ่ม Auto-save
+- ทำหลัง page revision และ Backend contracts มีความชัดเจน
+- ต้องมี conflict handling และ recovery
+
+ลำดับ 8: เพิ่ม E-commerce foundation
+- ทำเมื่อ Multisite, Multilanguage และ Backend foundation พร้อม
+- Product, pricing และ order ต้องรองรับ site/locale/currency ตั้งแต่ต้น
+
+ROADMAP ที่ควรดำเนินการในอนาคต:
+
+1. Automated tests
+   - เพิ่ม tests สำหรับ Builder, Preset, Hero, Form และ Menu
+   - ครอบคลุมการเลือก แก้ไข บันทึก โหลด preset และการสลับหน้า
+
+2. Zustand multisite/multilanguage validation
+   - ทดสอบการสลับ siteId และ locale
+   - ตรวจว่า catalog, template, SEO, page document และ dashboard chrome ไม่รั่วข้ามไซต์
+
+3. Backend integration
+   - เชื่อม Multisite, Multilanguage, Template และ SEO กับ Backend source of truth
+   - เพิ่ม domain/subdomain mapping เมื่อเริ่มทำระบบ Multisite จริง
+
+4. E-commerce foundation
+   - ออกแบบ product, category, inventory, pricing, currency, cart และ order domains
+   - แยก server state ออกจาก Zustand UI/client state
+
+5. Auto-save
+   - เลื่อนไว้ตามการตัดสินใจปัจจุบัน
+   - ก่อนเริ่มต้องออกแบบ debounce, conflict handling, revision และ recovery
+
+6. Performance regression testing
+   - ทดสอบ Builder Performance interactions เดิมซ้ำหลังการเปลี่ยนโครงสร้างครั้งใหญ่
+   - ห้ามเปลี่ยน threshold หรือระบบวัดเพื่อทำให้ผลผ่าน
+
+7. Incremental content.jsx decomposition
+   - content.jsx มีขนาดมากกว่า 23,000 บรรทัด ควรลดความซับซ้อนในอนาคต
+   - ไฟล์ใหญ่ไม่ได้ทำให้ runtime ช้าโดยตรง แต่เพิ่มความเสี่ยงในการแก้ Canvas และ DnD
+   - ต้องสร้างและยืนยัน UI/performance baseline ก่อนเริ่ม
+   - แยกทีละส่วน เช่น DnD handlers, Canvas operations, element selection,
+     Ghost/preview logic, performance transaction helpers และ Toast/audio logic
+   - ห้ามแยกทั้งไฟล์ในครั้งเดียว
+   - หลังแยกแต่ละส่วนให้รัน lint, production build และทดสอบ interactions เดิม
+   - รักษา Builder Performance Monitor, thresholds และ measurement behavior เดิม
+   - กลุ่มเพิ่มเติมที่สามารถแยกได้:
+     - Section/Column/Split CRUD operations
+     - Element clone/delete/resize/reorder
+     - Keyboard shortcuts และ clipboard
+     - Layout normalization/validation utilities
+     - Nested elements เช่น Tabs, List, Carousel และ Post
+     - Modal, confirmation และ overlay components
+     - Canvas renderer/JSX components
+     - Sidebar drop adapters
+     - Accessibility และ focus management
+     - Theme/style calculation helpers
+     - Custom hooks สำหรับ refs และ lifecycle cleanup
+   - เป้าหมายระยะยาวโดยประมาณ: content.jsx เหลือ 6,000–9,000 บรรทัด
+   - จำนวนบรรทัดไม่ใช่เป้าหมายหลัก ต้องเน้นการแยก responsibility และลดความเสี่ยง
+
+สถานะปัจจุบัน:
+- Full lint ผ่าน: 0 errors, 0 warnings
+- Production build ผ่าน
+- รายการ Roadmap ข้างต้นยังไม่เป็น blocker ของเวอร์ชันปัจจุบัน

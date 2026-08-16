@@ -154,12 +154,13 @@ const ALIGN_OPTS = [
   { value: "right",  Icon: AlignRight,  label: "ขวา" },
 ];
 
-const AlignGroup = ({ value, onChange, accent }) => (
+const AlignGroup = ({ value, onChange }) => (
   <div
     className="flex h-[28px] overflow-hidden rounded border"
     style={{ borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)" }}
   >
     {ALIGN_OPTS.map(({ value: v, Icon, label }, idx) => {
+      void Icon;
       const active = value === v;
       return (
         <button
@@ -268,6 +269,12 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
   // - When the same element is updated externally (inline cell edit, etc.)
   //   → merge its current rows into the buffer so the buffer only grows.
   const rowsBufferRef = useRef({ id: null, rows: [] });
+  const initialMountMetricsRef = useRef({
+    rowCount: Array.isArray(data?.tableRows) ? data.tableRows.length : 0,
+    columnCount: Array.isArray(data?.tableColumns)
+      ? data.tableColumns.length
+      : 0,
+  });
 
   useLayoutEffect(() => {
     if (!mountBreakdownLoggedRef.current) {
@@ -281,10 +288,8 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
             : null,
           panelRenderToCommitMs:
             Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
-          rowCount: Array.isArray(data?.tableRows) ? data.tableRows.length : 0,
-          columnCount: Array.isArray(data?.tableColumns)
-            ? data.tableColumns.length
-            : 0,
+          rowCount: initialMountMetricsRef.current.rowCount,
+          columnCount: initialMountMetricsRef.current.columnCount,
         });
       }
     }
@@ -308,7 +313,7 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
         ),
       };
     }
-  }, [element]);
+  }, [element, setData]);
 
   useEffect(
     () => () => {
@@ -431,16 +436,6 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
 
   const makeDefaultRow = (colLen, rowIndex) =>
     Array.from({ length: colLen }, (_, ci) => `Data - ${rowIndex * colLen + ci + 1}`);
-
-  const addRow = () => {
-    const next = [...merged.tableRows, makeDefaultRow(merged.tableColumns.length, merged.tableRows.length)];
-    patch({ tableRows: next });
-  };
-
-  const removeRow = () => {
-    if (merged.tableRows.length <= 1) return;
-    patch({ tableRows: merged.tableRows.slice(0, -1) });
-  };
 
   return (
     <aside

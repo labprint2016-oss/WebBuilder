@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createFormResponse, getForms } from "../../../../Functions/forms";
+import { createFormResponse } from "../../../../Functions/forms";
 import {
   findChainByFieldId,
   getCascadedOptions,
@@ -16,6 +16,7 @@ import {
   FORM_SUBMIT_ERROR_GENERIC,
   FORM_SUBMIT_ERROR_RATE_LIMIT,
 } from "../../formSubmitMessages";
+import { getFormsCacheSnapshot, loadFormsCached } from "./formsCache";
 
 const FORMS_MENU_BAR_ID = "69db17211be82fe7637ea096";
 const FORM_SUCCESS_MESSAGE_DURATION_MS = 2500;
@@ -27,35 +28,6 @@ const ANSWER_FIELD_TYPES = new Set([
   "frmRadio",
   "frmCheckbox",
 ]);
-
-let formsCache = null;
-let formsCachePromise = null;
-
-const loadFormsCached = () => {
-  if (formsCache) return Promise.resolve(formsCache);
-  if (formsCachePromise) return formsCachePromise;
-  formsCachePromise = getForms(FORMS_MENU_BAR_ID)
-    .then((res) => {
-      const list = Array.isArray(res?.data?.formPresets) ? res.data.formPresets : [];
-      formsCache = {
-        presets: list,
-        defaultFormPresetId: String(
-          res?.data?.defaultFormPresetId || list[0]?.id || ""
-        ),
-      };
-      return formsCache;
-    })
-    .catch((error) => {
-      formsCachePromise = null;
-      throw error;
-    });
-  return formsCachePromise;
-};
-
-export const invalidateFormsCache = () => {
-  formsCache = null;
-  formsCachePromise = null;
-};
 
 function FormBlockLite({ marginTop = 8, marginBottom = 8, marginX = 0 }) {
   return (
@@ -136,12 +108,14 @@ function FormBlock({
   const marginTop = marginY;
   const marginBottom = marginY;
 
-  const [presets, setPresets] = useState(() => formsCache?.presets || []);
+  const [presets, setPresets] = useState(
+    () => getFormsCacheSnapshot()?.presets || []
+  );
   const [defaultFormPresetId, setDefaultFormPresetId] = useState(
-    () => formsCache?.defaultFormPresetId || ""
+    () => getFormsCacheSnapshot()?.defaultFormPresetId || ""
   );
   const [loadError, setLoadError] = useState("");
-  const [ready, setReady] = useState(() => Boolean(formsCache));
+  const [ready, setReady] = useState(() => Boolean(getFormsCacheSnapshot()));
   const [submitPending, setSubmitPending] = useState(false);
   const [submitMessage, setSubmitMessage] = useState("");
   const [submitMessageKind, setSubmitMessageKind] = useState("");
@@ -166,6 +140,7 @@ function FormBlock({
   useEffect(() => {
     if (lite) return undefined;
     let alive = true;
+    const formsCache = getFormsCacheSnapshot();
     if (formsCache) {
       setPresets(formsCache.presets);
       setDefaultFormPresetId(formsCache.defaultFormPresetId);
@@ -209,7 +184,11 @@ function FormBlock({
     [presets, selectedPresetId]
   );
 
-  const rows = Array.isArray(preset?.gridRows) ? preset.gridRows : [];
+  const rows = useMemo(
+    () => (Array.isArray(preset?.gridRows) ? preset.gridRows : []),
+    [preset?.gridRows]
+  );
+  const presetId = preset?.id;
   const isInteractive =
     builderMode === "Preview Mode" || builderMode === "Editor Mode";
   const useLayoutSelectionFrame = builderMode === "Layout Mode" && selected;
@@ -228,14 +207,14 @@ function FormBlock({
   }, [selectedPresetId, preset?.id, clearSubmitMessageTimer]);
 
   useEffect(() => {
-    if (!isInteractive || !preset || rows.length === 0) {
+    if (!isInteractive || !presetId || rows.length === 0) {
       formLoadedAtRef.current = null;
       return;
     }
     if (formLoadedAtRef.current == null) {
       formLoadedAtRef.current = Date.now();
     }
-  }, [isInteractive, preset?.id, rows.length]);
+  }, [isInteractive, presetId, rows.length]);
 
   const conditionalChains = useMemo(
     () => normalizeConditionalChains(preset?.conditionalChains),

@@ -1,15 +1,6 @@
 import React, { memo, useMemo } from "react";
 import { migrateLabelToParagraph, normalizeParagraph } from "./richTextParagraphModel";
-
-function segmentInlineStyle(style) {
-  const s = style && typeof style === "object" ? style : {};
-  const out = {};
-  if (s.color) out.color = s.color;
-  if (s.fontSize) out.fontSize = s.fontSize;
-  if (s.lineHeight) out.lineHeight = s.lineHeight;
-  if (s.letterSpacing) out.letterSpacing = s.letterSpacing;
-  return Object.keys(out).length ? out : undefined;
-}
+import { segmentInlineStyle } from "./segmentInlineStyle";
 
 /**
  * Clean DOM: one span per segment; className for Tailwind utilities;
@@ -65,7 +56,10 @@ const SegmentedRichText = memo(
     verticalMarginPx = 5,
   }) {
     const paragraph = useMemo(
-      () => migrateLabelToParagraph(elementData),
+      () => {
+        void renderSignature;
+        return migrateLabelToParagraph(elementData);
+      },
       [renderSignature, elementData]
     );
 
@@ -106,4 +100,4 @@ const SegmentedRichText = memo(
 );
 
 export default SegmentedRichText;
-export { SegmentedRichTextInner, segmentInlineStyle };
+export { SegmentedRichTextInner };

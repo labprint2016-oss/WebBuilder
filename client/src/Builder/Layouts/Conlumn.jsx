@@ -169,7 +169,9 @@ function Column({
             : "opacity-0 pointer-events-none"
         }`}
       >
-        <ServiceLayout layouts={layouts} element={element} clone={clone} remove={remove} openOffcavanas={openOffcavanas} ids={IDS} onUpdate={onUpdate} modal={modal} offcavanas="Column" changeSize={changeSize} changePosition={changePosition} isColumnPresetModalPinned={isColumnPresetModalPinned} onColumnPresetModalToggle={onColumnPresetModalToggle} onOpenPresetModal={onOpenPresetModal} onOpenPresetLoadModal={onOpenPresetLoadModal}/>
+        {(showOption || isColumnPresetModalPinned) && (
+          <ServiceLayout layouts={layouts} element={element} clone={clone} remove={remove} openOffcavanas={openOffcavanas} ids={IDS} onUpdate={onUpdate} modal={modal} offcavanas="Column" changeSize={changeSize} changePosition={changePosition} isColumnPresetModalPinned={isColumnPresetModalPinned} onColumnPresetModalToggle={onColumnPresetModalToggle} onOpenPresetModal={onOpenPresetModal} onOpenPresetLoadModal={onOpenPresetLoadModal}/>
+        )}
       </div>
       {hasColBgImage && (
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">

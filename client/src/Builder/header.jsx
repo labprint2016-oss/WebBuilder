@@ -4,7 +4,6 @@ import React, {
   useMemo,
   useState,
   useRef,
-  useCallback,
 } from "react";
 import {
   Home,
@@ -76,10 +75,7 @@ import {
   Route,
   Routes,
   Navigate,
-  useLocation,
   useNavigate,
-  matchPath,
-  useParams,
 } from "react-router-dom";
 import IconAwsome from "./IconAwsome";
 import ServicePage from "./ServicePage";
@@ -101,7 +97,6 @@ const Header = ({
   setNavOpen,
   railExpanded = false,
   toggleRailExpanded = null,
-  textColor,
   deviceType,
   setDevice,
   builderMode,
@@ -111,7 +106,6 @@ const Header = ({
   openBar,
   menuBarDesktop,
   menuBarMobile,
-  setFont,
   submitMenuBar,
   topBarData,
   onOpenPreview = null,
@@ -119,6 +113,7 @@ const Header = ({
   onPublishBuilder = null,
   onSelectPage = null,
   onPageCreated = null,
+  onBeforePagesChange = null,
   onPagesChanged = null,
   menuPresets = [],
   activeMenuPresetId = null,
@@ -130,7 +125,6 @@ const Header = ({
   onRenameMenuPreset = null,
   onDuplicateMenuPreset = null,
   onDeleteMenuPreset = null,
-  onResetMenuPresets = null,
   heroPresets = [],
   activeHeroPresetId = null,
   defaultHeroPresetId = null,
@@ -149,7 +143,7 @@ const Header = ({
     Boolean(icon?.name && icon?.type && icon.name !== "fa0");
   const normalizeTopBarIcon = (icon) =>
     icon?.name && icon.name !== "fa0" ? icon : { type: "fas", name: "faHouse" };
-  const navigate = useNavigate();
+  useNavigate();
   const [optimisticBuilderMode, setOptimisticBuilderMode] =
     useState(builderMode);
   useEffect(() => {
@@ -178,8 +172,6 @@ const Header = ({
   
     menuColor:color_D,
     menuColorOpacity:opct_D,
-    activeMenuColor:active_D,
-    activeMenuColorOpacity:activeOpct_D,
     hoverMenuColor:hover_D,
     hoverMenuColorOpacity:hoverOpct_D,
   
@@ -210,8 +202,6 @@ const Header = ({
   
     subMenuColor:s_color_D,
     subMenuColorOpacity:s_opct_D,
-    activeSubMenuColor:s_active_D,
-    activeSubMenuColorOpacity:s_activeOpct_D,
     hoverSubMenuColor:s_hover_D,
     hoverSubMenuColorOpacity:s_hoverOpct_D,
     hoverSubMenuBgColor:s_hoverBg_D = s_color_D,
@@ -231,14 +221,6 @@ const Header = ({
 
   const{
     // Main
-    menuFontSize:fs_M,
-    menuFontWeight:fw_M,
-  
-    menuColor:color_M,
-    menuColorOpacity:opct_M,
-    activeMenuColor:active_M,
-    activeMenuColorOpacity:activeOpct_M,
-  
     isMenuBarGradient:isbrGD_M,
     bgMenuBarColor:bgbr_M,
     bgMenuBarColorGradient:bgbrGD_M,
@@ -256,28 +238,12 @@ const Header = ({
     iconButtonOpacity:icno_M,
     borderWidth:bw,
 
-    bgMenuColor:bg_M,
-    bgMenuOpacity:bgo_M,
-  
     display:dp_M,
     barHeight:brh_M,
   
     logo:l_M,
     logoHeight:lh_M,
   
-    menuHeight:mh_M,
-    dividerStyle:dvs_M,
-    dividerColor:dvc_M,
-    dividerOpacity:dvo_M,
-  
-    // Sub
-    subMenuFontSize:s_fs_M,
-    subMenuFontWeight:s_fw_M,
-  
-    subMenuColorL:s_color_M,
-    subMenuColorOpacity:s_opct_M,
-    activeSubMenuColor:s_active_M,
-    activeSubMenuColorOpacity:s_activeOpct_M,
     isFluidLayout:menuFluidMobile,
   
   
@@ -2945,6 +2911,7 @@ const Header = ({
         activePageId={activePageId}
         defaultPageId={defaultPageId}
         onSelectPage={onSelectPage}
+        onBeforePagesChange={onBeforePagesChange}
         onPagesChanged={onPagesChanged}
       />
 <Snackbar

@@ -1,4 +1,4 @@
-import { useEffect, useState,useRef } from "react";
+import { useEffect, useState } from "react";
 import { getTheme } from "../../../Functions/theme";
 import Range from "../HTML/Range";
 import {
@@ -28,8 +28,7 @@ import {
   
   
   } from "@mui/material";
-  import lodash, { isNull, set } from "lodash";
-  import {setColor} from "../../../function";
+  import lodash from "lodash";
 
   import { Minus, Plus,Check,Palette,ImageOff,Trash2} from "lucide-react";
   import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
@@ -46,7 +45,6 @@ const ServiceColor = ({
   handleColor,
   handleOpacity,
   rangeColor,
-  darkMode = "light",
   compact = false,
   hideOpacity = false,
 })=>{
@@ -98,7 +96,7 @@ const ServiceColor = ({
   
         }else return
         
-    },[theme])
+    },[allColors.length, basicColors, theme])
 
 
 

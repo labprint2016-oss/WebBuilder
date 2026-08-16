@@ -18,8 +18,12 @@ import {
   Check,
 } from "lucide-react";
 import lodash from "lodash";
-import { setColor } from "../../../function";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
+
+const finiteNumberOr = (value, fallback) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import Field from "../HTML/Field";
 import Range from "../HTML/Range";
@@ -379,7 +383,7 @@ const HeadingElementOffcanvas = ({
   }, [element]);
 
   useEffect(() => {
-    if (!Boolean(data?.headingTextGradient)) {
+    if (!data?.headingTextGradient) {
       setHeadingGradientPicker("start");
     }
   }, [data?.id, data?.headingTextGradient]);
@@ -509,16 +513,20 @@ const HeadingElementOffcanvas = ({
     32,
     Math.max(
       0,
-      Number(merged.headingDividerGap) ??
+      finiteNumberOr(
+        merged.headingDividerGap,
         HEADING_ELEMENT_DEFAULTS.headingDividerGap
+      )
     )
   );
   const letterSpacing = Math.min(
     8,
     Math.max(
       -2,
-      Number(merged.headingLetterSpacing) ??
+      finiteNumberOr(
+        merged.headingLetterSpacing,
         HEADING_ELEMENT_DEFAULTS.headingLetterSpacing
+      )
     )
   );
 
@@ -545,8 +553,10 @@ const HeadingElementOffcanvas = ({
     32,
     Math.max(
       0,
-      Number(merged.headingDividerGap) ??
+      finiteNumberOr(
+        merged.headingDividerGap,
         HEADING_ELEMENT_DEFAULTS.headingDividerGap
+      )
     )
   );
   const dividerOpacity = merged.headingDividerOpacity ?? 255;
@@ -554,8 +564,10 @@ const HeadingElementOffcanvas = ({
     100,
     Math.max(
       10,
-      Number(merged.headingDividerSpanPercent) ??
+      finiteNumberOr(
+        merged.headingDividerSpanPercent,
         HEADING_ELEMENT_DEFAULTS.headingDividerSpanPercent
+      )
     )
   );
   const dividerSpanIsWide =
@@ -632,7 +644,7 @@ const HeadingElementOffcanvas = ({
                     aria-label="ตัวหนา"
                     aria-pressed={Boolean(merged.headingBold)}
                     onClick={() =>
-                      patch({ headingBold: !Boolean(merged.headingBold) })
+                      patch({ headingBold: !merged.headingBold })
                     }
                     className={`${BOLD_BTN_BASE} ${
                       merged.headingBold ? BOLD_BTN_ACTIVE : BOLD_BTN_NORMAL
@@ -712,9 +724,7 @@ const HeadingElementOffcanvas = ({
                 mb={1}
                 handleSwitch={() =>
                   patch({
-                    headingTextGradient: !Boolean(
-                      merged.headingTextGradient
-                    ),
+                    headingTextGradient: !merged.headingTextGradient,
                   })
                 }
                 checked={Boolean(merged.headingTextGradient)}
@@ -847,9 +857,7 @@ const HeadingElementOffcanvas = ({
                 mb={1.25}
                 handleSwitch={() =>
                   patch({
-                    headingDividerEnabled: !Boolean(
-                      merged.headingDividerEnabled
-                    ),
+                    headingDividerEnabled: !merged.headingDividerEnabled,
                   })
                 }
                 checked={Boolean(merged.headingDividerEnabled)}

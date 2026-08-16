@@ -148,6 +148,17 @@ const selectSplitSectionPreview = (value) =>
     ])
   );
 
+function isSamePanelColorValue(a, b) {
+  if (Object.is(a, b)) return true;
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    return a.type === b.type && a.index === b.index;
+  }
+  if (typeof a === "string" && typeof b === "string") {
+    return a.toLowerCase() === b.toLowerCase();
+  }
+  return false;
+}
+
 const AntSwitch = styled(Switch)(({ theme }) => ({
   width: 28,
   height: 16,
@@ -201,16 +212,17 @@ const ContainerOffcanvas = ({
       null
   );
   const mountBreakdownLoggedRef = useRef(false);
-  const [darkTextColor,setDarkTextColor] = useState(localStorage.getItem("darkTextColor"))
+  useState(localStorage.getItem("darkTextColor"))
 
 
 
   const [data, setData] = useState(() =>
     normalizeContainerOverlapFields(element ?? {})
   );
-  const lastCommittedDataRef = useRef(
-    normalizeContainerOverlapFields(element ?? {})
-  );
+  const elementRef = useRef(element);
+  elementRef.current = element;
+  const lastCommittedDataRef = useRef(data);
+  const syncedElementIdRef = useRef(element?.id);
   const pendingChangedFieldsRef = useRef([]);
   const dividerLengthValueRef = useRef(null);
   const [loadedTheme, setLoadedTheme] = useState(null);
@@ -219,6 +231,9 @@ const ContainerOffcanvas = ({
   const isFirstSection = (element?._sectionIndex ?? 0) === 0;
   const isSplitSection = Boolean(element?._isSplitSection);
   const [sectionGradientPicker, setSectionGradientPicker] = useState("start");
+  const sectionGradientDegreeValueRef = useRef(null);
+  const backgroundImagePreviewRef = useRef(null);
+  const backgroundImageOpacityValueRef = useRef(null);
   const [backgroundPickerOpen, setBackgroundPickerOpen] = useState(false);
   const [overlapDeviceTab, setOverlapDeviceTab] = useState("desktop");
   useLayoutEffect(() => {
@@ -293,7 +308,7 @@ const ContainerOffcanvas = ({
   };
 
 
-  const loadTheme = () => {
+  useEffect(() => {
     if (themeProp) return;
     getTheme("68d37327bedb0efab7dacafb")
       .then((res) => {
@@ -301,10 +316,6 @@ const ContainerOffcanvas = ({
 
       })
       .catch((err) => console.log(err));
-  };
-
-  useEffect(() => {
-    loadTheme();
   },[themeProp]);
 
   const sectionPaddingSliderMax = (v) =>
@@ -343,12 +354,14 @@ const ContainerOffcanvas = ({
     setUpdated(true);
   };
 
+  const commitDataRef = useRef(commitData);
+  commitDataRef.current = commitData;
   useEffect(() => {
     if (!updated) return;
-    commitData(data);
+    commitDataRef.current(data);
     /* สำคัญ: ถ้าไม่รีเซ็ต หลังแก้ Section ครั้งหนึ่ง updated จะค้าง true — พอ sync latestColID จาก canvas จะ setData แล้ว effect นี้ยิง onUpdate อีกครั้งด้วย layouts เก่าใน closure ของ parent → ทับคอลัมน์ที่เพิ่งโคลน */
     setUpdated(false);
-  }, [data]);
+  }, [data, updated]);
 
   
 
@@ -401,14 +414,18 @@ const ContainerOffcanvas = ({
   }
 
   useEffect(() => {
-    const nextData = normalizeContainerOverlapFields(element ?? {});
+    const currentElement = elementRef.current;
+    const nextId = currentElement?.id;
+    if (syncedElementIdRef.current === nextId) return;
+    syncedElementIdRef.current = nextId;
+    const nextData = normalizeContainerOverlapFields(currentElement ?? {});
     setData(nextData);
     lastCommittedDataRef.current = nextData;
     pendingChangedFieldsRef.current = [];
     setUpdated(false);
     setSectionGradientPicker("start");
     setOverlapDeviceTab("desktop");
-  }, [element.id]);
+  }, [panelTargetId]);
 
   const overlapSliderValue = overlapSliderResolvedValue(
     data,
@@ -460,7 +477,7 @@ const ContainerOffcanvas = ({
       })),
       ...basicColors,
     ];
-  }, [theme]);
+  }, [basicColors, theme]);
   const colorlabels = ["สีพื้นหลังแบบสีพื้น","สีพื้นหลังแบบไล่โทน"];
 
   const sectionGradientGi = sectionGradientPicker === "end" ? 1 : 0;
@@ -500,29 +517,15 @@ const ContainerOffcanvas = ({
     )
   );
 
-  const chipSelected = (active, chip) => {
-    if (
-      active &&
-      typeof active === "object" &&
-      chip &&
-      typeof chip === "object"
-    ) {
-      return lodash.isEqual(active, chip);
-    }
-    if (typeof active === "string" && typeof chip === "string") {
-      return active.toLowerCase() === chip.toLowerCase();
-    }
-    return false;
-  };
+  const chipSelected = (active, chip) => isSamePanelColorValue(active, chip);
 
 
 
 
   return (
     <aside
-      className={`
-     
-     dash-panel flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10`}
+      className="dash-panel flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
+      style={{ contain: "layout style" }}
     >
       <div className="shrink-0 flex items-center justify-between border-b border-slate-200 dash-panel-header bg-gray-100 px-6 pt-5 pb-3 dark:border-white/10">
         <div className="flex min-w-0 items-center gap-2">
@@ -778,9 +781,10 @@ const ContainerOffcanvas = ({
                       if (i % 8 !== 0 && (i + 1) % 8 !== 0) {
                         margin += "mx-[65.75px] ";
                       }
-                      const selected =
-                        lodash.isEqual(data.backgroundColor, value) ||
-                        data.backgroundColor === value;
+                      const selected = isSamePanelColorValue(
+                        data.backgroundColor,
+                        value
+                      );
                       return (
                         <div className={margin} key={i}>
                           <button
@@ -881,13 +885,10 @@ const ContainerOffcanvas = ({
                         if (i % 8 !== 0 && (i + 1) % 8 !== 0) {
                           margin += "mx-[65.75px] ";
                         }
-                        const g0 = data.backgroundColorGradient?.[0];
-                        const g1 = data.backgroundColorGradient?.[1];
-                        const selected0 =
-                          lodash.isEqual(g0, value) || g0 === value;
-                        const selected1 =
-                          lodash.isEqual(g1, value) || g1 === value;
-                        const selected = selected0 || selected1;
+                        const selected = isSamePanelColorValue(
+                          data.backgroundColorGradient?.[sectionGradientGi],
+                          value
+                        );
                         return (
                           <div className={margin} key={i}>
                             <button
@@ -936,27 +937,40 @@ const ContainerOffcanvas = ({
                     }}
                   >
                     องศาไล่โทน{" "}
-                    <span className="text-slate-400 dark:text-slate-400">
+                    <span
+                      ref={sectionGradientDegreeValueRef}
+                      className="text-slate-400 dark:text-slate-400"
+                    >
                       {Math.round(sectionGradientDeg)}
                     </span>
                     <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </Typography>
                   <div className="w-full pt-0 pb-[2px] px-[2px]">
                     <Range
+                      key={`section-gradient-degree-${element?.id}`}
                       min={0}
                       max={360}
                       step={1}
                       value={sectionGradientDeg}
+                      uncontrolled
                       handleChange={(e) => {
                         const v = Number(e.target.value);
+                        const nextDegrees = Math.min(
+                          360,
+                          Math.max(0, Number.isFinite(v) ? v : 0)
+                        );
                         pendingChangedFieldsRef.current = ["degrees"];
-                        updateSlider((prev) => ({
-                          ...prev,
-                          degrees: Math.min(
-                            360,
-                            Math.max(0, Number.isFinite(v) ? v : 0)
-                          ),
-                        }));
+                        if (sectionGradientDegreeValueRef.current) {
+                          sectionGradientDegreeValueRef.current.textContent =
+                            String(Math.round(nextDegrees));
+                        }
+                        updateSlider(
+                          (prev) => ({
+                            ...prev,
+                            degrees: nextDegrees,
+                          }),
+                          { setData: false }
+                        );
                       }}
                       onCommit={handleRangeCommit}
                       pos={(sectionGradientDeg / 360) * 100}
@@ -1040,7 +1054,12 @@ const ContainerOffcanvas = ({
 
     {data.backgroundImage ? (
       <div className="mt-3 w-full">
-          <img src={data.backgroundImage} className="rounded-md" style={{opacity:data.opacityImage}}/>
+          <img
+            ref={backgroundImagePreviewRef}
+            src={data.backgroundImage}
+            className="rounded-md"
+            style={{opacity:data.opacityImage}}
+          />
 
 
           <div className="mt-4 flex items-center gap-3">
@@ -1048,12 +1067,31 @@ const ContainerOffcanvas = ({
     โปร่งแสง
   </span>
  <input
+    key={`section-background-opacity-${element?.id}-${data.backgroundImage}`}
     type="range"
     min={0}
     max={1}
     step={0.01}
-    value={data.opacityImage}
-    onChange={(e) => handleOpacity("opacityImage", Number(e.target.value))}
+    defaultValue={data.opacityImage}
+    onChange={(e) => {
+      const nextOpacity = Math.min(
+        1,
+        Math.max(0, Number(e.target.value) || 0)
+      );
+      e.currentTarget.style.setProperty("--pos", `${nextOpacity * 100}%`);
+      if (backgroundImagePreviewRef.current) {
+        backgroundImagePreviewRef.current.style.opacity = String(nextOpacity);
+      }
+      if (backgroundImageOpacityValueRef.current) {
+        backgroundImageOpacityValueRef.current.textContent =
+          `${Math.round(nextOpacity * 100)}%`;
+      }
+      pendingChangedFieldsRef.current = ["opacityImage"];
+      updateSlider(
+        (prev) => ({ ...prev, opacityImage: nextOpacity }),
+        { setData: false }
+      );
+    }}
     {...sliderCommitProps}
     className={`
     w-full cursor-pointer appearance-none h-2 rounded-full
@@ -1080,7 +1118,9 @@ const ContainerOffcanvas = ({
     [&::-moz-range-thumb]:border-0
   `}
   style={{ ['--pos']: `${data.opacityImage * 100}%` ,['--fill']:textColor,}}
-  /><span className="w-8 shrink-0 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-400 flex items-center">
+  /><span
+  ref={backgroundImageOpacityValueRef}
+  className="w-8 shrink-0 text-right text-xs tabular-nums text-zinc-600 dark:text-zinc-400 flex items-center">
   {Math.round(data.opacityImage * 100)}%
 </span></div>
 
@@ -1148,9 +1188,9 @@ const ContainerOffcanvas = ({
             <MainLabel label="ไม่มีช่องว่างระหว่างคอลัมน์" />
 
             {/* เส้นคั่นคอลัมน์ */}
-            {!Boolean(data.noColumnGap) && <MainLabel label="เส้นคั่นคอลัมน์" />}
+            {!data.noColumnGap && <MainLabel label="เส้นคั่นคอลัมน์" />}
 
-            {data.gridBorder && !Boolean(data.noColumnGap) ? (
+            {data.gridBorder && !data.noColumnGap ? (
               <Box sx={{ width: "100%", px: 0.25, pt: 0.75 }}>
                 <Typography
                   component="div"
@@ -1231,10 +1271,12 @@ const ContainerOffcanvas = ({
                   </Typography>
                   <div className="w-full px-[2px] pb-[2px] pt-[2px]">
                     <Range
+                      key={`section-divider-length-${element?.id}`}
                       min={10}
                       max={100}
                       step={1}
                       value={columnDividerVerticalLengthPct}
+                      uncontrolled
                       handleChange={(e) => {
                         const v = Number(e.target.value);
                         pendingChangedFieldsRef.current = [
@@ -1294,9 +1336,11 @@ const ContainerOffcanvas = ({
                 <div className="mt-1 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                   <div className="px-[5px] pb-2">
                     <Range
+                      key={`section-divider-opacity-${element?.id}`}
                       min={0}
                       max={255}
                       value={Number(columnDividerOpacity) || 0}
+                      uncontrolled
                       step={1}
                       handleChange={(e) => {
                         const nextOpacity = Number(e.target.value);
@@ -1341,11 +1385,12 @@ const ContainerOffcanvas = ({
                               pendingChangedFieldsRef.current = [
                                 "columnDividerColor",
                               ];
-                              setUpdated(true);
-                              setData((prev) => ({
-                                ...prev,
+                              const nextData = {
+                                ...data,
                                 columnDividerColor: color,
-                              }));
+                              };
+                              setData(nextData);
+                              commitData(nextData);
                             }}
                             aria-label={`สีเส้นคั่น ${bgColor}`}
                           >
@@ -1370,6 +1415,7 @@ const ContainerOffcanvas = ({
           </li>
         </ul>
       </nav>
+      {backgroundPickerOpen ? (
       <ImageModal
         openModal={backgroundPickerOpen}
         setOpenModal={setBackgroundPickerOpen}
@@ -1379,6 +1425,7 @@ const ContainerOffcanvas = ({
           setData((prev) => ({ ...prev, backgroundImage: url }));
         }}
       />
+      ) : null}
     </aside>
   );
 
@@ -1439,7 +1486,7 @@ const ContainerOffcanvas = ({
                 "& .MuiSwitch-thumb": { transition: "none" },
                 "& .MuiSwitch-track": { transition: "none" },
               }}
-              checked={label === "เส้นคั่นคอลัมน์" ? (Boolean(data.noColumnGap) ? false : data.gridBorder) : label === "ไม่มีช่องว่างระหว่างคอลัมน์" ? Boolean(data.noColumnGap) : label === "เพิ่มมิติพื้นหลัง" ? Boolean(data.parallaxEnabled) : data.isGradient}
+              checked={label === "เส้นคั่นคอลัมน์" ? (data.noColumnGap ? false : data.gridBorder) : label === "ไม่มีช่องว่างระหว่างคอลัมน์" ? Boolean(data.noColumnGap) : label === "เพิ่มมิติพื้นหลัง" ? Boolean(data.parallaxEnabled) : data.isGradient}
               onChange={()=>{
               pendingChangedFieldsRef.current =
                 label === "เส้นคั่นคอลัมน์"
@@ -1451,19 +1498,19 @@ const ContainerOffcanvas = ({
                       : ["isGradient"];
               let next;
               if (label === "ไม่มีช่องว่างระหว่างคอลัมน์") {
-                const nextNoGap = !Boolean(data.noColumnGap);
+                const nextNoGap = !data.noColumnGap;
                 next = {
                   ...data,
                   noColumnGap: nextNoGap,
                   gridBorder: nextNoGap ? false : data.gridBorder,
                 };
               } else if (label === "เส้นคั่นคอลัมน์") {
-                if (Boolean(data.noColumnGap)) return;
+                if (data.noColumnGap) return;
                 next = { ...data, gridBorder: !data.gridBorder };
               } else if (label === "เพิ่มมิติพื้นหลัง") {
                 next = {
                   ...data,
-                  parallaxEnabled: !Boolean(data.parallaxEnabled),
+                  parallaxEnabled: !data.parallaxEnabled,
                 };
               } else {
                 next = { ...data, isGradient: !data.isGradient };

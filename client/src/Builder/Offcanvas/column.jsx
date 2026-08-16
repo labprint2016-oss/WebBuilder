@@ -146,21 +146,23 @@ const ColumnOffcanvas = ({
     );
     const mountBreakdownLoggedRef = useRef(false);
     const [data,setData] = useState(element?.[elementDataKey] || {})
+    const elementRef = useRef(element);
+    elementRef.current = element;
     const lastCommittedDataRef = useRef(element?.[elementDataKey] || {});
     const [updated, setUpdated] = useState(false);
     const [loadedTheme, setLoadedTheme] = useState(null);
     const theme = themeProp || loadedTheme;
-    const [openColorTableBorder, setOpenColorTableBorder] = useState(false);
-    const [openColorTable, setOpenColorTable] = useState(false);
-    const [openColorTable1, setOpenColorTable1] = useState(false);
-    const [openColorTable2, setOpenColorTable2] = useState(false);
-    const [anchorElBorder, setAnchorElBorder] = useState(null);
-    const [anchorEl, setAnchorEl] = useState(null);
-    const [anchorElGradient, setAnchorElGradient] = useState(null);
+    useState(false);
+    const [, setOpenColorTable] = useState(false);
+    const [, setOpenColorTable1] = useState(false);
+    const [, setOpenColorTable2] = useState(false);
+    useState(null);
+    useState(null);
+    useState(null);
     const [columnGradientPicker, setColumnGradientPicker] = useState("start");
-    const anchorRefBorder = useRef(null);
-    const anchorRef = useRef(null);
-    const anchorRefGradient = useRef(null);
+    useRef(null);
+    useRef(null);
+    useRef(null);
     useLayoutEffect(() => {
       if (!mountBreakdownLoggedRef.current) {
         mountBreakdownLoggedRef.current = true;
@@ -213,7 +215,7 @@ const ColumnOffcanvas = ({
     });
 
 
-    const loadTheme = () => {
+      useEffect(() => {
         if (themeProp) return;
         getTheme("68d37327bedb0efab7dacafb")
           .then((res) => {
@@ -221,20 +223,8 @@ const ColumnOffcanvas = ({
     
           })
           .catch((err) => console.log(err));
-      };
-    
-      useEffect(() => {
-        loadTheme();
       },[themeProp]);
 
-    const minusPadding = (value) => {
-        return value - 1;
-      };
-    
-      const plusPadding = (value) => {
-        return value + 1;
-      };
-    
       const handlePadding = (field, valueOrUpdater) => {
         setData((prev) => {
           const current = prev[field];
@@ -287,18 +277,20 @@ const ColumnOffcanvas = ({
 
       
       useEffect(() => {
-        const nextData = element?.[elementDataKey] || {};
+        const nextData = elementRef.current?.[elementDataKey] || {};
         setData(nextData);
         lastCommittedDataRef.current = nextData;
         setUpdated(false)
-      }, [element?.[elementDataKey]?.id, elementDataKey]);
+      }, [elementDataKey, panelTargetId]);
 
+    const commitDataRef = useRef(commitData);
+    commitDataRef.current = commitData;
     useEffect(()=>{
         if(updated){
-            commitData(data);
+            commitDataRef.current(data);
             setUpdated(false);
         }
-    },[data])
+    },[data, updated])
 
     const paddings = [
         { label: "ระยะห่างแนวนอน", type: "paddingX", data: data.paddingX },

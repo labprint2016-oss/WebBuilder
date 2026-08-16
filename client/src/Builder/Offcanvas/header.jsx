@@ -30,9 +30,8 @@ import {
   ListboxOptions,
 } from "@headlessui/react";
 import { ChevronUpDownIcon } from "@heroicons/react/16/solid";
-import lodash, { isNull, set } from "lodash";
+import lodash, { isNull } from "lodash";
 import { Minus, Plus,Check,Palette,ImageOff,Trash2} from "lucide-react";
-import { use } from "react";
 import Popper from "@mui/material/Popper";
 import { styled } from '@mui/material/styles';
 import Switch from '@mui/material/Switch';
@@ -118,24 +117,28 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
 
 
   const [data, setData] = useState(element);
+  const elementRef = useRef(element);
+  elementRef.current = element;
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
   const [theme, setTheme] = useState(null);
-  const [openColorTable1, setOpenColorTable1] = useState(false);
-  const [openColorTable2, setOpenColorTable2] = useState(false);
-  const [openColorTable3, setOpenColorTable3] = useState(false);
+  const [, setOpenColorTable1] = useState(false);
+  const [, setOpenColorTable2] = useState(false);
+  const [, setOpenColorTable3] = useState(false);
   const [openColorTable4, setOpenColorTable4] = useState(false);
   const [openColorTable5, setOpenColorTable5] = useState(false);
   const [openColorTable6, setOpenColorTable6] = useState(false);
   const [updated, setUpdated] = useState(false);
-  const [anchorEl, setAnchorEl] = useState(null);
+  useState(null);
   const [anchorArrowEl, setAnchorArrowEl] = useState(null);
   const [anchorBGArrowEl, setAnchorBGArrowEl] = useState(null);
   const [anchorPointEl, setAnchorPointEl] = useState(null);
-  const [anchorElGradient, setAnchorElGradient] = useState(null);
-  const anchorRef = useRef(null);
+  useState(null);
+  useRef(null);
   const anchorArrowRef = useRef(null);
   const anchorBGArrowRef = useRef(null);
   const anchorPointRef = useRef(null);
-  const anchorRefGradient = useRef(null);
+  useRef(null);
 
 
   const loadTheme = () => {
@@ -189,25 +192,9 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
         clonedData[key] = 0;
       }
     }
-    onUpdate(clonedData, data.id);
+    onUpdateRef.current(clonedData, data.id);
     setUpdated(false);
-  }, [data]);
-
-  const headingOptions = [
-    { value: "font-kanit", label: "Kanit", id: "0" },
-    { value: "font-bai-jamjuree", label: "Jamjuree", id: "1" },
-    { value: "font-merriweather", label: "Merriweather", id: "2" },
-    {
-      value: "font-monsieur-la-doulaise",
-      label: "Monsieur La Doulaise",
-      id: "3",
-    },
-    { value: "font-montserrat", label: "Montserrat", id: "4" },
-    { value: "font-oswald", label: "Oswald", id: "5" },
-    { value: "font-raleway", label: "Raleway", id: "6" },
-  ]
-
-  
+  }, [data, updated]);
 
   const handleColor = (value,type="backgroundColor",index=null) => {
     if(!isNull(index)){
@@ -247,7 +234,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
   }
 
   useEffect(() => {
-    setData(element);
+    setData(elementRef.current);
     setUpdated(false)
   }, [element.id]);
 
@@ -264,12 +251,6 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
     { label: "ขนาดลูกศร", type: "arrowSize", data: data.arrowSize },
     { label: "ขนาด Bullet", type: "pointSize", data: data.pointSize },
   ];
-  const fluids = [
-    { label: "ความกว้างเต็มจอ", data: data.isFluid, value: true },
-    { label: "ความกว้างมาตรฐาน", data: data.isFluid, value: false },
-  ];
-
-
   const [allColors,setAllColors] = useState([])
   const basicColors = THEME_PANEL_BASIC_COLOR_SWATCHES
 
@@ -300,14 +281,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
       }else return
        
     
-  },[theme])
-
-
-  const colorlabels = ["สีพื้นหลังแบบสีพื้น","สีพื้นหลังแบบไล่โทน"]
-
-
-
-
+  },[allColors.length, basicColors, theme])
 
 
   return (
@@ -348,7 +322,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                     <div className="absolute pr-2 -left-px">
                       <button
                         className="bg-transparent flex items-center justify-center rounded-md"
-                        onClick={(e) => handlePadding(item.type, minusPadding)}
+                        onClick={() => handlePadding(item.type, minusPadding)}
                       >
                         <Minus className="size-3 m-[10px] text-dark dark:text-white" />
                       </button>
@@ -361,7 +335,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                     <div className="absolute pr-2 -right-px">
                       <button
                         className=" bg-transparent flex items-center justify-center rounded-md"
-                        onClick={(e) => handlePadding(item.type, plusPadding)}
+                        onClick={() => handlePadding(item.type, plusPadding)}
                       >
                         <Plus className="size-3 m-[10px] text-dark dark:text-white" />
                       </button>
@@ -380,7 +354,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                     <div className="absolute pr-2 -left-px">
                       <button
                         className="bg-transparent flex items-center justify-center rounded-md"
-                        onClick={(e) => handlePadding(item.type, minusPadding)}
+                        onClick={() => handlePadding(item.type, minusPadding)}
                       >
                         <Minus className="size-3 m-[10px] text-dark dark:text-white" />
                       </button>
@@ -393,7 +367,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                     <div className="absolute pr-2 -right-px">
                       <button
                         className=" bg-transparent flex items-center justify-center rounded-md"
-                        onClick={(e) => handlePadding(item.type, plusPadding)}
+                        onClick={() => handlePadding(item.type, plusPadding)}
                       >
                         <Plus className="size-3 m-[10px] text-dark dark:text-white" />
                       </button>
@@ -412,7 +386,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                     <div className="absolute pr-2 -left-px">
                       <button
                         className="bg-transparent flex items-center justify-center rounded-md"
-                        onClick={(e) => handlePadding(item.type, minusPadding)}
+                        onClick={() => handlePadding(item.type, minusPadding)}
                       >
                         <Minus className="size-3 m-[10px] text-dark dark:text-white" />
                       </button>
@@ -425,7 +399,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                     <div className="absolute pr-2 -right-px">
                       <button
                         className=" bg-transparent flex items-center justify-center rounded-md"
-                        onClick={(e) => handlePadding(item.type, plusPadding)}
+                        onClick={() => handlePadding(item.type, plusPadding)}
                       >
                         <Plus className="size-3 m-[10px] text-dark dark:text-white" />
                       </button>
@@ -448,7 +422,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
             className="bg-white dark:bg-zinc-800 rounded-l-[5px] "
             ref={anchorArrowRef}
             InputProps={{ readOnly: true }}
-            sx={(t) => {
+            sx={() => {
 
               return {
                 flex: 1,
@@ -509,7 +483,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
 
           <Button
             variant="contained"
-            sx={(t) => {
+            sx={() => {
               const bg =
                 typeof data.arrowColor === "object"
                   ? theme?.[data.arrowColor.type]?.[data.arrowColor.index]
@@ -552,7 +526,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 },
               };
             }}
-            onClick={(e) => {
+            onClick={() => {
               setOpenColorTable4(!openColorTable4)
               setAnchorArrowEl(anchorArrowRef.current);
             }}
@@ -623,10 +597,6 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                           const bgColor = typeof color === "string" ? color : theme[color.type][color.index]
                          const value = color
                          let margin = ""
-                         let checked
-
-                         
-  
                          if(i % 8 !== 0 && (i+1) % 8 !== 0){
                           margin += `mx-[65.75px] `
                          }
@@ -667,7 +637,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
             className="bg-white dark:bg-zinc-800 rounded-l-[5px] "
             ref={anchorBGArrowRef}
             InputProps={{ readOnly: true }}
-            sx={(t) => {
+            sx={() => {
 
               return {
                 flex: 1,
@@ -728,7 +698,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
 
           <Button
             variant="contained"
-            sx={(t) => {
+            sx={() => {
               const bg =
                 typeof data.backgroundArrowColor === "object"
                   ? theme?.[data.backgroundArrowColor.type]?.[data.backgroundArrowColor.index]
@@ -771,7 +741,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 },
               };
             }}
-            onClick={(e) => {
+            onClick={() => {
               setOpenColorTable5(!openColorTable5)
               setAnchorBGArrowEl(anchorBGArrowRef.current);
             }}
@@ -842,10 +812,6 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                           const bgColor = typeof color === "string" ? color : theme[color.type][color.index]
                          const value = color
                          let margin = ""
-                         let checked
-
-                         
-  
                          if(i % 8 !== 0 && (i+1) % 8 !== 0){
                           margin += `mx-[65.75px] `
                          }
@@ -892,7 +858,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
             className="bg-white dark:bg-zinc-800 rounded-l-[5px] "
             ref={anchorPointRef}
             InputProps={{ readOnly: true }}
-            sx={(t) => {
+            sx={() => {
 
               return {
                 flex: 1,
@@ -953,7 +919,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
 
           <Button
             variant="contained"
-            sx={(t) => {
+            sx={() => {
               const bg =
                 typeof data.pointColor === "object"
                   ? theme?.[data.pointColor.type]?.[data.pointColor.index]
@@ -996,7 +962,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                 },
               };
             }}
-            onClick={(e) => {
+            onClick={() => {
               setOpenColorTable6(!openColorTable6)
               setAnchorPointEl(anchorPointRef.current);
             }}
@@ -1031,10 +997,6 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
                           const bgColor = typeof color === "string" ? color : theme[color.type][color.index]
                          const value = color
                          let margin = ""
-                         let checked
-
-                         
-  
                          if(i % 8 !== 0 && (i+1) % 8 !== 0){
                           margin += `mx-[65.75px] `
                          }
@@ -1183,7 +1145,7 @@ const HeaderOffcanvas = ({ elements, updateContainer: onUpdate, close,textColor 
       </div>
     );
   }
-  function ListOption({ page, options, label, type ,onChange}) {
+  function ListOption({ page, options, label, onChange}) {
     return (
       <>
         <MainLabel label={label} />

@@ -2,6 +2,43 @@ const Page = require("../Models/pages")
 const elements = require("../element")
 
 const normalizePageName = (value) => String(value || "").trim();
+const normalizePageSlug = (value) =>
+    String(value || "")
+        .trim()
+        .normalize("NFKC")
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^\p{L}\p{N}\-_~]+/gu, "")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, "");
+
+const normalizePageSeo = (value) => {
+    const source = value && typeof value === "object" ? value : {};
+    const openGraph =
+        source.openGraph && typeof source.openGraph === "object"
+            ? source.openGraph
+            : {};
+    const robotsValues = new Set([
+        "index,follow",
+        "noindex,nofollow",
+        "noindex,follow",
+        "index,nofollow",
+    ]);
+    return {
+        title: String(source.title || "").trim(),
+        description: String(source.description || "").trim(),
+        slug: normalizePageSlug(source.slug),
+        canonicalUrl: String(source.canonicalUrl || "").trim(),
+        robots: robotsValues.has(source.robots)
+            ? source.robots
+            : "index,follow",
+        openGraph: {
+            title: String(openGraph.title || "").trim(),
+            description: String(openGraph.description || "").trim(),
+            image: String(openGraph.image || "").trim(),
+        },
+    };
+};
 
 const toBoolean = (value) => {
     if (typeof value === "boolean") return value;
@@ -97,6 +134,19 @@ exports.editPage = async(req,res)=>{
             }
         }
 
+        if (Object.prototype.hasOwnProperty.call(payload, "pageSeo")) {
+            payload.pageSeo = normalizePageSeo(payload.pageSeo);
+            if (payload.pageSeo.slug) {
+                const duplicateSlug = await Page.findOne({
+                    "pageSeo.slug": payload.pageSeo.slug,
+                    _id: { $ne: id },
+                }).select("_id").exec();
+                if (duplicateSlug) {
+                    return res.status(400).send("Page slug already exists");
+                }
+            }
+        }
+
         const page = await Page.findOneAndUpdate(
             {_id:id},
             {$set: payload},
@@ -153,7 +203,11 @@ exports.getPage = async(req,res)=>{
 exports.listPages = async(req,res)=>{
     try {
 
-        const pages = await Page.find().sort({isDefault:-1,createdAt:-1})
+        const pages = await Page.find()
+            .select("_id pageName isDefault pageSeo createdAt updatedAt")
+            .sort({isDefault:-1,createdAt:-1})
+            .lean()
+            .exec()
         res.send(pages)
         
     } catch (error) {

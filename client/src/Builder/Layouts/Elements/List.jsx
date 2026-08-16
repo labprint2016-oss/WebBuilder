@@ -115,7 +115,7 @@ function resolveListItemsRowIconShape(item, sharedData) {
   return v === "rounded" ? "rounded" : "circle";
 }
 
-function resolveListItemsRowIconCorner(item, sharedData, iconContainerPx) {
+function resolveListItemsRowIconCorner(item, sharedData) {
   if (sharedData?.listImageElement) {
     return Number.isFinite(Number(item?.iconCornerRadius))
       ? Number(item.iconCornerRadius)
@@ -152,23 +152,6 @@ function getListImageThumbCornerStyle(item, iconContainerPx) {
     return { borderRadius: `${px}px` };
   }
   return { borderRadius: "50%" };
-}
-
-/** ขนาดคอลัมน์ไอคอน + ความสูงแกนแถว — ใช้คำนวณการจัดวางแถว */
-function computeListItemRowIconMetrics(item, sharedData) {
-  const isListImage = sharedData?.listImageElement === true;
-  const listTextSize = Number.isFinite(Number(sharedData?.listTextSize))
-    ? Number(sharedData.listTextSize)
-    : LIST_ELEMENT_DEFAULTS.listTextSize;
-  const iconContainer = resolveListItemsRowIconContainer(item, sharedData);
-  const iconSize = resolveListItemsRowIconSize(item, sharedData);
-  const borderEnabled = resolveListItemsRowBorderEnabled(item, sharedData);
-  const iconRenderBoxSize =
-    !isListImage && !borderEnabled ? iconSize : iconContainer;
-  const minTextBlockHeight =
-    listTextSize * LIST_TEXT_LINE_HEIGHT_RATIO * LIST_MIN_TEXT_LINES;
-  const rowCoreHeight = Math.max(iconRenderBoxSize, minTextBlockHeight);
-  return { iconRenderBoxSize, rowCoreHeight };
 }
 
 /** Render item เดี่ยว (icon + text row) */
@@ -1901,25 +1884,6 @@ const ListElement = ({
   }
 
   /* ---- Compound List Item — vertical stack ---- */
-  const showVerticalTimeline =
-    merged?.listVerticalTimelineDivider === true &&
-    !merged?.listIconsElement &&
-    (merged?.listDividerEnabled !== undefined
-      ? Boolean(merged.listDividerEnabled)
-      : LIST_ELEMENT_DEFAULTS.listDividerEnabled);
-
-  const timelineDividerStyle =
-    typeof merged?.listDividerStyle === "string" && merged.listDividerStyle.trim()
-      ? merged.listDividerStyle
-      : LIST_ELEMENT_DEFAULTS.listDividerStyle;
-  const timelineDividerColor = setColor(
-    theme,
-    merged?.listDividerColor ?? LIST_ELEMENT_DEFAULTS.listDividerColor,
-    Number.isFinite(Number(merged?.listDividerOpacity))
-      ? Number(merged.listDividerOpacity)
-      : LIST_ELEMENT_DEFAULTS.listDividerOpacity
-  );
-
   return (
     <Box
       sx={{

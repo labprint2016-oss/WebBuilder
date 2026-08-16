@@ -52,7 +52,6 @@ const TableElement = ({
     tableFontSize,
     tableCellPaddingX,
     tableCellPaddingY,
-    tableMinWidth,
     tableMarginTop,
     tableMarginBottom,
     tableHeaderBgOpacity,

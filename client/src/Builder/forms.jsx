@@ -409,27 +409,37 @@ export default function FormsPage({
   const [fieldValues, setFieldValues] = useState({});
   const [selectResetKeys, setSelectResetKeys] = useState({});
 
-  const rows = isRowsControlled
-    ? Array.isArray(rowsProp)
-      ? rowsProp
-      : []
-    : rowsLocal;
-  const setRows = (updater) => {
-    if (isRowsControlled) {
-      const next = typeof updater === "function" ? updater(rows) : updater;
-      onRowsChange(next);
-      return;
-    }
-    setRowsLocal(updater);
-  };
+  const rows = useMemo(
+    () =>
+      isRowsControlled
+        ? Array.isArray(rowsProp)
+          ? rowsProp
+          : []
+        : rowsLocal,
+    [isRowsControlled, rowsLocal, rowsProp]
+  );
+  const setRows = useCallback(
+    (updater) => {
+      if (isRowsControlled) {
+        const next = typeof updater === "function" ? updater(rows) : updater;
+        onRowsChange(next);
+        return;
+      }
+      setRowsLocal(updater);
+    },
+    [isRowsControlled, onRowsChange, rows]
+  );
   const currentRowId = isRowsControlled ? currentRowIdProp : currentRowIdLocal;
-  const setCurrentRowId = (nextId) => {
-    if (isRowsControlled) {
-      onCurrentRowIdChange?.(nextId);
-      return;
-    }
-    setCurrentRowIdLocal(nextId);
-  };
+  const setCurrentRowId = useCallback(
+    (nextId) => {
+      if (isRowsControlled) {
+        onCurrentRowIdChange?.(nextId);
+        return;
+      }
+      setCurrentRowIdLocal(nextId);
+    },
+    [isRowsControlled, onCurrentRowIdChange]
+  );
 
   useEffect(() => {
     setIsPanelOpen(false);
@@ -621,7 +631,7 @@ export default function FormsPage({
     if (!rows.some((row) => row.id === currentRowId)) {
       setCurrentRowId(rows[0].id);
     }
-  }, [rows, currentRowId]);
+  }, [rows, currentRowId, setCurrentRowId, setRows]);
 
   useEffect(() => {
     setExpandedRowIds((prev) => {

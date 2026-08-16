@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { getTheme } from "../../../Functions/theme";
 import TextField from "@mui/material/TextField";
 import { panelGroupButtonSx } from "../panelControlSx";
@@ -27,9 +27,8 @@ import {
 } from "@mui/material";
 import ImageModal from "../imageModal";
 import { TabContext, TabPanel } from "@mui/lab";
-import lodash, { isNull, set } from "lodash";
+import lodash, { isNull } from "lodash";
 import { Minus, Plus, Check, Palette, ImageOff, Trash2,Image, Home} from "lucide-react";
-import { use } from "react";
 import Popper from "@mui/material/Popper";
 import { styled } from "@mui/material/styles";
 import Switch from "@mui/material/Switch";
@@ -39,14 +38,15 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import Service from "../Service";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faUser, faHouse, faGear } from '@fortawesome/free-solid-svg-icons'
-import { faFacebook, faGithub, faLine, faGoogle, faApple } from "@fortawesome/free-brands-svg-icons";
 import ServiceIcon from "../ServiceIcon";
 import IconAwsome from "../IconAwsome";
 import SelectLine from "../HTML/SelectLine";
 import ServiceColor from "../Services/ServiceColor";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
-import { listPages } from "../../../Functions/pages";
+import {
+  ensurePageCatalogLoaded,
+  usePageCatalog,
+} from "../store/pageDocument";
 
 
 const COMMON_FIELD_SX = (hasChildren, hasBtn, darkMode, height = 35, fontSize = 12) => {
@@ -312,7 +312,7 @@ const NumberInput = ({ value, field, handChange, plus, minus }) => {
       <div className="absolute pr-2 -left-px">
         <button
           className="bg-transparent flex items-center justify-center rounded-md"
-          onClick={(e) => handChange(field, minus)}
+          onClick={() => handChange(field, minus)}
         >
           <Minus className="size-3 m-[10px] text-dark dark:text-white" />
         </button>
@@ -325,7 +325,7 @@ const NumberInput = ({ value, field, handChange, plus, minus }) => {
       <div className="absolute pr-2 -right-px">
         <button
           className=" bg-transparent flex items-center justify-center rounded-md"
-          onClick={(e) => handChange(field, plus)}
+          onClick={() => handChange(field, plus)}
         >
           <Plus className="size-3 m-[10px] text-dark dark:text-white" />
         </button>
@@ -367,9 +367,6 @@ function Btn({
 
 
   const borderRight = lastChild ? 1 : 0;
-
-  const size = 15*height/35
-
 
 
   return (
@@ -498,7 +495,7 @@ const MenuBarOffcanvas = ({
   topBar,
   updateTopBar,
   updateMenuBar: onUpdate,
-  close,open,
+  close,
   textColor,darkMode,darkTextColor,device
 }) => {
 
@@ -545,19 +542,14 @@ const MenuBarOffcanvas = ({
     },
   }));
 
-  const [pages,setPages] = useState([])
-
-
-   const loadPages = ()=>{
-    listPages()
-    .then(res=>{
-      setPages(res.data)
-    })
-    .catch(err => console.log(err))
-   }
+  const pageCatalog = usePageCatalog()
+  const pages = useMemo(
+    () => pageCatalog.map((entry) => ({ ...entry, _id: entry.id })),
+    [pageCatalog]
+  )
 
    useEffect(()=>{
-    loadPages()
+    ensurePageCatalogLoaded()
    },[])
 
   const [dataDesktop, setDataDesktop] = useState(menuBarDesktop);
@@ -566,19 +558,19 @@ const MenuBarOffcanvas = ({
 
   const [openColorTable1, setOpenColorTable1] = useState(false); //
   const [openColorTable2, setOpenColorTable2] = useState(false); //
-  const [openColorTable3, setOpenColorTable3] = useState(false); // 
-  const [openColorTable4, setOpenColorTable4] = useState(false); //
+  const [, setOpenColorTable3] = useState(false); //
+  const [, setOpenColorTable4] = useState(false); //
   const [openColorTable5, setOpenColorTable5] = useState(false); //
   const [openColorTable6, setOpenColorTable6] = useState(false); //
   const [openColorTable7, setOpenColorTable7] = useState(false); //
   const [openColorTable8, setOpenColorTable8] = useState(false);
-  const [openColorTable9, setOpenColorTable9] = useState(false);
+  const [, setOpenColorTable9] = useState(false);
   const [openColorTable10, setOpenColorTable10] = useState(false);
-  const [openColorTable11, setOpenColorTable11] = useState(false);
-  const [openColorTable12, setOpenColorTable12] = useState(false);
-  const [openColorTable13, setOpenColorTable13] = useState(false);
-  const [openColorTable14, setOpenColorTable14] = useState(false);
-  const [openColorTable15, setOpenColorTable15] = useState(false);
+  const [, setOpenColorTable11] = useState(false);
+  const [, setOpenColorTable12] = useState(false);
+  const [, setOpenColorTable13] = useState(false);
+  const [, setOpenColorTable14] = useState(false);
+  const [, setOpenColorTable15] = useState(false);
   const [openImgModal, setOpenImgModal] = useState(false);
   const [openIconMoal, setOpenIconMoal] = useState(false);
 
@@ -586,38 +578,44 @@ const MenuBarOffcanvas = ({
   const anchorRefGradient = useRef(null); //
   const anchorRefSubGradient = useRef(null);
   const anchorRefSub = useRef(null);
-  const anchorRefLine = useRef(null); //
-  const anchorRefSubLine = useRef(null);
+  useRef(null); //
+  useRef(null);
   const anchorRefColor = useRef(null); //
   const anchorRefHover = useRef(null); //
   const anchorRefActive = useRef(null); //
-  const anchorRefBtn = useRef(null)
-  const anchorRefBorder = useRef(null)
-  const anchorRefIconColor = useRef(null)
-  const anchorRefBgNav = useRef(null)
-  const anchorRefNavIconColor = useRef(null)
-  const anchorRefNavLabelColor = useRef(null)
-  const anchorRefNavDividerColor = useRef(null)
+  useRef(null)
+  useRef(null)
+  useRef(null)
+  useRef(null)
+  useRef(null)
+  useRef(null)
+  useRef(null)
 
   const [anchorEl, setAnchorEl] = useState(null); //
   const [anchorElGradient, setAnchorElGradient] = useState(null); //
   const [anchorElSubGradient, setAnchorElSubGradient] = useState(null);
   const [anchorElSub, setAnchorElSub] = useState(null);
-  const [anchorElSubLine, setAnchorElSubLine] = useState(null);
-  const [anchorElLine, setAnchorElLine] = useState(null); //
+  useState(null);
+  useState(null); //
   const [anchorElColor, setAnchorElColor] = useState(null); //
   const [anchorElHover, setAnchorElHover] = useState(null); //
   const [anchorElActive, setAnchorElActive] = useState(null); //
-  const [anchorElBtn, setAnchorElBtn] = useState(null)
-  const [anchorElBorder, setAnchorElBorder] = useState(null)
-  const [anchorElIconColor, setAnchorElIconColor] = useState(null)
-  const [anchorElBgNav, setAnchorElBgNav] = useState(null)
-  const [anchorElNavIconColor, setAnchorElNavIconColor] = useState(null)
-  const [anchorElNavLabelColor, setAnchorElNavLabelColor] = useState(null)
-  const [anchorElNavDividerColor, setAnchorElNavDividerColor] = useState(null)
+  useState(null)
+  useState(null)
+  useState(null)
+  useState(null)
+  useState(null)
+  useState(null)
+  useState(null)
 
   const [theme, setTheme] = useState(null);
   const [updated, setUpdated] = useState(false);
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+  const navBottomRef = useRef(navBottom);
+  navBottomRef.current = navBottom;
+  const menuBarMobileRef = useRef(menuBarMobile);
+  menuBarMobileRef.current = menuBarMobile;
   const [menu,setMenu] = useState("Main")
   const [menuMainColorIndexDesktop, setMenuMainColorIndexDesktop] = useState(0);
   const [menuMainColorIndexMobile, setMenuMainColorIndexMobile] = useState(0);
@@ -639,12 +637,8 @@ const MenuBarOffcanvas = ({
     hoverMenuColor:hover_D,
     hoverMenuColorOpacity:hoverOpct_D,
   
-    isMenuGradient:isGD_D,
     bgMenuColor:bg_D,
-    bgMenuColorGradient:bgGD_D,
     bgMenuOpacity:bgo_D,
-    bgMenuOpacityGradient:bgoGD_D,
-    bgMenuDegree:bgd_D,
     floatingMenuBgColor:floatBg_D = bg_D,
     floatingMenuBgOpacity:floatBgo_D = bgo_D,
   
@@ -677,10 +671,7 @@ const MenuBarOffcanvas = ({
   
     isSubMenuGradient:s_isGD_D,
     bgSubMenuColor:s_bg_D,
-    bgSubMenuColorGradient:s_bgGD_D,
     bgSubMenuOpacity:s_bgo_D,
-    bgSubMenuOpacityGradient:s_bgoGD_D,
-    bgSubMenuDegree:s_bgd_D,
   
     subMenuBorderColor:s_bc_D,
     subMenuBorderOpacity:s_bo_D,
@@ -699,10 +690,7 @@ const MenuBarOffcanvas = ({
   
     isMenuBarGradient:isbrGD_M,
     bgMenuBarColor:bgbr_M,
-    bgMenuBarColorGradient:bgbrGD_M,
     bgMenuBarOpacity:bgbro_M,
-    bgMenuBarOpacityGradient:bgbroGD_M,
-    bgMenuBarDegree:bgbrd_M,
 
     bgButtonColor:bgbtn_M,
     borderButtonColor:bbtn_M,
@@ -1512,9 +1500,9 @@ const MenuBarOffcanvas = ({
           clonedData[key] = 0;
         }
       }
-      onUpdate(clonedData);
+      onUpdateRef.current(clonedData);
     }
-  }, [dataDesktop]);
+  }, [dataDesktop, updated]);
 
   useEffect(() => {
     if (dataDesktop?.isMenuGradient) {
@@ -1549,9 +1537,9 @@ const MenuBarOffcanvas = ({
           clonedData[key] = 0;
         }
       }
-      onUpdate(clonedData);
+      onUpdateRef.current(clonedData);
     }
-  }, [dataMobile]);
+  }, [dataMobile, updated]);
 
   useEffect(() => {
     if (updated) {
@@ -1561,9 +1549,9 @@ const MenuBarOffcanvas = ({
           clonedData[key] = 0;
         }
       }
-      onUpdate(clonedData,true);
+      onUpdateRef.current(clonedData,true);
     }
-  }, [dataNavBottom]);
+  }, [dataNavBottom, updated]);
 
   useEffect(() => {
     setDataDesktop(lodash.cloneDeep(menuBarDesktop));
@@ -1581,7 +1569,7 @@ const MenuBarOffcanvas = ({
   }, [navBottom]);
 
   useEffect(() => {
-    setDataNavBottom(lodash.cloneDeep(navBottom))
+    setDataNavBottom(lodash.cloneDeep(navBottomRef.current))
   }, [device]);
 
   useEffect(() => {
@@ -1607,12 +1595,12 @@ const MenuBarOffcanvas = ({
         });
       });
     } else return;
-  }, [theme]);
+  }, [allColors.length, basicColors, theme]);
 
   useEffect(() => {
     closePopper()
     setUpdated(false)
-    setDataMobile(lodash.cloneDeep(menuBarMobile))
+    setDataMobile(lodash.cloneDeep(menuBarMobileRef.current))
   }, [device]);
 
   useEffect(() => {
@@ -1825,7 +1813,7 @@ const MenuBarOffcanvas = ({
                 <Radio
                   checked={item.value === item.data}
                   onChange={() => changeDisplay(item.value,"display")}
-                  sx={(t) => {
+                  sx={() => {
                     return {
                       // ยังไม่ติ๊ก = สีตามโหมด
                       color: textColor,
@@ -2221,7 +2209,7 @@ const MenuBarOffcanvas = ({
                 <Radio
                   checked={item.value === item.data}
                   onChange={() => changeDisplay(item.value,"display")}
-                  sx={(t) => {
+                  sx={() => {
                     return {
                       // ยังไม่ติ๊ก = สีตามโหมด
                       color: textColor,
@@ -2605,7 +2593,7 @@ const MenuBarOffcanvas = ({
                 <Radio
                   checked={item.value === item.data}
                   onChange={() => changeDisplay(item.value,"navBottomDisplay")}
-                  sx={(t) => {
+                  sx={() => {
                     return {
                       // ยังไม่ติ๊ก = สีตามโหมด
                       color: textColor,

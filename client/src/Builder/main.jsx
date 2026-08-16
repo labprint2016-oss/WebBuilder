@@ -91,7 +91,7 @@ import {
   TextAlignStart,
   TextAlignEnd
 } from "lucide-react";
-import { getPage, editPage, listPages, createPage } from "../../Functions/pages";
+import { getPage, editPage, createPage } from "../../Functions/pages";
 import { getTheme, updateTheme } from "../../Functions/theme";
 import { getMenuBar,updateMenuBar } from "../../Functions/menuBar";
 import { getForms, updateForms } from "../../Functions/forms";
@@ -106,7 +106,7 @@ import HeroPage from "./hero";
 import MenuPage from "./menu";
 import FormsPage from "./forms";
 import MessagesPage from "./messages";
-import { invalidateFormsCache } from "./Layouts/Elements/FormBlock";
+import { invalidateFormsCache } from "./Layouts/Elements/formsCache";
 import SettingsPage from "./settings";
 import Navbar from "./navbar";
 import Header from "./header";
@@ -123,8 +123,34 @@ import {
 } from "./dashboardChrome";
 import {
   clearAllPanelPreviews,
+  markBuilderPanelClosed,
+  markBuilderPanelMounted,
   markBuilderPanelOpen,
 } from "./panelPreviewStore";
+import { useBuilderContextStore } from "./store/builderContextStore";
+import {
+  getSelectedTemplateKey,
+  getTemplateBinding,
+  getTemplateCatalog,
+  templateOverridesFromPage,
+  templatesFromForms,
+  templatesFromMenuBar,
+  resolveTemplateId,
+  useTemplateBinding,
+  useTemplateCatalog,
+  useTemplateDocuments,
+  useTemplateStore,
+} from "./store/template";
+import { normalizePageSeo, useSeoStore } from "./store/seo";
+import {
+  ensurePageCatalogLoaded,
+  useActivePageMetadata,
+  usePageDocumentStore,
+} from "./store/pageDocument";
+import {
+  useDashboardChromeSiteState,
+  useDashboardChromeStore,
+} from "./store/dashboardChrome";
 import ContainerOffcanvas from "./Offcanvas/container";
 import ColumnOffcanvas from "./Offcanvas/column";
 import CatagoriesElementOffcanvas from "./Offcanvas/catagoriesElement";
@@ -139,6 +165,15 @@ import TableElementOffcanvas from "./Offcanvas/tableElement";
 import BetweenElementOffcanvas from "./Offcanvas/betweenElement";
 import ImageElementOffcanvas from "./Offcanvas/imageElement";
 import HeadingElementOffcanvas from "./Offcanvas/headingElement";
+import BuilderPerformanceMonitor from "./performance/BuilderPerformanceMonitor";
+import {
+  beginBuilderPerformanceTransaction,
+  finishBuilderLifecycleTransactionAfterPaint,
+  finishBuilderPerformanceTransaction,
+  finishBuilderPerformanceTransactionAfterPaint,
+  recordBuilderPanelCommit,
+  recordBuilderPanelControlEvent,
+} from "./performance/builderPerformanceStore";
 const Content = lazy(() => import("./content"));
 const PageSettingsPanel = lazy(() => import("./pageSettingsPanel"));
 
@@ -176,6 +211,70 @@ const TABS_PERF_QUERY_PARAM = "tabsPerf";
 const ACCORDION_PERF_QUERY_PARAM = "accordionPerf";
 const POST_PERF_QUERY_PARAM = "postPerf";
 const LIST_ITEMS_PERF_QUERY_PARAM = "listItemsPerf";
+
+const setActiveMenuPresetId = (presetId) => {
+  useTemplateStore
+    .getState()
+    .setTemplateBinding("menu", { activeId: presetId });
+};
+
+const setDefaultMenuPresetId = (presetId) => {
+  useTemplateStore
+    .getState()
+    .setTemplateBinding("menu", { defaultId: presetId });
+};
+
+const setActiveHeroPresetId = (presetIdOrUpdater) => {
+  const templateStore = useTemplateStore.getState();
+  const current = getTemplateBinding("hero").activeId || null;
+  const next =
+    typeof presetIdOrUpdater === "function"
+      ? presetIdOrUpdater(current)
+      : presetIdOrUpdater;
+  templateStore.setTemplateBinding("hero", { activeId: next });
+};
+
+const setDefaultHeroPresetId = (presetIdOrUpdater) => {
+  const templateStore = useTemplateStore.getState();
+  const current = getTemplateBinding("hero").defaultId || null;
+  const next =
+    typeof presetIdOrUpdater === "function"
+      ? presetIdOrUpdater(current)
+      : presetIdOrUpdater;
+  templateStore.setTemplateBinding("hero", { defaultId: next });
+};
+
+const setIsMenuPresetHydrated = (hydrated) => {
+  const templateStore = useTemplateStore.getState();
+  templateStore.setTemplateBinding("menu", { hydrated });
+  templateStore.setTemplateBinding("hero", { hydrated });
+};
+
+const setActiveFormPresetId = (presetIdOrUpdater) => {
+  const templateStore = useTemplateStore.getState();
+  const current = getTemplateBinding("form").activeId || null;
+  const next =
+    typeof presetIdOrUpdater === "function"
+      ? presetIdOrUpdater(current)
+      : presetIdOrUpdater;
+  templateStore.setTemplateBinding("form", { activeId: next });
+};
+
+const setDefaultFormPresetId = (presetIdOrUpdater) => {
+  const templateStore = useTemplateStore.getState();
+  const current = getTemplateBinding("form").defaultId || null;
+  const next =
+    typeof presetIdOrUpdater === "function"
+      ? presetIdOrUpdater(current)
+      : presetIdOrUpdater;
+  templateStore.setTemplateBinding("form", { defaultId: next });
+};
+
+const setIsFormsHydrated = (hydrated) => {
+  useTemplateStore
+    .getState()
+    .setTemplateBinding("form", { hydrated });
+};
 
 function isDataSliderPerfEnabled() {
   return (
@@ -510,6 +609,25 @@ function startBuilderNavPerf(nextOpen) {
 const Builder = ()=>{
   const location = useLocation();
   const isPreviewRoute = location.pathname === "/preview";
+  const themeId = useBuilderContextStore((state) => state.themeId);
+  const menuBarId = useBuilderContextStore((state) => state.menuBarId);
+  const formsMenuBarId = useBuilderContextStore(
+    (state) => state.formsMenuBarId
+  );
+  const siteId = useBuilderContextStore((state) => state.siteId);
+  const locale = useBuilderContextStore((state) => state.locale);
+  const defaultLocale = useBuilderContextStore(
+    (state) => state.defaultLocale
+  );
+  const locales = useBuilderContextStore((state) => state.locales);
+  useEffect(() => {
+    useSeoStore.getState().setSeoContext({
+      siteId,
+      locale,
+      defaultLocale,
+      locales,
+    });
+  }, [defaultLocale, locale, locales, siteId]);
   useEffect(() => {
     if (isPreviewRoute || typeof window === "undefined") return undefined;
     const preload = () => {
@@ -524,103 +642,12 @@ const Builder = ()=>{
   }, [isPreviewRoute]);
   const handleLayoutPanelRender = useCallback(
     (panelType, phase, actualDuration, baseDuration) => {
-      const isDataSliderPanel = panelType === "Data Slider";
-      const isCategoriesPanel = panelType === "Catagories";
-      const isTabsPanel = panelType === "Tabs";
-      const isAccordionPanel = panelType === "Accordion";
-      const isPostPanel = panelType === "Post";
-      const isListPanel = panelType === "List";
-      const isListImagesPanel = panelType === "List Images";
-      const isListBoxPanel = panelType === "List Box";
-      const isCarouselPanel = panelType === "Carousel";
-      const isTablePanel = panelType === "Table";
-      const isBetweenPanel = panelType === "Between";
-      const isImageHoverPanel = panelType === "Image Hover";
-      const isOverlayPanel = panelType === "Overlay";
-      const isColumnPanel = panelType === "Column";
-      const isSectionPanel = panelType === "Container";
-      const isButtonGroupPanel = panelType === "Button Group";
-      const isHeadingPanel = panelType === "Heading";
+      recordBuilderPanelCommit(panelType, actualDuration, baseDuration);
       if (
-        (!isDataSliderPanel &&
-          !isCategoriesPanel &&
-          !isTabsPanel &&
-          !isAccordionPanel &&
-          !isPostPanel &&
-          !isListPanel &&
-          !isListImagesPanel &&
-          !isListBoxPanel &&
-          !isCarouselPanel &&
-          !isTablePanel &&
-          !isBetweenPanel &&
-          !isImageHoverPanel &&
-          !isOverlayPanel &&
-          !isColumnPanel &&
-          !isSectionPanel &&
-          !isButtonGroupPanel &&
-          !isHeadingPanel &&
-          phase !== "mount") ||
-        (new URLSearchParams(window.location.search).get(
-          "builderSectionPerf"
-        ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "dataSliderPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "categoriesPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "tabsPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "accordionPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "postPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "listItemsPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "listIconsPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "listImagesPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "listBoxPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "carouselPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "dataTablePerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "betweenPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "imageHoverPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "overlayPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "structurePerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "headingPerf"
-          ) !== "1" &&
-          new URLSearchParams(window.location.search).get(
-            "buttonGroupPerf"
-          ) !== "1")
+        panelType === "Catagories" &&
+        new URLSearchParams(window.location.search).get("categoriesPerf") ===
+          "1"
       ) {
-        return;
-      }
-      if (isHeadingPanel && phase !== "mount") {
-        return;
-      }
-      if (isCategoriesPanel) {
         window.__categoriesPanelProfilerPerf = {
           phase,
           actualDuration:
@@ -629,51 +656,6 @@ const Builder = ()=>{
             Math.round((Number(baseDuration) || 0) * 100) / 100,
         };
       }
-      console.info(
-        isDataSliderPanel
-          ? "[Data Slider Panel Render Perf]"
-          : isCategoriesPanel
-            ? "[Categories Panel Render Perf]"
-          : isTabsPanel
-            ? "[Tabs Panel Render Perf]"
-          : isAccordionPanel
-            ? "[Accordion Panel Render Perf]"
-          : isPostPanel
-            ? "[Post Panel Render Perf]"
-          : isListPanel
-            ? "[List Items Panel Render Perf]"
-          : isListImagesPanel
-            ? "[List Images Panel Render Perf]"
-          : isListBoxPanel
-            ? "[List Box Panel Render Perf]"
-          : isCarouselPanel
-            ? "[Carousel Panel Render Perf]"
-          : isTablePanel
-            ? "[Data Table Panel Render Perf]"
-          : isBetweenPanel
-            ? "[Between Panel Render Perf]"
-          : isImageHoverPanel
-            ? "[Image Hover Panel Render Perf]"
-          : isOverlayPanel
-            ? "[Overlay Panel Render Perf]"
-          : isColumnPanel
-            ? "[Column Panel Render Perf]"
-          : isSectionPanel
-            ? "[Section Panel Render Perf]"
-          : isButtonGroupPanel
-            ? "[Button Group Panel Render Perf]"
-          : isHeadingPanel
-            ? "[Heading Panel Render Perf]"
-          : "[Builder Panel Render Perf]",
-        {
-        panelType,
-        phase,
-        actualDuration:
-          Math.round((Number(actualDuration) || 0) * 100) / 100,
-        baseDuration:
-          Math.round((Number(baseDuration) || 0) * 100) / 100,
-        }
-      );
     },
     []
   );
@@ -682,10 +664,11 @@ const Builder = ()=>{
 
  
 
-
-  const [mobilePage,setMobilePage] = useState(0);
-  const [navOpen, setNavOpenState] = useState(false);
-  const navOpenRef = useRef(false);
+  const navOpen = useBuilderContextStore((state) => state.navOpen);
+  const setBuilderNavOpen = useBuilderContextStore(
+    (state) => state.setNavOpen
+  );
+  const navOpenRef = useRef(navOpen);
   const setNavOpen = useCallback((nextValue) => {
     const previous = navOpenRef.current;
     const next =
@@ -694,8 +677,8 @@ const Builder = ()=>{
     if (normalized === previous) return;
     navOpenRef.current = normalized;
     startBuilderNavPerf(normalized);
-    setNavOpenState(normalized);
-  }, []);
+    setBuilderNavOpen(normalized);
+  }, [setBuilderNavOpen]);
   useLayoutEffect(() => {
     navOpenRef.current = navOpen;
     const perf = window.__builderNavPerf;
@@ -708,7 +691,12 @@ const Builder = ()=>{
     });
   }, [navOpen]);
   const recordBuilderNavRender = useCallback(
-    (_id, _phase, actualDuration) => {
+    (_id, _phase, actualDuration, baseDuration) => {
+      recordBuilderPanelCommit(
+        "Builder Navigation",
+        actualDuration,
+        baseDuration
+      );
       const perf = window.__builderNavPerf;
       if (!perf?.active) return;
       perf.navbarCommits += 1;
@@ -717,72 +705,21 @@ const Builder = ()=>{
     },
     []
   );
-  const [railExpanded, setRailExpanded] = useState(() => {
-    try {
-      return localStorage.getItem("dash-nav-rail-expanded") === "1";
-    } catch {
-      return false;
-    }
-  });
+  const railExpanded = useBuilderContextStore(
+    (state) => state.railExpanded
+  );
+  const setBuilderRailExpanded = useBuilderContextStore(
+    (state) => state.setRailExpanded
+  );
   const toggleRailExpanded = useCallback(() => {
-    setRailExpanded((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("dash-nav-rail-expanded", next ? "1" : "0");
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
-
-
-
-
-  const getMode = ()=>{
-    let mode
-    let color
-    if(typeof window === "undefined"){
-      mode = "light"
-      color = "#374151"
-      
+    const next = !useBuilderContextStore.getState().railExpanded;
+    try {
+      localStorage.setItem("dash-nav-rail-expanded", next ? "1" : "0");
+    } catch {
+      /* ignore */
     }
-    const savedMode = localStorage.getItem("darkMode")
-    const savedColor = localStorage.getItem("darkTextColor")
-    if(savedMode === "dark"|| savedMode === "light" || savedColor === "#29b7a5" || savedColor === "#374151"){
-      mode = savedMode
-      color = savedColor 
-      
-    }else{
-      const osMode = window.matchMedia("(prefers-color-scheme: dark)").matches
-    if(osMode){
-      mode = "dark"
-      color = "#29b7a5"
-    }else{
-      mode = "light"
-      color = "#374151"
-    }
-    }
-    return {mode,color}
-
-  }
-
-  const getLatestPage = ()=>{
-    let page
-    if(typeof window === "undefined"){
-      page = ""
-    }
-    const savedPage = localStorage.getItem("page")
-    if(savedPage){
-      page = savedPage
-      
-    }else{
-      page = ""
- 
-    }
-    return page
-
-  }
+    setBuilderRailExpanded(next);
+  }, [setBuilderRailExpanded]);
 
   const getLatestBuilderPageId = () => {
     if (typeof window === "undefined") return "";
@@ -791,11 +728,39 @@ const Builder = ()=>{
   };
 
 
-    const [selectedMenuId,setSelectedMenuId] = useState(getLatestPage())
-    const [canvasBuilderMode, setCanvasBuilderMode] = useState("Layout Mode");
-    const builderModeRef = useRef("Layout Mode");
+    const selectedMenuId = useBuilderContextStore(
+      (state) => state.builderSection
+    );
+    const setSelectedMenuId = useBuilderContextStore(
+      (state) => state.setBuilderSection
+    );
+    const canvasBuilderMode = useBuilderContextStore(
+      (state) => state.builderMode
+    );
+    const setBuilderContextMode = useBuilderContextStore(
+      (state) => state.setBuilderMode
+    );
+    const builderModeRef = useRef(canvasBuilderMode);
+    builderModeRef.current = canvasBuilderMode;
+    const builderModePerformanceTransactionRef = useRef(null);
     const changeBuilderMode = useCallback((nextMode) => {
       if (!nextMode || nextMode === builderModeRef.current) return;
+      if (builderModePerformanceTransactionRef.current != null) {
+        finishBuilderPerformanceTransaction(
+          builderModePerformanceTransactionRef.current,
+          {},
+          { reason: "superseded" }
+        );
+      }
+      builderModePerformanceTransactionRef.current =
+        beginBuilderPerformanceTransaction(
+          "mode-switch",
+          {
+            label: `เปลี่ยน Builder Mode / ${builderModeRef.current} → ${nextMode}`,
+            scope: nextMode,
+          },
+          { trackFrames: true }
+        );
       if (
         new URLSearchParams(window.location.search).get("modePerf") === "1"
       ) {
@@ -810,9 +775,9 @@ const Builder = ()=>{
       }
       builderModeRef.current = nextMode;
       startTransition(() => {
-        setCanvasBuilderMode(nextMode);
+        setBuilderContextMode(nextMode);
       });
-    }, []);
+    }, [setBuilderContextMode]);
     const recordBuilderModeCanvasRender = useCallback(
       (_id, _phase, actualDuration) => {
         const perf = window.__builderModePerf;
@@ -849,44 +814,134 @@ const Builder = ()=>{
         });
       });
     }, [canvasBuilderMode]);
+    useLayoutEffect(() => {
+      const transactionId = builderModePerformanceTransactionRef.current;
+      if (transactionId == null) return;
+      builderModePerformanceTransactionRef.current = null;
+      finishBuilderPerformanceTransactionAfterPaint(
+        transactionId,
+        {},
+        { reason: "mode-painted" }
+      );
+    }, [canvasBuilderMode]);
     // Payload ชั่วคราวระหว่างลากจาก palette ไม่ควร trigger render Builder ทั้งหน้า
     const dragElementRef = useRef(null);
-    const [darkMode,setDarkMode] = useState(getMode().mode);
-    const [device,setDevice] = useState("Desktop")
-    const [offcanvas, setOffcanvasState] = useState(null);
+    const darkMode = useBuilderContextStore((state) => state.colorMode);
+    const setBuilderColorMode = useBuilderContextStore(
+      (state) => state.setColorMode
+    );
+    const device = useBuilderContextStore((state) => state.device);
+    const setBuilderDevice = useBuilderContextStore(
+      (state) => state.setDevice
+    );
+    const deviceRef = useRef(device);
+    deviceRef.current = device;
+    const devicePerformanceTransactionRef = useRef(null);
+    const setDevice = useCallback((nextDevice) => {
+      if (!nextDevice || nextDevice === deviceRef.current) return;
+      if (devicePerformanceTransactionRef.current != null) {
+        finishBuilderPerformanceTransaction(
+          devicePerformanceTransactionRef.current,
+          {},
+          { reason: "superseded" }
+        );
+      }
+      devicePerformanceTransactionRef.current =
+        beginBuilderPerformanceTransaction(
+          "device-switch",
+          {
+            label: `เปลี่ยนหน้าจอ / ${deviceRef.current} → ${nextDevice}`,
+            scope: nextDevice,
+          },
+          { trackFrames: true }
+        );
+      deviceRef.current = nextDevice;
+      setBuilderDevice(nextDevice);
+    }, [setBuilderDevice]);
+    useLayoutEffect(() => {
+      const transactionId = devicePerformanceTransactionRef.current;
+      if (transactionId == null) return;
+      devicePerformanceTransactionRef.current = null;
+      finishBuilderPerformanceTransactionAfterPaint(
+        transactionId,
+        {},
+        { reason: "device-painted" }
+      );
+    }, [device]);
+    const offcanvas = useBuilderContextStore((state) => state.activePanel);
+    const setBuilderActivePanel = useBuilderContextStore(
+      (state) => state.setActivePanel
+    );
     const offcanvasAsideRef = useRef(null);
-    const offcanvasRef = useRef(null);
+    const offcanvasRef = useRef(offcanvas);
+    offcanvasRef.current = offcanvas;
+    const panelPerformanceTargetRef = useRef("");
     const offcanvasWriteGenRef = useRef(0);
+    const isPageSettingsPanelOpen = useBuilderContextStore(
+      (state) => state.pageSettingsPanelOpen
+    );
+    const setIsPageSettingsPanelOpen = useBuilderContextStore(
+      (state) => state.setPageSettingsPanelOpen
+    );
+    const pageSettingsPanelOpenRef = useRef(isPageSettingsPanelOpen);
+    pageSettingsPanelOpenRef.current = isPageSettingsPanelOpen;
     /** setOffcanvas ทุกครั้งนับ generation — ใช้กัน outside-click ปิดทับตอนเปิด panel อื่น */
     const setOffcanvas = useCallback((next) => {
       offcanvasWriteGenRef.current += 1;
-      setOffcanvasState((prev) => {
-        const value = typeof next === "function" ? next(prev) : next;
-        offcanvasRef.current = value;
-        return value;
-      });
-    }, []);
-    const [isPageSettingsPanelOpen, setIsPageSettingsPanelOpen] = useState(false);
-    const [elementData,setElementData] = useState(null)
-    const [dashboardChromeState, setDashboardChromeState] = useState(() =>
-      loadDashboardChromeState()
+      const previous = offcanvasRef.current;
+      const value = typeof next === "function" ? next(previous) : next;
+      offcanvasRef.current = value;
+      setBuilderActivePanel(value);
+    }, [setBuilderActivePanel]);
+    const setHeaderOffcanvas = useCallback(
+      (next) => {
+        const previous = offcanvasRef.current;
+        const value = typeof next === "function" ? next(previous) : next;
+        if (value && value !== previous) {
+          if (pageSettingsPanelOpenRef.current) {
+            pageSettingsPanelOpenRef.current = false;
+            markBuilderPanelClosed();
+            setIsPageSettingsPanelOpen(false);
+          }
+          const targetId = `chrome:${String(value)}`;
+          panelPerformanceTargetRef.current = targetId;
+          markBuilderPanelOpen(value, targetId);
+        } else if (!value) {
+          markBuilderPanelClosed();
+          panelPerformanceTargetRef.current = "";
+        }
+        setOffcanvas(value);
+      },
+      [setIsPageSettingsPanelOpen, setOffcanvas]
     );
-    const [savedDashboardChromeState, setSavedDashboardChromeState] = useState(() =>
-      loadDashboardChromeState()
+    const elementData = useBuilderContextStore(
+      (state) => state.selectedElementData
     );
-    const [isSavingDashboardChrome, setIsSavingDashboardChrome] = useState(false);
+    const setElementData = useBuilderContextStore(
+      (state) => state.setSelectedElementData
+    );
+    const dashboardChromeSiteState = useDashboardChromeSiteState();
+    const dashboardChromeState = dashboardChromeSiteState.draft;
+    const savedDashboardChromeState = dashboardChromeSiteState.saved;
+    const isSavingDashboardChrome = dashboardChromeSiteState.isSaving;
+    const setDashboardChromeState = useDashboardChromeStore(
+      (state) => state.setDraft
+    );
+    const hydrateDashboardChrome = useDashboardChromeStore(
+      (state) => state.hydrate
+    );
+    const markDashboardChromeSaved = useDashboardChromeStore(
+      (state) => state.markSaved
+    );
+    const setIsSavingDashboardChrome = useDashboardChromeStore(
+      (state) => state.setSaving
+    );
     const dashboardChrome = resolveDashboardChrome(dashboardChromeState);
     const isDashboardChromeDirty = !_.isEqual(
       normalizeDashboardChromeState(dashboardChromeState),
       normalizeDashboardChromeState(savedDashboardChromeState)
     );
-    const [darkTextColor,setDarkTextColor] = useState(() => {
-      const mode = getMode().mode;
-      const state = loadDashboardChromeState();
-      return getChromeAccent(state, mode) || getMode().color;
-    })
-    const darkModeRef = useRef(darkMode);
-    darkModeRef.current = darkMode;
+    const darkTextColor = getChromeAccent(dashboardChromeState, darkMode);
     const elementFunction = useRef(null)
     /** ชี้ไปที่ patchLayoutElement ล่าสุดจาก Content (แผงรูป / ปุ่ม — อัปเดต element ใน layout) */
     const patchElementRef = useRef(null)
@@ -934,13 +989,40 @@ const Builder = ()=>{
       if (["/builder/posts", "/builder/newPost", "/builder/editPost"].some((legacyPath) => path.startsWith(legacyPath))) {
         setSelectedMenuId("Builder");
       }
-    }, [location.pathname]);
+    }, [location.pathname, setSelectedMenuId]);
     
     const [page,setPage] = useState({});
-    const [activeBuilderPageId, setActiveBuilderPageId] = useState("");
-    const [defaultBuilderPageId, setDefaultBuilderPageId] = useState("");
+    const activeBuilderPageId = useBuilderContextStore(
+      (state) => state.activePageId
+    );
+    const defaultBuilderPageId = useBuilderContextStore(
+      (state) => state.defaultPageId
+    );
+    const activePageMetadata = useActivePageMetadata();
     const activeBuilderPageIdRef = useRef(activeBuilderPageId);
     const pageDraftRef = useRef({ page: {}, layouts: [] });
+    useEffect(() => {
+      useBuilderContextStore.getState().syncBuilderShell({
+        pathname: location.pathname,
+        builderSection: selectedMenuId,
+        activePageId: activeBuilderPageId,
+        defaultPageId: defaultBuilderPageId,
+        pageName: activePageMetadata?.pageName || page?.pageName,
+        device,
+        colorMode: darkMode,
+        builderMode: canvasBuilderMode,
+      });
+    }, [
+      activeBuilderPageId,
+      activePageMetadata?.pageName,
+      canvasBuilderMode,
+      darkMode,
+      defaultBuilderPageId,
+      device,
+      location.pathname,
+      page?.pageName,
+      selectedMenuId,
+    ]);
     const [theme, setTheme] = useState({
       _id: null,
       textHeading: "",
@@ -963,17 +1045,44 @@ const Builder = ()=>{
         const normalizedLayouts = normalizePageLayouts(
           _.cloneDeep(normalizedPage?.layouts)
         );
+        useTemplateStore
+          .getState()
+          .setPageTemplateOverrides(
+            templateOverridesFromPage(normalizedPage)
+          );
+        usePageDocumentStore
+          .getState()
+          .activateServerPage(normalizedPage, defaultIdFromList);
+        if (nextPageId) {
+          const { siteId, locale } = useBuilderContextStore.getState();
+          const normalizedPageSeo = normalizePageSeo(
+            normalizedPage?.pageSeo,
+            normalizedPage?.pageName
+          );
+          useSeoStore.getState().hydrateEntityFallback({
+            siteId,
+            locale,
+            entityKind: "page",
+            entityId: nextPageId,
+            title: normalizedPage?.pageName,
+            slug: normalizedPageSeo.slug,
+          });
+          useSeoStore.getState().upsertEntitySeo({
+            siteId,
+            locale,
+            entityKind: "page",
+            entityId: nextPageId,
+            meta: normalizedPageSeo,
+          });
+        }
 
+        pageDraftRef.current = {
+          page: normalizedPage,
+          layouts: normalizedLayouts,
+        };
         setPage(normalizedPage);
         setLayout(normalizedLayouts);
-        setActiveBuilderPageId(nextPageId);
         activeBuilderPageIdRef.current = nextPageId;
-        setDefaultBuilderPageId(
-          String(
-            defaultIdFromList ||
-              (normalizedPage?.isDefault === true ? nextPageId : "")
-          )
-        );
 
         if (typeof window !== "undefined") {
           if (nextPageId) {
@@ -988,32 +1097,91 @@ const Builder = ()=>{
 
     const loadBuilderPages = useCallback(
       async (options = {}) => {
+        const requestSiteId = siteId;
         const preferredPageId = String(options?.preferredPageId || "");
         const preserveCurrentSelection = options?.preserveCurrentSelection !== false;
         const autoSelectPage = options?.autoSelectPage !== false;
+        const transactionId = beginBuilderPerformanceTransaction(
+          preferredPageId ? "page-switch" : "page-load",
+          {
+            label: preferredPageId
+              ? "เปลี่ยนและโหลดหน้า Builder"
+              : "โหลดรายการหน้า Builder",
+            elementType: "Page",
+            elementId: preferredPageId,
+            scope: preferredPageId ? "switch" : "load",
+          },
+          { trackFrames: true }
+        );
+        const apiStartedAt = performance.now();
+        let transactionFinished = false;
+        const finishLoadTransaction = (metrics = {}, reason = "loaded") => {
+          if (transactionFinished) return;
+          transactionFinished = true;
+          finishBuilderLifecycleTransactionAfterPaint(
+            transactionId,
+            {
+              apiLatencyMs: performance.now() - apiStartedAt,
+              ...metrics,
+            },
+            { reason }
+          );
+        };
+        usePageDocumentStore
+          .getState()
+          .setOperation("list", { loading: true, error: "" }, requestSiteId);
         try {
-          const pagesResponse = await listPages();
-          let pagesList = Array.isArray(pagesResponse?.data)
-            ? pagesResponse.data
-            : [];
+          const pageDocumentStore = usePageDocumentStore.getState();
+          const cachedPages =
+            pageDocumentStore.getCatalogSnapshot(requestSiteId);
+          const shouldRefreshCatalog =
+            pageDocumentStore.isCatalogStale(requestSiteId) ||
+            cachedPages.length === 0;
+          let pagesList = shouldRefreshCatalog
+            ? await ensurePageCatalogLoaded()
+            : cachedPages;
+          const catalogError =
+            usePageDocumentStore
+              .getState()
+              .getOperation("list", requestSiteId).error;
+          if (shouldRefreshCatalog && catalogError) {
+            throw new Error(catalogError);
+          }
 
           if (pagesList.length === 0) {
             const bootstrapPageResponse = await createPage({ pageName: "Page 1" });
             if (bootstrapPageResponse?.data) {
               pagesList = [bootstrapPageResponse.data];
+              usePageDocumentStore
+                .getState()
+                .hydrateCatalog(pagesList, requestSiteId);
             }
+          }
+          if (!shouldRefreshCatalog) {
+            usePageDocumentStore
+              .getState()
+              .setOperation(
+                "list",
+                { loading: false, error: "" },
+                requestSiteId
+              );
           }
 
           if (pagesList.length === 0) {
             applyBuilderPage({}, "");
+            finishLoadTransaction({ pageCount: 0 }, "empty");
             return;
           }
 
           const defaultPage =
             pagesList.find((item) => item?.isDefault === true) || pagesList[0];
-          const defaultPageId = String(defaultPage?._id || "");
+          const defaultPageId = String(defaultPage?._id || defaultPage?.id || "");
           if (!autoSelectPage && !preferredPageId) {
             applyBuilderPage({}, defaultPageId);
+            finishLoadTransaction(
+              { pageCount: pagesList.length },
+              "page-list-loaded"
+            );
             return;
           }
           const savedPageId = getLatestBuilderPageId();
@@ -1026,33 +1194,94 @@ const Builder = ()=>{
             currentActivePageId,
             savedPageId,
             defaultPageId,
-            String(pagesList[0]?._id || ""),
+            String(pagesList[0]?._id || pagesList[0]?.id || ""),
           ].filter(Boolean);
 
           const targetPageId =
             candidateIds.find((id) =>
-              pagesList.some((pageItem) => String(pageItem?._id || "") === id)
-            ) || String(pagesList[0]?._id || "");
+              pagesList.some(
+                (pageItem) =>
+                  String(pageItem?._id || pageItem?.id || "") === id
+              )
+            ) || String(pagesList[0]?._id || pagesList[0]?.id || "");
 
           if (!targetPageId) {
             applyBuilderPage({}, defaultPageId);
+            finishLoadTransaction(
+              { pageCount: pagesList.length },
+              "no-target-page"
+            );
             return;
           }
 
+          usePageDocumentStore.getState().setOperation("detail", {
+            pageId: targetPageId,
+            loading: true,
+            error: "",
+          }, requestSiteId);
           const pageResponse = await getPage(targetPageId);
+          if (useBuilderContextStore.getState().siteId !== requestSiteId) {
+            finishLoadTransaction({ stale: 1 }, "site-changed");
+            return;
+          }
           applyBuilderPage(pageResponse?.data || {}, defaultPageId);
+          usePageDocumentStore.getState().setOperation("detail", {
+            pageId: targetPageId,
+            loading: false,
+            error: "",
+          }, requestSiteId);
+          finishLoadTransaction(
+            {
+              pageCount: pagesList.length,
+              layoutCount: Array.isArray(pageResponse?.data?.layouts)
+                ? pageResponse.data.layouts.length
+                : 0,
+            },
+            "page-hydrated"
+          );
         } catch (err) {
+          const message =
+            typeof err?.message === "string" && err.message.trim()
+              ? err.message.trim()
+              : "ไม่สามารถโหลดข้อมูลหน้าได้";
+          usePageDocumentStore
+            .getState()
+            .setOperation(
+              "list",
+              { loading: false, error: message },
+              requestSiteId
+            );
+          usePageDocumentStore
+            .getState()
+            .setOperation(
+              "detail",
+              { loading: false, error: message },
+              requestSiteId
+            );
+          finishLoadTransaction({ failed: 1 }, "error");
           console.log(err);
         }
       },
-      [applyBuilderPage]
+      [applyBuilderPage, siteId]
     );
 
-    const persistActiveBuilderPage = useCallback(async () => {
+    const persistActiveBuilderPage = useCallback(async (options = {}) => {
       const currentPage = pageDraftRef.current.page;
+      const requestSiteId = currentPage?.siteId || siteId;
       if (!currentPage?._id) {
         return { ok: false, message: "ไม่พบหน้าที่กำลังแก้ไข" };
       }
+      const pageDocumentStore = usePageDocumentStore.getState();
+      const dirtyState = pageDocumentStore.getPageDirtyState(currentPage._id);
+      if (options.force !== true && !dirtyState.dirty) {
+        return { ok: true, skipped: true, page: currentPage };
+      }
+      const metadataVersion = pageDocumentStore.getMetadataVersion(
+        currentPage._id
+      );
+      const layoutVersion = pageDocumentStore.getLayoutVersion(
+        currentPage._id
+      );
       const payload = {
         pageName: currentPage?.pageName || "",
         layouts: _.cloneDeep(pageDraftRef.current.layouts || []),
@@ -1073,7 +1302,26 @@ const Builder = ()=>{
                 linkTarget: "_self",
               }
         ),
+        pageSeo: _.cloneDeep(
+          normalizePageSeo(currentPage?.pageSeo, currentPage?.pageName)
+        ),
       };
+      const transactionId = beginBuilderPerformanceTransaction(
+        "page-save",
+        {
+          label: `บันทึกหน้า Builder / ${currentPage?.pageName || "Untitled"}`,
+          elementType: "Page",
+          elementId: currentPage._id,
+          scope: "save",
+        },
+        { trackFrames: true }
+      );
+      const apiStartedAt = performance.now();
+      usePageDocumentStore.getState().setOperation("save", {
+        pageId: String(currentPage._id),
+        saving: true,
+        error: "",
+      }, requestSiteId);
       try {
         const response = await editPage(payload, currentPage._id);
         const updatedPage =
@@ -1081,10 +1329,70 @@ const Builder = ()=>{
             ? response.data
             : null;
         if (updatedPage) {
-          setPage((prev) => ({ ...prev, ...updatedPage }));
+          usePageDocumentStore.getState().applySavedPage(updatedPage, {
+            expectedVersion: metadataVersion,
+            siteId: requestSiteId,
+          });
+          setPage((prev) => {
+            if (String(prev?._id || "") !== String(currentPage._id)) {
+              return prev;
+            }
+            const next = { ...prev, ...updatedPage };
+            pageDraftRef.current = {
+              ...pageDraftRef.current,
+              page: next,
+            };
+            return next;
+          });
+          if (
+            String(pageDraftRef.current?.page?._id || "") ===
+            String(currentPage._id)
+          ) {
+            useTemplateStore
+              .getState()
+              .setPageTemplateOverrides(
+                templateOverridesFromPage(updatedPage)
+              );
+          }
         }
+        usePageDocumentStore
+          .getState()
+          .markLayoutSaved(currentPage._id, layoutVersion);
+        usePageDocumentStore.getState().setOperation("save", {
+          pageId: String(currentPage._id),
+          saving: false,
+          error: "",
+        }, requestSiteId);
+        finishBuilderLifecycleTransactionAfterPaint(
+          transactionId,
+          {
+            apiLatencyMs: performance.now() - apiStartedAt,
+            layoutCount: payload.layouts.length,
+          },
+          { reason: "saved" }
+        );
         return { ok: true, page: updatedPage || currentPage };
       } catch (err) {
+        const saveError =
+          typeof err?.response?.data === "string" &&
+          err.response.data.trim()
+            ? err.response.data.trim()
+            : typeof err?.message === "string" && err.message.trim()
+              ? err.message.trim()
+              : "ไม่สามารถบันทึกหน้าได้";
+        usePageDocumentStore.getState().setOperation("save", {
+          pageId: String(currentPage._id),
+          saving: false,
+          error: saveError,
+        }, requestSiteId);
+        finishBuilderPerformanceTransaction(
+          transactionId,
+          {
+            apiLatencyMs: performance.now() - apiStartedAt,
+            failed: 1,
+          },
+          { reason: "error" }
+        );
         console.log(err);
         const responseMessage = err?.response?.data;
         const normalizedMessage =
@@ -1095,22 +1403,48 @@ const Builder = ()=>{
               : "ไม่สำเร็จ.....กรุณาตรวจสอบอีกครั้ง";
         return { ok: false, message: normalizedMessage };
       }
-    }, []);
+    }, [siteId]);
 
-    const loadTheme = () => {
-      getTheme("68d37327bedb0efab7dacafb")
+    const loadTheme = useCallback(() => {
+      const transactionId = beginBuilderPerformanceTransaction(
+        "resource-load",
+        {
+          label: "โหลด Theme ของ Builder",
+          elementType: "Theme",
+          elementId: "builder-theme",
+          scope: "load",
+        },
+        { trackFrames: true }
+      );
+      const apiStartedAt = performance.now();
+      return getTheme(themeId)
         .then((res) => {
           setTheme(res.data);
+          finishBuilderLifecycleTransactionAfterPaint(
+            transactionId,
+            { apiLatencyMs: performance.now() - apiStartedAt },
+            { reason: "theme-hydrated" }
+          );
         })
-        .catch((err) => console.log(err));
-    }; // โหลดข้อมูลธีม
-    const updateNewTheme = (newTheme)=>{
-      updateTheme("68d37327bedb0efab7dacafb", newTheme)
+        .catch((err) => {
+          finishBuilderPerformanceTransaction(
+            transactionId,
+            {
+              apiLatencyMs: performance.now() - apiStartedAt,
+              failed: 1,
+            },
+            { reason: "error" }
+          );
+          console.log(err);
+        });
+    }, [themeId]); // โหลดข้อมูลธีม
+    const updateNewTheme = useCallback((newTheme)=>{
+      updateTheme(themeId, newTheme)
         .then(() => {
           loadTheme();
         })
         .catch((err) => console.log(err));
-    }
+    }, [loadTheme, themeId]);
 
     useEffect(() => {
       loadBuilderPages({
@@ -1120,7 +1454,7 @@ const Builder = ()=>{
     }, [loadBuilderPages]); // ดึงข้อมูลหน้า
     useEffect(() => {
       loadTheme();
-    }, []); // ดึงข้อมูลธีม
+    }, [loadTheme]); // ดึงข้อมูลธีม
 
     useEffect(() => {
       activeBuilderPageIdRef.current = activeBuilderPageId;
@@ -1129,7 +1463,6 @@ const Builder = ()=>{
     useEffect(() => {
       pageDraftRef.current = { page, layouts };
     }, [page, layouts]);
-
     const handleSelectBuilderPage = useCallback(
       async (nextPageId) => {
         const normalizedNextPageId = String(nextPageId || "");
@@ -1158,30 +1491,68 @@ const Builder = ()=>{
 
     const handleBuilderPagesChanged = useCallback(
       async ({ preferredPageId } = {}) => {
-        await persistActiveBuilderPage();
         await loadBuilderPages({
           preferredPageId: String(preferredPageId || ""),
           preserveCurrentSelection: true,
         });
       },
-      [loadBuilderPages, persistActiveBuilderPage]
+      [loadBuilderPages]
     );
 
     const handlePublishBuilder = useCallback(async () => {
-      const result = await persistActiveBuilderPage();
+      const result = await persistActiveBuilderPage({ force: true });
       if (!result?.ok) return result;
       return { ok: true };
     }, [persistActiveBuilderPage]);
   
 
 
-    /** ส่งต่อให้ setLayout ของ React — รองรับทั้งค่า array และ updater function (อย่าห่อด้วย prev=>newLayout เดิม จะทำให้ layouts กลายเป็น function แล้ว canvas หาย) */
-    const updateLayout = setLayout;
+    /** อัปเดต Canvas draft พร้อม revision โดยไม่เก็บ Layout payload ใน Zustand */
+    const updateLayout = useCallback((nextLayoutOrUpdater) => {
+      const previousLayouts = pageDraftRef.current.layouts;
+      const nextLayouts =
+        typeof nextLayoutOrUpdater === "function"
+          ? nextLayoutOrUpdater(previousLayouts)
+          : nextLayoutOrUpdater;
+      if (Object.is(previousLayouts, nextLayouts)) return;
+      pageDraftRef.current = {
+        ...pageDraftRef.current,
+        layouts: nextLayouts,
+      };
+      const pageId = String(pageDraftRef.current?.page?._id || "");
+      if (pageId) {
+        usePageDocumentStore.getState().markLayoutChanged(pageId);
+      }
+      setLayout(nextLayouts);
+    }, []);
+    const updateCanvasPage = useCallback((nextPageOrUpdater) => {
+      const previousPage = pageDraftRef.current.page;
+      const nextPage =
+        typeof nextPageOrUpdater === "function"
+          ? nextPageOrUpdater(previousPage)
+          : nextPageOrUpdater;
+      if (Object.is(previousPage, nextPage)) return;
+      pageDraftRef.current = {
+        ...pageDraftRef.current,
+        page: nextPage,
+      };
+      const pageId = String(nextPage?._id || previousPage?._id || "");
+      if (pageId) {
+        usePageDocumentStore
+          .getState()
+          .patchLocalMetadata(pageId, nextPage);
+      }
+      setPage(nextPage);
+    }, []);
 
 
 
     const openOffcavanas = useCallback((type,data,funct)=>{
       if (type) {
+        if (pageSettingsPanelOpenRef.current) {
+          pageSettingsPanelOpenRef.current = false;
+          markBuilderPanelClosed();
+        }
         setIsPageSettingsPanelOpen(false);
         if (type === "Data Slider" && isDataSliderPerfEnabled()) {
           window.__dataSliderPanelOpenPerf = {
@@ -1273,19 +1644,37 @@ const Builder = ()=>{
             startedAt: performance.now(),
           };
         }
-        markBuilderPanelOpen(type, data?.id ?? data?.colData?.id);
+        const targetId = data?.id ?? data?.colData?.id;
+        panelPerformanceTargetRef.current = String(targetId ?? "");
+        markBuilderPanelOpen(type, targetId);
       }
       setOffcanvas(type)
       setElementData(data)
       elementFunction.current = funct;
-    }, [])
+    }, [setElementData, setIsPageSettingsPanelOpen, setOffcanvas])
     const openPageSettingsPanel = useCallback(() => {
       if (!page?._id) return;
+      if (pageSettingsPanelOpenRef.current) return;
+      if (offcanvasRef.current) {
+        markBuilderPanelClosed();
+      }
       setOffcanvas(null);
       setElementData(null);
       elementFunction.current = null;
+      const targetId = String(page._id);
+      panelPerformanceTargetRef.current = targetId;
+      pageSettingsPanelOpenRef.current = true;
+      markBuilderPanelOpen("Page Settings", targetId);
       setIsPageSettingsPanelOpen(true);
-    }, [page?._id]);
+    }, [page?._id, setElementData, setIsPageSettingsPanelOpen, setOffcanvas]);
+
+    const closePageSettingsPanel = useCallback(() => {
+      if (!pageSettingsPanelOpenRef.current) return;
+      pageSettingsPanelOpenRef.current = false;
+      markBuilderPanelClosed();
+      panelPerformanceTargetRef.current = "";
+      setIsPageSettingsPanelOpen(false);
+    }, [setIsPageSettingsPanelOpen]);
 
     useEffect(() => {
       if (canvasBuilderMode !== "Editor Mode") return;
@@ -1293,7 +1682,7 @@ const Builder = ()=>{
       setOffcanvas(null);
       setElementData(null);
       elementFunction.current = null;
-    }, [canvasBuilderMode, offcanvas]);
+    }, [canvasBuilderMode, offcanvas, setElementData, setOffcanvas]);
 
     /** แผง Section ไม่ sync จาก layouts อัตโนมัติ — หลังโคลนคอลัมน์ latestColID ใน layout เดินไปข้างหน้า ต้องดึงมาไม่งั้นบันทึก Section จะเขียนทับด้วยค่าเก่าและ id คอลัมน์ซ้ำ */
     useEffect(() => {
@@ -1306,7 +1695,15 @@ const Builder = ()=>{
         if (prev.latestColID === lc) return prev;
         return { ...prev, latestColID: lc };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [
+      layouts,
+      offcanvas,
+      elementData?.id,
+      elementData?.__carouselSlideEdit,
+      elementData?.__listItemImageEdit,
+      elementData?.__listBoxItemImageEdit,
+      setElementData,
+    ]);
 
     const pickImageMediaOffcanvasSync = (e) => ({
       id: e.id,
@@ -1365,7 +1762,15 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [
+      layouts,
+      offcanvas,
+      elementData?.id,
+      elementData?.__carouselSlideEdit,
+      elementData?.__listItemImageEdit,
+      elementData?.__listBoxItemImageEdit,
+      setElementData,
+    ]);
 
     const pickCarouselOffcanvasSync = (e) => ({
       id: e.id,
@@ -1461,7 +1866,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     useEffect(() => {
       if (offcanvas !== "Data Slider" || !elementData?.id) return;
@@ -1480,7 +1885,7 @@ const Builder = ()=>{
         }
         return { ...merged };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     useEffect(() => {
       if (offcanvas !== "Catagories" || !elementData?.id) return;
@@ -1499,7 +1904,7 @@ const Builder = ()=>{
         }
         return { ...merged };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     useEffect(() => {
       if (offcanvas !== "List Box" || !elementData?.id) return;
@@ -1517,7 +1922,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     useEffect(() => {
       if (offcanvas !== "List" || !elementData?.id) return;
@@ -1530,7 +1935,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     const pickButtonOffcanvasSync = (e) => ({
       id: e.id,
@@ -1578,7 +1983,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     const pickIconOffcanvasSync = (e) => ({
       id: e.id,
@@ -1616,7 +2021,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     const pickHeadingOffcanvasSync = (e) => ({
       id: e.id,
@@ -1658,7 +2063,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     const pickCounterOffcanvasSync = (e) => ({
       id: e.id,
@@ -1697,7 +2102,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     const pickTabsOffcanvasSync = (e) => ({
       id: e.id,
@@ -1742,7 +2147,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     const pickAccordionOffcanvasSync = (e) => ({
       id: e.id,
@@ -1928,7 +2333,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     useEffect(() => {
       if (offcanvas !== "Post" || !elementData?.id) return;
@@ -1941,7 +2346,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
     useEffect(() => {
       if (offcanvas !== "Form" || !elementData?.id) return;
       const found = findLayoutElementById(layouts, elementData.id);
@@ -1953,7 +2358,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     useEffect(() => {
       if (offcanvas !== "Table" || !elementData?.id) return;
@@ -1967,7 +2372,7 @@ const Builder = ()=>{
         }
         return { ...merged };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     useEffect(() => {
       if (offcanvas !== "Between" || !elementData?.id) return;
@@ -1981,7 +2386,7 @@ const Builder = ()=>{
         }
         return { ...merged };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     useEffect(() => {
       if (offcanvas !== "Divider" || !elementData?.id) return;
@@ -1995,7 +2400,7 @@ const Builder = ()=>{
         }
         return { ...merged };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
     const pickFormBlockOffcanvasSync = (e) => ({
       id: e.id,
@@ -2023,7 +2428,7 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id]);
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
 
 
 
@@ -2032,15 +2437,18 @@ const Builder = ()=>{
 
 
 
-    const buildDefaultTableRows = (colLen = 3, rowLen = 3) =>
-      Array.from({ length: rowLen }, (_, ri) =>
-        Array.from(
-          { length: colLen },
-          (_, ci) => `Data - ${ri * colLen + ci + 1}`
-        )
-      );
+    const buildDefaultTableRows = useCallback(
+      (colLen = 3, rowLen = 3) =>
+        Array.from({ length: rowLen }, (_, ri) =>
+          Array.from(
+            { length: colLen },
+            (_, ci) => `Data - ${ri * colLen + ci + 1}`
+          )
+        ),
+      []
+    );
 
-    const normalizeDroppedTableElement = (raw) => {
+    const normalizeDroppedTableElement = useCallback((raw) => {
       const merged = mergeTableElement(raw);
       const colLen = Math.max(1, merged.tableColumns?.length || 3);
       const rowLen = Math.max(1, merged.tableRows?.length || 3);
@@ -2057,7 +2465,7 @@ const Builder = ()=>{
         tableColumns,
         tableRows: buildDefaultTableRows(colLen, rowLen),
       };
-    };
+    }, [buildDefaultTableRows]);
 
     const normalizeDroppedBetweenElement = (raw) => mergeBetweenElement(raw);
 
@@ -2070,7 +2478,7 @@ const Builder = ()=>{
       delete next.counterRowGroupId;
       return next;
     };
-    const FORM_DRAG_ITEM_TO_TYPE = {
+    const FORM_DRAG_ITEM_TO_TYPE = useMemo(() => ({
       "Form Input": "input",
       Input: "input",
       // อย่า map "Text" — จะทับ Element Text พื้นฐาน; ใช้เฉพาะ Form Text
@@ -2087,7 +2495,7 @@ const Builder = ()=>{
       Checkbox: "checkbox",
       "Form Submit": "submit",
       Submit: "submit",
-    };
+    }), []);
     const buildFormDraftElement = (formType) => {
       if (!formType) return null;
       const base = {
@@ -2276,7 +2684,7 @@ const Builder = ()=>{
       if (dropped?.type === "tbl") return normalizeDroppedTableElement(dropped);
       if (dropped?.type === "btw") return normalizeDroppedBetweenElement(dropped);
       return dropped;
-    }, []);
+    }, [normalizeDroppedTableElement]);
 
     const loadDragElementTemplate = useCallback((label) => {
       if (dragElementTemplateRef.current.has(label)) {
@@ -2445,7 +2853,7 @@ const Builder = ()=>{
       if (!newElement || typeof newElement !== "string") return;
       if (FORM_DRAG_ITEM_TO_TYPE[newElement] || newElement === "Span") return;
       loadDragElementTemplate(newElement).catch((err) => console.log(err));
-    }, [loadDragElementTemplate]);
+    }, [FORM_DRAG_ITEM_TO_TYPE, loadDragElementTemplate]);
 
     const handleDragElement = (newElement)=>{
       const token = ++dragElementRequestTokenRef.current;
@@ -2620,8 +3028,7 @@ const Builder = ()=>{
 
     localStorage.setItem("darkMode",mode);
     localStorage.setItem("darkTextColor",color)
-    setDarkMode(mode)
-    setDarkTextColor(color)
+    setBuilderColorMode(mode)
     
    }
 
@@ -2630,23 +3037,22 @@ const Builder = ()=>{
      const normalized = normalizeDashboardChromeState(nextState);
      setDashboardChromeState(normalized);
      const accent = getChromeAccent(normalized, darkMode);
-     setDarkTextColor(accent);
      localStorage.setItem("darkTextColor", accent);
    };
 
    const handleSaveDashboardChrome = async () => {
      const normalized = normalizeDashboardChromeState(dashboardChromeState);
-     setIsSavingDashboardChrome(true);
+     setIsSavingDashboardChrome(true, siteId);
      try {
        await updateDashbordSetting(normalized);
        saveDashboardChromeState(normalized);
-       setSavedDashboardChromeState(normalized);
+       markDashboardChromeSaved(normalized, siteId);
        return true;
      } catch (err) {
        console.log("updateDashbordSetting failed", err);
        return false;
      } finally {
-       setIsSavingDashboardChrome(false);
+       setIsSavingDashboardChrome(false, siteId);
      }
    };
 
@@ -2669,11 +3075,12 @@ const Builder = ()=>{
          const normalized = hasRemote
            ? normalizeDashboardChromeState(remote)
            : loadDashboardChromeState();
-         setDashboardChromeState(normalized);
-         setSavedDashboardChromeState(normalized);
+         hydrateDashboardChrome(normalized, siteId);
          saveDashboardChromeState(normalized);
-         const accent = getChromeAccent(normalized, darkModeRef.current);
-         setDarkTextColor(accent);
+         const accent = getChromeAccent(
+           normalized,
+           useBuilderContextStore.getState().colorMode
+         );
          localStorage.setItem("darkTextColor", accent);
        } catch (err) {
          console.log("getDashbordSetting failed", err);
@@ -2682,7 +3089,7 @@ const Builder = ()=>{
      return () => {
        cancelled = true;
      };
-   }, []);
+   }, [hydrateDashboardChrome, siteId]);
 
    const handleChangeDashboardChrome = (nextActiveChrome) => {
      const normalized = normalizeDashboardChromeState(dashboardChromeState);
@@ -2739,23 +3146,23 @@ const Builder = ()=>{
    );
 
 
-   const menu = {
-    id:Math.round(Math.random()*1E9),
-    name:"",
-    type:"page",
-    page:"",
-    url:"",
-    target:"_self",
-    icon:{name:"fa0",type:"fas"},
-    children:[]
- }
-
-const createDefaultMenuItems = () =>
-  Array.from({ length: 6 }, (_, i) => ({
-    ...menu,
+const createDefaultMenuItems = useCallback(() => {
+  const defaultMenu = {
+    id: Math.round(Math.random() * 1e9),
+    name: "",
+    type: "page",
+    page: "",
+    url: "",
+    target: "_self",
+    icon: { name: "fa0", type: "fas" },
+    children: [],
+  };
+  return Array.from({ length: 6 }, (_, i) => ({
+    ...defaultMenu,
     id: Math.round(Math.random() * 1e9),
     name: "Home - " + i,
   }));
+}, []);
 const menuPresetVisualConfigRef = useRef({
   menuBarDesktop: null,
   menuBarMobile: null,
@@ -2765,7 +3172,7 @@ const menuPresetVisualConfigRef = useRef({
   topBar: null,
   footerBar: null,
 });
-const clonePresetVisualConfig = (source = {}) => ({
+const clonePresetVisualConfig = useCallback((source = {}) => ({
   menuBarDesktop: _.cloneDeep(source?.menuBarDesktop),
   menuBarMobile: _.cloneDeep(source?.menuBarMobile),
   menuBarMobilePhone: _.cloneDeep(source?.menuBarMobilePhone ?? null),
@@ -2773,8 +3180,8 @@ const clonePresetVisualConfig = (source = {}) => ({
   navBottomTablet: _.cloneDeep(source?.navBottomTablet),
   topBar: _.cloneDeep(source?.topBar),
   footerBar: _.cloneDeep(source?.footerBar),
-});
-const withPresetVisualConfig = (preset, fallback = menuPresetVisualConfigRef.current) => ({
+}), []);
+const withPresetVisualConfig = useCallback((preset, fallback = menuPresetVisualConfigRef.current) => ({
   ...preset,
   menuBarDesktop: _.cloneDeep(preset?.menuBarDesktop ?? fallback?.menuBarDesktop),
   menuBarMobile: _.cloneDeep(preset?.menuBarMobile ?? fallback?.menuBarMobile),
@@ -2787,12 +3194,12 @@ const withPresetVisualConfig = (preset, fallback = menuPresetVisualConfigRef.cur
   navBottomTablet: _.cloneDeep(preset?.navBottomTablet ?? fallback?.navBottomTablet),
   topBar: _.cloneDeep(preset?.topBar ?? fallback?.topBar),
   footerBar: _.cloneDeep(preset?.footerBar ?? fallback?.footerBar),
-});
-const buildMenuPreset = (preset, visualSource = menuPresetVisualConfigRef.current) => ({
+}), []);
+const buildMenuPreset = useCallback((preset, visualSource = menuPresetVisualConfigRef.current) => ({
   ...preset,
   ...clonePresetVisualConfig(visualSource),
-});
-const getDefaultMenuPresetState = () => {
+}), [clonePresetVisualConfig]);
+const getDefaultMenuPresetState = useCallback(() => {
   const defaultItems = createDefaultMenuItems();
   return {
     menuPresets: [buildMenuPreset({ id: "menu-preset-1", name: "Menu 1", items: defaultItems })],
@@ -2801,7 +3208,7 @@ const getDefaultMenuPresetState = () => {
     menus: _.cloneDeep(defaultItems),
     nextCounter: 2,
   };
-};
+}, [buildMenuPreset, createDefaultMenuItems]);
 
 const initialMenuPresetStateRef = useRef(null);
 if (initialMenuPresetStateRef.current == null) {
@@ -2809,11 +3216,37 @@ if (initialMenuPresetStateRef.current == null) {
 }
 const initialMenuPresetState = initialMenuPresetStateRef.current;
 const [menus, setMenus] = useState(initialMenuPresetState.menus);
-const [menuPresets, setMenuPresets] = useState(initialMenuPresetState.menuPresets);
-const [activeMenuPresetId, setActiveMenuPresetId] = useState(initialMenuPresetState.activeMenuPresetId);
-const [defaultMenuPresetId, setDefaultMenuPresetId] = useState(initialMenuPresetState.defaultMenuPresetId);
+const initialMenuPresets = initialMenuPresetState.menuPresets;
+const menuTemplateBinding = useTemplateBinding("menu");
+const activeMenuPresetId = menuTemplateBinding.activeId || null;
+const defaultMenuPresetId = menuTemplateBinding.defaultId || null;
+const menuPresetCatalog = useTemplateCatalog("menu");
+const menuPresetDocuments = useTemplateDocuments("menu");
+const menuPresets = useMemo(() => {
+  const storedPresets = menuPresetCatalog
+    .map((entry) => menuPresetDocuments[entry.id])
+    .filter(Boolean);
+  return storedPresets.length > 0 ? storedPresets : initialMenuPresets;
+}, [initialMenuPresets, menuPresetCatalog, menuPresetDocuments]);
+const setMenuPresets = useCallback((nextPresets) => {
+  useTemplateStore.getState().replacePresetCollection(
+    "menu",
+    nextPresets,
+    {
+      kind: "menu",
+      scope: "site",
+      source: "menubar",
+      status: "published",
+      version: "1",
+    }
+  );
+}, []);
 const menuPresetCounterRef = useRef(initialMenuPresetState.nextCounter);
-const [isMenuPresetHydrated, setIsMenuPresetHydrated] = useState(false);
+const isMenuPresetHydrated = menuTemplateBinding.hydrated;
+useEffect(() => {
+  if (Object.keys(menuPresetDocuments).length > 0) return;
+  setMenuPresets(initialMenuPresets);
+}, [initialMenuPresets, menuPresetDocuments, setMenuPresets]);
 const didInitMenuBarLoadRef = useRef(false);
 const latestMenuBarStateRef = useRef(null);
 const getDefaultHeroPresetState = () => ({
@@ -2827,9 +3260,46 @@ if (initialHeroPresetStateRef.current == null) {
   initialHeroPresetStateRef.current = getDefaultHeroPresetState();
 }
 const initialHeroPresetState = initialHeroPresetStateRef.current;
-const [heroPresets, setHeroPresets] = useState(initialHeroPresetState.heroPresets);
-const [activeHeroPresetId, setActiveHeroPresetId] = useState(initialHeroPresetState.activeHeroPresetId);
-const [defaultHeroPresetId, setDefaultHeroPresetId] = useState(initialHeroPresetState.defaultHeroPresetId);
+const heroTemplateBinding = useTemplateBinding("hero");
+const activeHeroPresetId = heroTemplateBinding.activeId || null;
+const defaultHeroPresetId = heroTemplateBinding.defaultId || null;
+const isHeroPresetHydrated = heroTemplateBinding.hydrated;
+const heroPresetCatalog = useTemplateCatalog("hero");
+const heroPresets = useMemo(
+  () =>
+    heroPresetCatalog.map((preset) => ({
+      id: preset.id,
+      name: preset.name,
+    })),
+  [heroPresetCatalog]
+);
+const setHeroPresets = useCallback((nextPresets) => {
+  const currentPresets = getTemplateCatalog("hero").map((preset) => ({
+    id: preset.id,
+    name: preset.name,
+  }));
+  const resolvedPresets =
+    typeof nextPresets === "function"
+      ? nextPresets(currentPresets)
+      : nextPresets;
+  if (!Array.isArray(resolvedPresets) || _.isEqual(currentPresets, resolvedPresets)) {
+    return;
+  }
+  useTemplateStore.getState().replaceCatalog(
+    "hero",
+    resolvedPresets.map((preset) => ({
+      id: preset?.id,
+      name: preset?.name,
+      kind: "hero",
+      scope: "section",
+      source: "menubar",
+      status: "published",
+      version: "1",
+    }))
+  );
+}, []);
+const pageMenuPresetId = resolveTemplateId(menuTemplateBinding);
+const pageHeroPresetId = resolveTemplateId(heroTemplateBinding);
 const heroPresetCounterRef = useRef(initialHeroPresetState.nextCounter);
 const [heroResetTokenFromHeader, setHeroResetTokenFromHeader] = useState(0);
 const [heroMutationEventFromHeader, setHeroMutationEventFromHeader] = useState(null);
@@ -2838,16 +3308,15 @@ const previousHeroPresetIdForSectionSyncRef = useRef(null);
 const [heroSaveBaseline, setHeroSaveBaseline] = useState(null);
 const [menuSaveBaseline, setMenuSaveBaseline] = useState(null);
 
-const FORMS_MENU_BAR_ID = "69db17211be82fe7637ea096";
-const createDefaultFormRows = () => [
+const createDefaultFormRows = useCallback(() => [
   {
     id: `row-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
     label: "แถว 1",
     grid: 1,
     columns: [[]],
   },
-];
-const getDefaultFormPresetState = () => {
+], []);
+const getDefaultFormPresetState = useCallback(() => {
   const defaultRows = createDefaultFormRows();
   return {
     formPresets: [
@@ -2864,18 +3333,106 @@ const getDefaultFormPresetState = () => {
     activeFormPresetId: null,
     defaultFormPresetId: "form-preset-1",
   };
-};
+}, [createDefaultFormRows]);
 const initialFormPresetStateRef = useRef(null);
 if (initialFormPresetStateRef.current == null) {
   initialFormPresetStateRef.current = getDefaultFormPresetState();
 }
 const initialFormPresetState = initialFormPresetStateRef.current;
-const [formPresets, setFormPresets] = useState(initialFormPresetState.formPresets);
-const [activeFormPresetId, setActiveFormPresetId] = useState(null);
-const [defaultFormPresetId, setDefaultFormPresetId] = useState(
-  initialFormPresetState.defaultFormPresetId
-);
-const [isFormsHydrated, setIsFormsHydrated] = useState(false);
+const initialFormPresets = initialFormPresetState.formPresets;
+const formTemplateBinding = useTemplateBinding("form");
+const activeFormPresetId = formTemplateBinding.activeId || null;
+const defaultFormPresetId = formTemplateBinding.defaultId || null;
+const isFormsHydrated = formTemplateBinding.hydrated;
+const formPresetCatalog = useTemplateCatalog("form");
+const formPresetDocuments = useTemplateDocuments("form");
+const formPresets = useMemo(() => {
+  const storedPresets = formPresetCatalog
+    .map((entry) => formPresetDocuments[entry.id])
+    .filter(Boolean);
+  return storedPresets.length > 0 ? storedPresets : initialFormPresets;
+}, [formPresetCatalog, formPresetDocuments, initialFormPresets]);
+const setFormPresets = useCallback((nextPresets) => {
+  useTemplateStore.getState().replacePresetCollection(
+    "form",
+    nextPresets,
+    {
+      kind: "form",
+      scope: "component",
+      source: "forms",
+      status: "published",
+      version: "1",
+    }
+  );
+}, []);
+useEffect(() => {
+  if (Object.keys(formPresetDocuments).length > 0) return;
+  setFormPresets(initialFormPresets);
+}, [formPresetDocuments, initialFormPresets, setFormPresets]);
+useEffect(() => {
+  const sectionConfig = {
+    Menu: {
+      activeId: activeMenuPresetId,
+      hydrated: isMenuPresetHydrated,
+      catalog: menuPresetCatalog,
+    },
+    Hero: {
+      activeId: activeHeroPresetId,
+      hydrated: isHeroPresetHydrated,
+      catalog: heroPresetCatalog,
+    },
+    Forms: {
+      activeId: activeFormPresetId,
+      hydrated: isFormsHydrated,
+      catalog: formPresetCatalog,
+    },
+  };
+  const currentSection = sectionConfig[selectedMenuId];
+  const templateStore = useTemplateStore.getState();
+  const builderContext = useBuilderContextStore.getState();
+  const selectedTemplateKey = getSelectedTemplateKey();
+  const clearSelectedTemplate = () => {
+    if (selectedTemplateKey || builderContext.templateId) {
+      templateStore.setSelectedTemplateRef({});
+    }
+  };
+
+  if (!currentSection) {
+    clearSelectedTemplate();
+    return;
+  }
+  if (!currentSection.hydrated) return;
+  if (!currentSection.activeId) {
+    clearSelectedTemplate();
+    return;
+  }
+
+  const entry = currentSection.catalog.find(
+    (template) => template.id === currentSection.activeId
+  );
+  if (!entry) return;
+  if (
+    selectedTemplateKey === entry.key &&
+    builderContext.templateId === entry.id &&
+    builderContext.templateVersion === entry.version &&
+    builderContext.templateScope === entry.scope &&
+    builderContext.templateSource === entry.source
+  ) {
+    return;
+  }
+  templateStore.setSelectedTemplateRef(entry);
+}, [
+  activeFormPresetId,
+  activeHeroPresetId,
+  activeMenuPresetId,
+  formPresetCatalog,
+  heroPresetCatalog,
+  isFormsHydrated,
+  isHeroPresetHydrated,
+  isMenuPresetHydrated,
+  menuPresetCatalog,
+  selectedMenuId,
+]);
 const [formsBaseline, setFormsBaseline] = useState(null);
 const [formsPanelDraftDirty, setFormsPanelDraftDirty] = useState(false);
 const formPresetsRef = useRef(formPresets);
@@ -2911,7 +3468,6 @@ const isFormsStateDirty = useMemo(() => {
   isFormsHydrated,
   formsBaseline,
   formPresets,
-  activeFormPresetId,
   defaultFormPresetId,
 ]);
 const isFormsDirty = isFormsStateDirty || formsPanelDraftDirty;
@@ -2999,7 +3555,7 @@ const handleFormStateChange = useCallback(
       );
     }
   },
-  []
+  [setFormPresets]
 );
 
 useEffect(() => {
@@ -3057,7 +3613,12 @@ useEffect(() => {
     }
     return list;
   });
-}, [formMutationEventFromHeader, activeFormPresetId]);
+}, [
+  activeFormPresetId,
+  createDefaultFormRows,
+  formMutationEventFromHeader,
+  setFormPresets,
+]);
 
 const activeFormPreset = useMemo(() => {
   if (!activeFormPresetId) return null;
@@ -3083,7 +3644,7 @@ const handleActiveFormRowsChange = useCallback(
       })
     );
   },
-  [activeFormPresetId]
+  [activeFormPresetId, setFormPresets]
 );
 
 const handleActiveFormSelectedRowChange = useCallback(
@@ -3096,7 +3657,7 @@ const handleActiveFormSelectedRowChange = useCallback(
       )
     );
   },
-  [activeFormPresetId]
+  [activeFormPresetId, setFormPresets]
 );
 
 const handleActiveFormConditionalChainsChange = useCallback(
@@ -3113,7 +3674,7 @@ const handleActiveFormConditionalChainsChange = useCallback(
       return next;
     });
   },
-  []
+  [setFormPresets]
 );
 
 const handleActiveFormCalculationsChange = useCallback(
@@ -3132,14 +3693,39 @@ const handleActiveFormCalculationsChange = useCallback(
       return next;
     });
   },
-  []
+  [setFormPresets]
 );
 
 const loadForms = useCallback(() => {
+  const transactionId = beginBuilderPerformanceTransaction(
+    "resource-load",
+    {
+      label: "โหลด Forms ของ Builder",
+      elementType: "Forms",
+      elementId: formsMenuBarId,
+      scope: "load",
+    },
+    { trackFrames: true }
+  );
+  const apiStartedAt = performance.now();
   setIsFormsHydrated(false);
-  return getForms(FORMS_MENU_BAR_ID)
+  useTemplateStore
+    .getState()
+    .setTemplateOperation("form", {
+      loading: true,
+      error: "",
+    });
+  return getForms(formsMenuBarId)
     .then((res) => {
       const data = res?.data || {};
+      const formTemplates = templatesFromForms(data);
+      useTemplateStore
+        .getState()
+        .hydrateCatalog(
+          "form",
+          formTemplates.entries,
+          formTemplates.binding
+        );
       const serverPresets = Array.isArray(data.formPresets) ? data.formPresets : [];
       const normalized =
         serverPresets.length > 0
@@ -3155,10 +3741,30 @@ const loadForms = useCallback(() => {
       activeFormPresetIdRef.current = null;
       captureFormsBaseline(normalized, null, nextDefault);
       setIsFormsHydrated(true);
+      useTemplateStore
+        .getState()
+        .setTemplateOperation("form", {
+          loading: false,
+          error: "",
+        });
+      finishBuilderLifecycleTransactionAfterPaint(
+        transactionId,
+        {
+          apiLatencyMs: performance.now() - apiStartedAt,
+          presetCount: normalized.length,
+        },
+        { reason: "forms-hydrated" }
+      );
       return { ok: true };
     })
     .catch((error) => {
       console.error("Load forms failed:", error);
+      useTemplateStore
+        .getState()
+        .setTemplateOperation("form", {
+          loading: false,
+          error: "ไม่สามารถโหลด Form Preset ได้",
+        });
       const fallback = getDefaultFormPresetState();
       setFormPresets(fallback.formPresets);
       setActiveFormPresetId(null);
@@ -3171,9 +3777,22 @@ const loadForms = useCallback(() => {
         fallback.defaultFormPresetId
       );
       setIsFormsHydrated(true);
+      finishBuilderPerformanceTransaction(
+        transactionId,
+        {
+          apiLatencyMs: performance.now() - apiStartedAt,
+          failed: 1,
+        },
+        { reason: "error" }
+      );
       return { ok: false };
     });
-}, [captureFormsBaseline]);
+}, [
+  captureFormsBaseline,
+  formsMenuBarId,
+  getDefaultFormPresetState,
+  setFormPresets,
+]);
 
 const submitForms = useCallback(
   (overrides = {}) => {
@@ -3232,7 +3851,7 @@ const submitForms = useCallback(
       );
       const source =
         (sourceIdx >= 0 ? workingPresets[sourceIdx] : null) ||
-        workingPresets.find((preset) => preset.id === activeFormPresetId) ||
+        workingPresets.find((preset) => preset.id === nextActiveFormPresetId) ||
         workingPresets[0] ||
         null;
       const clonedRows = Array.isArray(source?.gridRows)
@@ -3292,8 +3911,31 @@ const submitForms = useCallback(
       activeFormPresetId: nextActiveFormPresetId,
       defaultFormPresetId: nextDefaultFormPresetId,
     };
-    return updateForms(FORMS_MENU_BAR_ID, payload)
+    const transactionId = beginBuilderPerformanceTransaction(
+      "resource-save",
+      {
+        label: "บันทึก Forms ของ Builder",
+        elementType: "Forms",
+        elementId: formsMenuBarId,
+        scope: "save",
+      },
+      { trackFrames: true }
+    );
+    const apiStartedAt = performance.now();
+    useTemplateStore
+      .getState()
+      .setTemplateOperation("form", {
+        saving: true,
+        error: "",
+      });
+    return updateForms(formsMenuBarId, payload)
       .then(() => {
+        useTemplateStore
+          .getState()
+          .setTemplateOperation("form", {
+            saving: false,
+            error: "",
+          });
         invalidateFormsCache();
         formPresetsRef.current = nextFormPresets;
         activeFormPresetIdRef.current = nextActiveFormPresetId;
@@ -3302,9 +3944,25 @@ const submitForms = useCallback(
           nextActiveFormPresetId,
           nextDefaultFormPresetId
         );
+        finishBuilderLifecycleTransactionAfterPaint(
+          transactionId,
+          {
+            apiLatencyMs: performance.now() - apiStartedAt,
+            presetCount: nextFormPresets.length,
+          },
+          { reason: "forms-saved" }
+        );
         return { ok: true };
       })
       .catch((error) => {
+        finishBuilderPerformanceTransaction(
+          transactionId,
+          {
+            apiLatencyMs: performance.now() - apiStartedAt,
+            failed: 1,
+          },
+          { reason: "error" }
+        );
         const responseData = error?.response?.data;
         const message =
           typeof responseData === "string" && responseData.trim()
@@ -3312,6 +3970,12 @@ const submitForms = useCallback(
             : typeof responseData?.message === "string" && responseData.message.trim()
               ? responseData.message.trim()
               : "ไม่สำเร็จ.....กรุณาตรวจสอบอีกครั้ง";
+        useTemplateStore
+          .getState()
+          .setTemplateOperation("form", {
+            saving: false,
+            error: message,
+          });
         return {
           ok: false,
           message,
@@ -3319,7 +3983,14 @@ const submitForms = useCallback(
         };
       });
   },
-  [defaultFormPresetId, captureFormsBaseline]
+  [
+    defaultFormPresetId,
+    captureFormsBaseline,
+    createDefaultFormRows,
+    formsMenuBarId,
+    getDefaultFormPresetState,
+    setFormPresets,
+  ]
 );
 
 useEffect(() => {
@@ -3369,17 +4040,20 @@ const handleHeroStateChange = useCallback(
       );
     }
   },
-  []
+  [setHeroPresets]
 );
 const normalizePresetName = (name) => String(name || "").trim().toLowerCase();
-const HERO_RESPONSIVE_DEVICE_SET = new Set(["Tablet", "Mobile"]);
-const stripHeroDeviceSections = (section) => {
+const HERO_RESPONSIVE_DEVICE_SET = useMemo(
+  () => new Set(["Tablet", "Mobile"]),
+  []
+);
+const stripHeroDeviceSections = useCallback((section) => {
   if (!section || typeof section !== "object") return {};
   const nextSection = { ...section };
   delete nextSection.deviceSections;
   return nextSection;
-};
-const resolveHeroSectionByDevice = (section, device) => {
+}, []);
+const resolveHeroSectionByDevice = useCallback((section, device) => {
   const baseSection = stripHeroDeviceSections(section);
   if (!HERO_RESPONSIVE_DEVICE_SET.has(device)) return baseSection;
   const overrideRaw = section?.deviceSections?.[device];
@@ -3388,8 +4062,8 @@ const resolveHeroSectionByDevice = (section, device) => {
     ...baseSection,
     ...stripHeroDeviceSections(overrideRaw),
   };
-};
-const createDefaultHeroSection = () => ({
+}, [HERO_RESPONSIVE_DEVICE_SET, stripHeroDeviceSections]);
+const createDefaultHeroSection = useCallback(() => ({
   id: "HeroSec-1",
   heroHeight: 400,
   slides: [{ id: "hero-slide-1", name: "Slide 1", displayMode: "fade", durationSec: 5, layerItems: [] }],
@@ -3447,15 +4121,15 @@ const createDefaultHeroSection = () => ({
   },
   _sectionIndex: 0,
   _isSplitSection: false,
-});
-const normalizeHeroSection = (section) => ({
+}), []);
+const normalizeHeroSection = useCallback((section) => ({
   ...createDefaultHeroSection(),
   ...(section || {}),
   id: String(section?.id || "HeroSec-1"),
   _sectionIndex: 0,
   _isSplitSection: false,
-});
-const applyHeroSectionUpdateByDevice = (previousSection, nextSection, targetDevice) => {
+}), [createDefaultHeroSection]);
+const applyHeroSectionUpdateByDevice = useCallback((previousSection, nextSection, targetDevice) => {
   const sanitizedNextSection = stripHeroDeviceSections(nextSection);
   const previousDeviceSections =
     previousSection?.deviceSections && typeof previousSection.deviceSections === "object"
@@ -3477,13 +4151,18 @@ const applyHeroSectionUpdateByDevice = (previousSection, nextSection, targetDevi
       [targetDevice]: sanitizedNextSection,
     },
   };
-};
+}, [HERO_RESPONSIVE_DEVICE_SET, stripHeroDeviceSections]);
 const [heroSection, setHeroSection] = useState(createDefaultHeroSection);
-const [heroSectionsByPreset, setHeroSectionsByPreset] = useState({});
+const heroSectionsByPreset = useTemplateDocuments("hero");
+const setHeroSectionsByPreset = useCallback((nextDocuments) => {
+  useTemplateStore
+    .getState()
+    .setTemplateDocuments("hero", nextDocuments);
+}, []);
 useEffect(() => {
   if (!heroResetTokenFromHeader) return;
   setHeroSection(normalizeHeroSection(createDefaultHeroSection()));
-}, [heroResetTokenFromHeader]);
+}, [createDefaultHeroSection, heroResetTokenFromHeader, normalizeHeroSection]);
 useEffect(() => {
   if (!activeHeroPresetId) return;
   const hasActiveSection =
@@ -3499,7 +4178,14 @@ useEffect(() => {
       [activeHeroPresetId]: normalizeHeroSection(heroSection || createDefaultHeroSection()),
     };
   });
-}, [activeHeroPresetId, heroSectionsByPreset, heroSection]);
+}, [
+  activeHeroPresetId,
+  createDefaultHeroSection,
+  heroSectionsByPreset,
+  heroSection,
+  normalizeHeroSection,
+  setHeroSectionsByPreset,
+]);
 useEffect(() => {
   if (!heroMutationEventFromHeader || typeof heroMutationEventFromHeader !== "object") return;
   if (
@@ -3530,7 +4216,14 @@ useEffect(() => {
     }
     return prevMap;
   });
-}, [heroMutationEventFromHeader, activeHeroPresetId, heroSection]);
+}, [
+  heroMutationEventFromHeader,
+  activeHeroPresetId,
+  createDefaultHeroSection,
+  heroSection,
+  normalizeHeroSection,
+  setHeroSectionsByPreset,
+]);
 useEffect(() => {
   if (!activeHeroPresetId) {
     previousHeroPresetIdForSectionSyncRef.current = null;
@@ -3555,14 +4248,14 @@ useEffect(() => {
       [activeHeroPresetId]: _.cloneDeep(heroSection),
     };
   });
-}, [activeHeroPresetId, heroSection]);
+}, [activeHeroPresetId, heroSection, setHeroSectionsByPreset]);
 const updateHeroSectionFromPanel = useCallback(
   (nextSection) => {
     setHeroSection((prevSection) =>
       applyHeroSectionUpdateByDevice(prevSection, _.cloneDeep(nextSection), device)
     );
   },
-  [device]
+  [applyHeroSectionUpdateByDevice, device]
 );
 useEffect(() => {
   if (offcanvas !== "Hero") return;
@@ -3572,16 +4265,22 @@ useEffect(() => {
     if (_.isEqual(prev, nextHero)) return prev;
     return nextHero;
   });
-}, [device, offcanvas, heroSection]);
-const isMenuPresetNameTaken = (name, excludeId = null) => {
+}, [
+  device,
+  offcanvas,
+  heroSection,
+  resolveHeroSectionByDevice,
+  setElementData,
+]);
+const isMenuPresetNameTaken = useCallback((name, excludeId = null) => {
   const normalized = normalizePresetName(name);
   if (!normalized) return false;
   return menuPresets.some(
     (preset) =>
       preset.id !== excludeId && normalizePresetName(preset.name) === normalized
   );
-};
-const buildUniqueMenuPresetName = (baseName, excludeId = null) => {
+}, [menuPresets]);
+const buildUniqueMenuPresetName = useCallback((baseName, excludeId = null) => {
   const base = String(baseName || "").trim();
   if (!isMenuPresetNameTaken(base, excludeId)) return base;
   let index = 2;
@@ -3591,7 +4290,7 @@ const buildUniqueMenuPresetName = (baseName, excludeId = null) => {
     candidate = `${base} ${index}`;
   }
   return candidate;
-};
+}, [isMenuPresetNameTaken]);
 
 const createMenuPreset = useCallback(
   (name) => {
@@ -3617,7 +4316,14 @@ const createMenuPreset = useCallback(
     setMenus(_.cloneDeep(nextItems));
     return { ok: true, id: nextId, name: trimmedName };
   },
-  [menuPresets, defaultMenuPresetId]
+  [
+    buildMenuPreset,
+    createDefaultMenuItems,
+    defaultMenuPresetId,
+    isMenuPresetNameTaken,
+    menuPresets,
+    setMenuPresets,
+  ]
 );
 
 const selectMenuPreset = useCallback(
@@ -3640,7 +4346,7 @@ const selectMenuPreset = useCallback(
     if (hydratedPreset?.topBar) setTopBar(_.cloneDeep(hydratedPreset.topBar));
     if (hydratedPreset?.footerBar) setFooterBar(_.cloneDeep(hydratedPreset.footerBar));
   },
-  [menuPresets]
+  [createDefaultMenuItems, menuPresets, setMenuPresets, withPresetVisualConfig]
 );
 
 const renameMenuPreset = useCallback((presetId, name) => {
@@ -3661,7 +4367,7 @@ const renameMenuPreset = useCallback((presetId, name) => {
   return updated
     ? { ok: true, name: trimmedName }
     : { ok: false, reason: "not_found" };
-}, [menuPresets]);
+}, [isMenuPresetNameTaken, menuPresets, setMenuPresets]);
 
 const duplicateMenuPreset = useCallback(
   (presetId) => {
@@ -3690,7 +4396,13 @@ const duplicateMenuPreset = useCallback(
     if (duplicatedPreset?.footerBar) setFooterBar(_.cloneDeep(duplicatedPreset.footerBar));
     return { ok: true, id: nextId, name: duplicatedName };
   },
-  [menuPresets]
+  [
+    buildMenuPreset,
+    buildUniqueMenuPresetName,
+    menuPresets,
+    setMenuPresets,
+    withPresetVisualConfig,
+  ]
 );
 
 const deleteMenuPreset = useCallback(
@@ -3713,7 +4425,7 @@ const deleteMenuPreset = useCallback(
     }
     return { ok: true, name: removedPreset?.name || "" };
   },
-  [menuPresets, activeMenuPresetId, defaultMenuPresetId]
+  [menuPresets, activeMenuPresetId, defaultMenuPresetId, setMenuPresets]
 );
 
 const setDefaultMenuPreset = useCallback(
@@ -3735,13 +4447,13 @@ const resetMenuPresets = useCallback(() => {
   setDefaultMenuPresetId("menu-preset-1");
   setMenus(_.cloneDeep(defaultItems));
   menuPresetCounterRef.current = 2;
-}, []);
+}, [buildMenuPreset, createDefaultMenuItems, setMenuPresets]);
 
 useEffect(() => {
   setMenuPresets((prev) =>
     prev.map((preset) => withPresetVisualConfig(preset))
   );
-}, []);
+}, [setMenuPresets, withPresetVisualConfig]);
 
 const toBoolean = (value) => {
   if (typeof value === "boolean") return value;
@@ -4238,7 +4950,7 @@ useEffect(() => {
     });
     return changed ? next : prev;
   });
-}, [activeMenuPresetId, menus]);
+}, [activeMenuPresetId, menus, setMenuPresets]);
 
 useEffect(() => {
   if (activeMenuPresetId) return;
@@ -4246,15 +4958,52 @@ useEffect(() => {
   setOffcanvas((prev) =>
     ["Top", "Menu", "Nav", "Footer"].includes(prev) ? null : prev
   );
-}, [activeMenuPresetId]);
+}, [activeMenuPresetId, setNavOpen, setOffcanvas]);
 
 const menuButtonRef = useRef(null);
 
 
 
 const loadMenuBar = () => {
+  const transactionId = beginBuilderPerformanceTransaction(
+    "resource-load",
+    {
+      label: "โหลด Menu และ Hero ของ Builder",
+      elementType: "Menu",
+      elementId: menuBarId,
+      scope: "load",
+    },
+    { trackFrames: true }
+  );
+  const apiStartedAt = performance.now();
   setIsMenuPresetHydrated(false);
-  getMenuBar("69db17211be82fe7637ea096").then((res) => {
+  useTemplateStore
+    .getState()
+    .setTemplateOperation("menu", { loading: true, error: "" });
+  useTemplateStore
+    .getState()
+    .setTemplateOperation("hero", { loading: true, error: "" });
+  getMenuBar(menuBarId).then((res) => {
+    const templateDomains = templatesFromMenuBar(res?.data || {});
+    useTemplateStore
+      .getState()
+      .hydrateCatalog(
+        "menu",
+        templateDomains.menu.entries,
+        templateDomains.menu.binding
+      );
+    useTemplateStore
+      .getState()
+      .hydrateCatalog(
+        "hero",
+        templateDomains.hero.entries,
+        templateDomains.hero.binding
+      );
+    useTemplateStore
+      .getState()
+      .setPageTemplateOverrides(
+        templateOverridesFromPage(pageDraftRef.current?.page || {})
+      );
     const {
       menuBarDesktop: md,
       menuBarMobile: mm,
@@ -4264,10 +5013,8 @@ const loadMenuBar = () => {
       topBar: tb,
       footerBar: fb,
       menuPresets: serverMenuPresets,
-      activeMenuPresetId: serverActiveMenuPresetId,
       defaultMenuPresetId: serverDefaultMenuPresetId,
       heroPresets: serverHeroPresets,
-      activeHeroPresetId: serverActiveHeroPresetId,
       defaultHeroPresetId: serverDefaultHeroPresetId,
       heroSection: serverHeroSection,
       heroSections: serverHeroSections,
@@ -4655,15 +5402,51 @@ const loadMenuBar = () => {
       heroSectionsByPreset: _.cloneDeep(normalizedHeroSections),
     });
     setIsMenuPresetHydrated(true);
+    finishBuilderLifecycleTransactionAfterPaint(
+      transactionId,
+      {
+        apiLatencyMs: performance.now() - apiStartedAt,
+        presetCount: presetsToUse.length + heroPresetsToUse.length,
+      },
+      { reason: "menu-hero-hydrated" }
+    );
   }).catch(() => {
+    useTemplateStore
+      .getState()
+      .setTemplateBinding("menu", { hydrated: false });
+    useTemplateStore
+      .getState()
+      .setTemplateBinding("hero", { hydrated: false });
+    useTemplateStore
+      .getState()
+      .setTemplateOperation("menu", {
+        loading: false,
+        error: "ไม่สามารถโหลด Menu Preset ได้",
+      });
+    useTemplateStore
+      .getState()
+      .setTemplateOperation("hero", {
+        loading: false,
+        error: "ไม่สามารถโหลด Hero Preset ได้",
+      });
     setIsMenuPresetHydrated(true);
+    finishBuilderPerformanceTransaction(
+      transactionId,
+      {
+        apiLatencyMs: performance.now() - apiStartedAt,
+        failed: 1,
+      },
+      { reason: "error" }
+    );
   });
 }; // โหลดข้อมูลหน้า
+const loadMenuBarRef = useRef(loadMenuBar);
+loadMenuBarRef.current = loadMenuBar;
 
 useEffect(() => {
   if (didInitMenuBarLoadRef.current) return;
   didInitMenuBarLoadRef.current = true;
-  loadMenuBar();
+  loadMenuBarRef.current();
 }, []); // ดึง
 
 useEffect(()=>{
@@ -4717,7 +5500,7 @@ const syncActivePresetVisualField = useCallback((field, value) => {
         : preset
     )
   );
-}, [activeMenuPresetId]);
+}, [activeMenuPresetId, setMenuPresets]);
 
 const updateTopBarForPreset = useCallback((valueOrUpdater) => {
   setTopBar((prev) => {
@@ -4788,7 +5571,7 @@ const setFont = (font) => {
 
 useEffect(()=>{
   setOffcanvas(null)
-},[selectedMenuId])
+},[selectedMenuId, setOffcanvas])
 
 useLayoutEffect(() => {
   latestMenuBarStateRef.current = {
@@ -4871,7 +5654,18 @@ const submitMenuBar = (options = {})=>{
     }
     return "ไม่สำเร็จ.....กรุณาตรวจสอบอีกครั้ง";
   };
-  return updateMenuBar(menuBarData ,"69db17211be82fe7637ea096")
+  const transactionId = beginBuilderPerformanceTransaction(
+    "resource-save",
+    {
+      label: "บันทึก Menu และ Hero ของ Builder",
+      elementType: "Menu",
+      elementId: menuBarId,
+      scope: "save",
+    },
+    { trackFrames: true }
+  );
+  const apiStartedAt = performance.now();
+  return updateMenuBar(menuBarData, menuBarId)
   .then(()=>{
     if (shouldReloadAfterSave) {
       loadMenuBar();
@@ -4886,13 +5680,28 @@ const submitMenuBar = (options = {})=>{
         heroSectionsByPreset: _.cloneDeep(latest.heroSections ?? heroSectionsByPreset),
       });
     }
+    finishBuilderLifecycleTransactionAfterPaint(
+      transactionId,
+      { apiLatencyMs: performance.now() - apiStartedAt },
+      { reason: "menu-hero-saved" }
+    );
     return { ok: true }
-  }).catch((error) => ({
-    ok: false,
-    message: getBackendErrorMessage(error),
-    status: error?.response?.status ?? null,
-    details: error?.response?.data ?? error?.message ?? null,
-  }))
+  }).catch((error) => {
+    finishBuilderPerformanceTransaction(
+      transactionId,
+      {
+        apiLatencyMs: performance.now() - apiStartedAt,
+        failed: 1,
+      },
+      { reason: "error" }
+    );
+    return {
+      ok: false,
+      message: getBackendErrorMessage(error),
+      status: error?.response?.status ?? null,
+      details: error?.response?.data ?? error?.message ?? null,
+    };
+  })
 }
 
 const resolveHeroSectionForPreview = useCallback(
@@ -4907,15 +5716,19 @@ const resolveHeroSectionForPreview = useCallback(
     }
     return _.cloneDeep(normalizeHeroSection(createDefaultHeroSection()));
   },
-  [heroSectionsByPreset, activeHeroPresetId, heroSection]
+  [
+    activeHeroPresetId,
+    createDefaultHeroSection,
+    heroSection,
+    heroSectionsByPreset,
+    normalizeHeroSection,
+  ]
 );
 
 const openPreviewPage = useCallback(() => {
   try {
-    const resolvedMenuPresetId =
-      page?.menuPresetId || defaultMenuPresetId || activeMenuPresetId;
-    const resolvedHeroPresetId =
-      page?.heroPresetId || defaultHeroPresetId || activeHeroPresetId;
+    const resolvedMenuPresetId = pageMenuPresetId;
+    const resolvedHeroPresetId = pageHeroPresetId;
     const selectedMenuPreset =
       menuPresets.find((preset) => preset.id === resolvedMenuPresetId) ||
       menuPresets.find((preset) => preset.id === defaultMenuPresetId) ||
@@ -4960,16 +5773,14 @@ const openPreviewPage = useCallback(() => {
   device,
   menuPresets,
   defaultMenuPresetId,
-  activeMenuPresetId,
-  defaultHeroPresetId,
-  activeHeroPresetId,
+  pageMenuPresetId,
+  pageHeroPresetId,
   menus,
   menuBarDesktop,
   menuBarMobile,
   menuBarMobilePhone,
   topBar,
   footerBar,
-  heroSection,
   resolveHeroSectionForPreview,
 ]);
 
@@ -4984,10 +5795,8 @@ useEffect(() => {
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== "object") return;
-      const resolvedMenuPresetId =
-        page?.menuPresetId || defaultMenuPresetId || activeMenuPresetId;
-      const resolvedHeroPresetId =
-        page?.heroPresetId || defaultHeroPresetId || activeHeroPresetId;
+      const resolvedMenuPresetId = pageMenuPresetId;
+      const resolvedHeroPresetId = pageHeroPresetId;
       const selectedMenuPreset =
         menuPresets.find((preset) => preset.id === resolvedMenuPresetId) ||
         menuPresets.find((preset) => preset.id === defaultMenuPresetId) ||
@@ -5027,11 +5836,9 @@ useEffect(() => {
 
   return () => window.cancelAnimationFrame(rafId);
 }, [
-  page,
   defaultMenuPresetId,
-  activeMenuPresetId,
-  defaultHeroPresetId,
-  activeHeroPresetId,
+  pageMenuPresetId,
+  pageHeroPresetId,
   menuPresets,
   menus,
   menuBarDesktop,
@@ -5044,6 +5851,9 @@ useEffect(() => {
 ]);
 
 const updatePageSettings = useCallback((patch) => {
+  const hasTemplateOverridePatch =
+    Object.prototype.hasOwnProperty.call(patch, "menuPresetId") ||
+    Object.prototype.hasOwnProperty.call(patch, "heroPresetId");
   setPage((prev) => {
     if (!prev) return prev;
     const next = { ...prev, ...patch };
@@ -5053,8 +5863,21 @@ const updatePageSettings = useCallback((patch) => {
     };
     return next;
   });
-  const pageId = String(pageDraftRef.current?.page?._id || page?._id || "");
+  if (hasTemplateOverridePatch) {
+    useTemplateStore
+      .getState()
+      .setPageTemplateOverrides(
+        templateOverridesFromPage({
+          ...(pageDraftRef.current?.page || {}),
+          ...patch,
+        })
+      );
+  }
+  const pageId = String(pageDraftRef.current?.page?._id || "");
   if (!pageId) return Promise.resolve({ ok: false });
+  const metadataVersion = usePageDocumentStore
+    .getState()
+    .patchLocalMetadata(pageId, patch);
   return editPage(patch, pageId)
     .then((response) => {
       const updated =
@@ -5062,7 +5885,11 @@ const updatePageSettings = useCallback((patch) => {
           ? response.data
           : null;
       if (updated) {
+        usePageDocumentStore.getState().applySavedPage(updated, {
+          expectedVersion: metadataVersion,
+        });
         setPage((prev) => {
+          if (String(prev?._id || "") !== pageId) return prev;
           const next = { ...prev, ...updated };
           pageDraftRef.current = {
             ...pageDraftRef.current,
@@ -5070,6 +5897,16 @@ const updatePageSettings = useCallback((patch) => {
           };
           return next;
         });
+        if (
+          hasTemplateOverridePatch &&
+          String(pageDraftRef.current?.page?._id || "") === pageId
+        ) {
+          useTemplateStore
+            .getState()
+            .setPageTemplateOverrides(
+              templateOverridesFromPage(updated)
+            );
+        }
       }
       return { ok: true, page: updated };
     })
@@ -5077,7 +5914,7 @@ const updatePageSettings = useCallback((patch) => {
       console.log(err);
       return { ok: false, error: err };
     });
-}, [page?._id]);
+}, []);
 
 const handleSelectPageMenuPreset = useCallback(
   (presetId) => {
@@ -5118,15 +5955,18 @@ const handleUpdatePagePopup = useCallback(
       };
       return next;
     });
+    const pageId = String(
+      pageDraftRef.current?.page?._id || page?._id || ""
+    );
+    if (!pageId) return;
+    const metadataVersion = usePageDocumentStore
+      .getState()
+      .patchLocalMetadata(pageId, { pagePopup: normalized });
     if (pagePopupSaveTimerRef.current) {
       clearTimeout(pagePopupSaveTimerRef.current);
     }
     pagePopupSaveTimerRef.current = setTimeout(() => {
       pagePopupSaveTimerRef.current = null;
-      const pageId = String(
-        pageDraftRef.current?.page?._id || page?._id || ""
-      );
-      if (!pageId) return;
       editPage({ pagePopup: normalized }, pageId)
         .then((response) => {
           const updated =
@@ -5134,7 +5974,11 @@ const handleUpdatePagePopup = useCallback(
               ? response.data
               : null;
           if (!updated?.pagePopup) return;
+          usePageDocumentStore.getState().applySavedPage(updated, {
+            expectedVersion: metadataVersion,
+          });
           setPage((prev) => {
+            if (String(prev?._id || "") !== pageId) return prev;
             const next = {
               ...prev,
               pagePopup: updated.pagePopup,
@@ -5151,11 +5995,114 @@ const handleUpdatePagePopup = useCallback(
   },
   [page?._id]
 );
+useEffect(
+  () => () => {
+    if (pagePopupSaveTimerRef.current) {
+      clearTimeout(pagePopupSaveTimerRef.current);
+    }
+  },
+  []
+);
 
-const pageMenuPresetId =
-  page?.menuPresetId || defaultMenuPresetId || activeMenuPresetId || "";
-const pageHeroPresetId =
-  page?.heroPresetId || defaultHeroPresetId || activeHeroPresetId || "";
+const pageSeoSaveTimerRef = useRef(null);
+const handleUpdatePageSeo = useCallback(
+  (nextSeo) => {
+    const normalized = normalizePageSeo(
+      nextSeo,
+      pageDraftRef.current?.page?.pageName || page?.pageName
+    );
+    setPage((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, pageSeo: normalized };
+      pageDraftRef.current = {
+        ...pageDraftRef.current,
+        page: next,
+      };
+      return next;
+    });
+
+    const pageId = String(
+      pageDraftRef.current?.page?._id || page?._id || ""
+    );
+    if (!pageId) return;
+    const metadataVersion = usePageDocumentStore
+      .getState()
+      .patchLocalMetadata(pageId, { pageSeo: normalized });
+    const { siteId, locale } = useBuilderContextStore.getState();
+    useSeoStore.getState().upsertEntitySeo({
+      siteId,
+      locale,
+      entityKind: "page",
+      entityId: pageId,
+      meta: normalized,
+    });
+    useSeoStore.getState().setSlug({
+      siteId,
+      locale,
+      entityKind: "page",
+      entityId: pageId,
+      slug: normalized.slug,
+    });
+
+    if (pageSeoSaveTimerRef.current) {
+      clearTimeout(pageSeoSaveTimerRef.current);
+    }
+    pageSeoSaveTimerRef.current = setTimeout(() => {
+      pageSeoSaveTimerRef.current = null;
+      useSeoStore
+        .getState()
+        .setSeoOperation({ saving: true, error: "" });
+      editPage({ pageSeo: normalized }, pageId)
+        .then((response) => {
+          useSeoStore
+            .getState()
+            .setSeoOperation({ saving: false, error: "" });
+          const updated =
+            response?.data && typeof response.data === "object"
+              ? response.data
+              : null;
+          if (!updated?.pageSeo) return;
+          usePageDocumentStore.getState().applySavedPage(updated, {
+            expectedVersion: metadataVersion,
+          });
+          setPage((prev) => {
+            if (String(prev?._id || "") !== pageId) return prev;
+            const next = {
+              ...prev,
+              pageSeo: normalizePageSeo(
+                updated.pageSeo,
+                updated.pageName || prev?.pageName
+              ),
+            };
+            pageDraftRef.current = {
+              ...pageDraftRef.current,
+              page: next,
+            };
+            return next;
+          });
+        })
+        .catch((error) => {
+          useSeoStore.getState().setSeoOperation({
+            saving: false,
+            error:
+              error?.response?.data === "Page slug already exists"
+                ? "Slug นี้ถูกใช้กับหน้าอื่นแล้ว"
+                : "ไม่สามารถบันทึก SEO ได้",
+          });
+        });
+    }, 280);
+  },
+  [page?._id, page?.pageName]
+);
+useEffect(
+  () => () => {
+    if (pageSeoSaveTimerRef.current) {
+      clearTimeout(pageSeoSaveTimerRef.current);
+    }
+  },
+  []
+);
+
 const hasSelectedBuilderPage = Boolean(page?._id);
 const BUILDER_HEADER_HEIGHT = 64;
 
@@ -5186,7 +6133,9 @@ useEffect(() => {
     if (panelNode.contains(target)) return false;
     if (
       typeof target?.closest === "function" &&
-      target.closest(".MuiModal-root, .MuiPopover-root, .MuiPopper-root")
+      target.closest(
+        ".MuiModal-root, .MuiPopover-root, .MuiPopper-root, [data-performance-monitor='true']"
+      )
     ) {
       return false;
     }
@@ -5218,6 +6167,111 @@ useEffect(() => {
   };
 }, [shouldCloseOffcanvasOnOutsideClick, setOffcanvas]);
 
+const handlePanelPerformanceEvent = useCallback(
+  (event) => {
+    recordBuilderPanelControlEvent(event, {
+      panelType: offcanvas,
+      elementType: elementData?.type,
+      elementId: elementData?.id ?? elementData?.colData?.id,
+    });
+  },
+  [elementData, offcanvas]
+);
+
+const handlePageSettingsPerformanceEvent = useCallback(
+  (event) => {
+    recordBuilderPanelControlEvent(event, {
+      panelType: "Page Settings",
+      elementType: "Page Settings",
+      elementId: String(page?._id || ""),
+    });
+  },
+  [page?._id]
+);
+
+const handleHeaderPerformanceEvent = useCallback((event) => {
+  recordBuilderPanelControlEvent(event, {
+    panelType: "Builder Header",
+    elementType: "Header",
+    elementId: "builder-header",
+    transactionKind: "header-control",
+    labelPrefix: "ปุ่ม Header",
+    trackFrames: true,
+    skipWhenRecentActive: true,
+  });
+}, []);
+
+const handleNavigationPerformanceEvent = useCallback((event) => {
+  recordBuilderPanelControlEvent(event, {
+    panelType: "Builder Navigation",
+    elementType: "Navigation",
+    elementId: "builder-navigation",
+    transactionKind: "navigation-control",
+    labelPrefix: "ปุ่ม Navigation",
+    trackFrames: true,
+    skipWhenRecentActive: true,
+  });
+}, []);
+
+const handleBuilderUiPerformanceEvent = useCallback((event) => {
+  if (event?.target?.closest?.(".dash-panel")) return;
+  recordBuilderPanelControlEvent(event, {
+    panelType: "Builder UI",
+    elementType: "Builder",
+    elementId: "builder-ui",
+    transactionKind: "builder-control",
+    labelPrefix: "ปุ่ม Builder",
+    trackFrames: true,
+    skipWhenRecentActive: true,
+  });
+}, []);
+
+useEffect(() => {
+  if (!offcanvas) {
+    if (!pageSettingsPanelOpenRef.current) {
+      markBuilderPanelClosed();
+    }
+    return undefined;
+  }
+  if (typeof requestAnimationFrame !== "function") return undefined;
+  let secondFrameId = null;
+  const firstFrameId = requestAnimationFrame(() => {
+    secondFrameId = requestAnimationFrame(() => {
+      markBuilderPanelMounted(
+        offcanvas,
+        panelPerformanceTargetRef.current ||
+          elementData?.id ||
+          elementData?.colData?.id
+      );
+    });
+  });
+  return () => {
+    cancelAnimationFrame(firstFrameId);
+    if (secondFrameId != null) cancelAnimationFrame(secondFrameId);
+  };
+}, [elementData, offcanvas]);
+
+useEffect(() => {
+  if (!isPageSettingsPanelOpen || !page?._id) return undefined;
+  if (typeof requestAnimationFrame !== "function") return undefined;
+  let secondFrameId = null;
+  const targetId = String(page._id);
+  const firstFrameId = requestAnimationFrame(() => {
+    secondFrameId = requestAnimationFrame(() => {
+      if (!pageSettingsPanelOpenRef.current) return;
+      markBuilderPanelMounted("Page Settings", targetId);
+    });
+  });
+  return () => {
+    cancelAnimationFrame(firstFrameId);
+    if (secondFrameId != null) cancelAnimationFrame(secondFrameId);
+  };
+}, [isPageSettingsPanelOpen, page?._id]);
+
+useEffect(() => {
+  if (hasSelectedBuilderPage || !pageSettingsPanelOpenRef.current) return;
+  closePageSettingsPanel();
+}, [closePageSettingsPanel, hasSelectedBuilderPage]);
 
 
   
@@ -5226,7 +6280,11 @@ useEffect(() => {
         <div
           className={`${darkMode === "dark" ?"dark":""} dashboard-chrome h-screen w-full overflow-x-hidden`}
           style={dashboardChromeCssVars}
+          onClick={handleBuilderUiPerformanceEvent}
+          onChange={handleBuilderUiPerformanceEvent}
+          onInput={handleBuilderUiPerformanceEvent}
         >
+          {!isPreviewRoute && <BuilderPerformanceMonitor />}
          
 
         
@@ -5237,12 +6295,35 @@ useEffect(() => {
 
                 {!isPreviewRoute && (
                   <Profiler id="BuilderNavPanel" onRender={recordBuilderNavRender}>
-                    <Navbar handleDragElement={handleDragElement} prepareDragElement={prepareDragElement} isDark={darkMode} selectedMenuId={selectedMenuId} setSelectedMenuId={setSelectedMenuId} updateNewTheme={updateNewTheme} setMobilePage={setMobilePage}  mobilePage={mobilePage}  navOpen={navOpen} setNavOpen={setNavOpen} railExpanded={railExpanded}/>
+                    <div
+                      className="contents"
+                      onClick={handleNavigationPerformanceEvent}
+                      onChange={handleNavigationPerformanceEvent}
+                    >
+                      <Navbar handleDragElement={handleDragElement} prepareDragElement={prepareDragElement} isDark={darkMode} selectedMenuId={selectedMenuId} setSelectedMenuId={setSelectedMenuId} updateNewTheme={updateNewTheme} navOpen={navOpen} setNavOpen={setNavOpen} railExpanded={railExpanded}/>
+                    </div>
                   </Profiler>
                 )}
 
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 {!isPreviewRoute && (
+                  <div
+                    className="contents"
+                    onClick={handleHeaderPerformanceEvent}
+                    onChange={handleHeaderPerformanceEvent}
+                    onInput={handleHeaderPerformanceEvent}
+                  >
+                    <Profiler
+                      id="BuilderHeader"
+                      onRender={(_id, phase, actualDuration, baseDuration) =>
+                        handleLayoutPanelRender(
+                          "Builder Header",
+                          phase,
+                          actualDuration,
+                          baseDuration
+                        )
+                      }
+                    >
                     <Header
                       menuButtonRef={menuButtonRef}
                       submitMenuBar={submitMenuBar}
@@ -5252,7 +6333,7 @@ useEffect(() => {
                       theme={theme}
                       setFont={setFont}
                       toggleDarkMode={toggleDarkMode}
-                      setOpenBar={setOffcanvas}
+                      setOpenBar={setHeaderOffcanvas}
                       openBar={offcanvas}
                       isDark={darkMode}
                       menus={menus}
@@ -5260,12 +6341,13 @@ useEffect(() => {
                       builderMode={canvasBuilderMode}
                       deviceType={device}
                       setDevice={setDevice}
-                      pageName={page.pageName}
+                      pageName={activePageMetadata?.pageName || page.pageName}
                       hasSelectedBuilderPage={hasSelectedBuilderPage}
                       activePageId={activeBuilderPageId}
                       defaultPageId={defaultBuilderPageId}
                       onSelectPage={handleSelectBuilderPage}
                       onPageCreated={handleBuilderPageCreated}
+                      onBeforePagesChange={persistActiveBuilderPage}
                       onPagesChanged={handleBuilderPagesChanged}
                       textColor={darkTextColor}
                       option={selectedMenuId}
@@ -5275,7 +6357,7 @@ useEffect(() => {
                       onOpenPreview={openPreviewPage}
                       onOpenPageSettings={openPageSettingsPanel}
                       onPublishBuilder={handlePublishBuilder}
-                      menuPresets={menuPresets}
+                      menuPresets={menuPresetCatalog}
                       activeMenuPresetId={activeMenuPresetId}
                       defaultMenuPresetId={defaultMenuPresetId}
                       isMenuPresetHydrated={isMenuPresetHydrated}
@@ -5286,11 +6368,11 @@ useEffect(() => {
                       onDuplicateMenuPreset={duplicateMenuPreset}
                       onDeleteMenuPreset={deleteMenuPreset}
                       onResetMenuPresets={resetMenuPresets}
-                      heroPresets={heroPresets}
+                      heroPresets={heroPresetCatalog}
                       activeHeroPresetId={activeHeroPresetId}
                       defaultHeroPresetId={defaultHeroPresetId}
                       onHeroStateChange={handleHeroStateChange}
-                      formPresets={formPresets}
+                      formPresets={formPresetCatalog}
                       activeFormPresetId={activeFormPresetId}
                       defaultFormPresetId={defaultFormPresetId}
                       isFormsHydrated={isFormsHydrated}
@@ -5300,6 +6382,8 @@ useEffect(() => {
                       onFormStateChange={handleFormStateChange}
                       submitForms={submitForms}
                     />
+                    </Profiler>
+                  </div>
                 )}
 
                 <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
@@ -5610,7 +6694,7 @@ useEffect(() => {
                               layouts={layouts}
                               setLayout={updateLayout}
                               theme={theme}
-                              setPage={setPage}
+                              setPage={updateCanvasPage}
                               page={page}
                               patchElementRef={patchElementRef}
                               openListBoxTextEditRef={openListBoxTextEditRef}
@@ -5683,21 +6767,45 @@ useEffect(() => {
                   </Suspense>
                   {selectedMenuId === "Builder" && hasSelectedBuilderPage && (
                     <Suspense fallback={null}>
-                      <PageSettingsPanel
-                        isOpen={isPageSettingsPanelOpen}
-                        onClose={() => setIsPageSettingsPanelOpen(false)}
-                        pageOid={String(page?._id || "")}
-                        menuPresets={menuPresets}
-                        heroPresets={heroPresets}
-                        pageMenuPresetId={pageMenuPresetId}
-                        pageHeroPresetId={pageHeroPresetId}
-                        onSelectMenuPreset={handleSelectPageMenuPreset}
-                        onSelectHeroPreset={handleSelectPageHeroPreset}
-                        isMenuPresetHydrated={isMenuPresetHydrated}
-                        pagePopup={page?.pagePopup}
-                        onUpdatePagePopup={handleUpdatePagePopup}
-                        textColor={darkTextColor}
-                      />
+                      <div
+                        onPointerDownCapture={handlePageSettingsPerformanceEvent}
+                        onPointerUpCapture={handlePageSettingsPerformanceEvent}
+                        onInputCapture={handlePageSettingsPerformanceEvent}
+                        onChangeCapture={handlePageSettingsPerformanceEvent}
+                        onClickCapture={handlePageSettingsPerformanceEvent}
+                        onBlurCapture={handlePageSettingsPerformanceEvent}
+                      >
+                        <Profiler
+                          id="PageSettingsPanel"
+                          onRender={(_id, phase, actualDuration, baseDuration) =>
+                            handleLayoutPanelRender(
+                              "Page Settings",
+                              phase,
+                              actualDuration,
+                              baseDuration
+                            )
+                          }
+                        >
+                          <PageSettingsPanel
+                            isOpen={isPageSettingsPanelOpen}
+                            onClose={closePageSettingsPanel}
+                            pageOid={String(page?._id || "")}
+                            menuPresets={menuPresets}
+                            heroPresets={heroPresetCatalog}
+                            pageMenuPresetId={pageMenuPresetId}
+                            pageHeroPresetId={pageHeroPresetId}
+                            onSelectMenuPreset={handleSelectPageMenuPreset}
+                            onSelectHeroPreset={handleSelectPageHeroPreset}
+                            isMenuPresetHydrated={isMenuPresetHydrated}
+                            pagePopup={page?.pagePopup}
+                            onUpdatePagePopup={handleUpdatePagePopup}
+                            pageSeo={page?.pageSeo}
+                            pageName={page?.pageName || ""}
+                            onUpdatePageSeo={handleUpdatePageSeo}
+                            textColor={darkTextColor}
+                          />
+                        </Profiler>
+                      </div>
                     </Suspense>
                   )}
                   {shouldShowOffcanvasOverlay && (
@@ -5714,6 +6822,12 @@ useEffect(() => {
              {!isPreviewRoute && (
              <aside
   ref={offcanvasAsideRef}
+  onPointerDownCapture={handlePanelPerformanceEvent}
+  onPointerUpCapture={handlePanelPerformanceEvent}
+  onInputCapture={handlePanelPerformanceEvent}
+  onChangeCapture={handlePanelPerformanceEvent}
+  onClickCapture={handlePanelPerformanceEvent}
+  onBlurCapture={handlePanelPerformanceEvent}
   className="
     dash-panel flex flex-col min-h-0 h-full max-h-full overflow-hidden
     border-r
@@ -5766,16 +6880,40 @@ useEffect(() => {
               </Profiler>
              )}
               {offcanvas === "Header" && (
-              <HeaderOffcanvas elements={elementData} updateContainer={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
+              <Profiler
+                id="HeaderPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Header",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <HeaderOffcanvas elements={elementData} updateContainer={elementFunction.current} close={openOffcavanas} textColor={darkTextColor}/>
+              </Profiler>
              )}
              {offcanvas === "Hero" && (
-              <HeroOffcanvas
-                element={elementData}
-                updateHero={updateHeroSectionFromPanel}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                device={device}
-              />
+              <Profiler
+                id="HeroPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Hero",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <HeroOffcanvas
+                  element={elementData}
+                  updateHero={updateHeroSectionFromPanel}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  device={device}
+                />
+              </Profiler>
              )}
               {offcanvas === "Column" && (
               <Profiler
@@ -5799,7 +6937,18 @@ useEffect(() => {
               </Profiler>
              )}
              {offcanvas === "Image" && (
-              <ImageElementOffcanvas
+              <Profiler
+                id="ImagePanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Image",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ImageElementOffcanvas
                 element={elementData}
                 onUpdate={(payload) => {
                   const exLiImg = elementData?.__listItemImageEdit;
@@ -5877,6 +7026,7 @@ useEffect(() => {
                 textColor={darkTextColor}
                 theme={theme}
               />
+              </Profiler>
              )}
 
              {offcanvas === "Image Hover" && (
@@ -5937,7 +7087,18 @@ useEffect(() => {
              )}
 
              {offcanvas === "Lightbox" && (
-              <ImageElementOffcanvas
+              <Profiler
+                id="LightboxPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Lightbox",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ImageElementOffcanvas
                 element={elementData}
                 layoutElementType="lbx"
                 panelTitle="Lightbox"
@@ -5951,10 +7112,22 @@ useEffect(() => {
                 textColor={darkTextColor}
                 theme={theme}
               />
+              </Profiler>
              )}
 
              {offcanvas === "Video" && (
-              <ImageElementOffcanvas
+              <Profiler
+                id="VideoPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Video",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ImageElementOffcanvas
                 element={elementData}
                 layoutElementType="vid"
                 panelTitle="Video"
@@ -5968,10 +7141,22 @@ useEffect(() => {
                 textColor={darkTextColor}
                 theme={theme}
               />
+              </Profiler>
              )}
 
              {offcanvas === "Banner" && (
-              <ImageElementOffcanvas
+              <Profiler
+                id="BannerPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Banner",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ImageElementOffcanvas
                 element={elementData}
                 layoutElementType="bnr"
                 panelTitle="Banner"
@@ -6051,10 +7236,22 @@ useEffect(() => {
                 textColor={darkTextColor}
                 theme={theme}
               />
+              </Profiler>
              )}
 
              {offcanvas === "Button" && (
-              <ButtonElementOffcanvas
+              <Profiler
+                id="ButtonPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Button",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <ButtonElementOffcanvas
                 element={elementData}
                 onUpdate={(payload) => {
                   const exImghBtn = elementData?.__imageHoverButtonEdit;
@@ -6147,9 +7344,21 @@ useEffect(() => {
                 theme={theme}
                 darkMode={darkMode}
               />
+              </Profiler>
              )}
              {offcanvas === "Form" && (
-              <FormElementOffcanvas
+              <Profiler
+                id="FormPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Form",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <FormElementOffcanvas
                 element={elementData}
                 onUpdate={(payload) => {
                   patchElementRef.current?.(payload, {
@@ -6161,10 +7370,22 @@ useEffect(() => {
                 darkMode={darkMode}
                 theme={theme}
               />
+              </Profiler>
              )}
 
              {offcanvas === "Icon" && (
-              <IconElementOffcanvas
+              <Profiler
+                id="IconPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Icon",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <IconElementOffcanvas
                 element={elementData}
                 onUpdate={(payload) => {
                   const exImghIcon = elementData?.__imageHoverIconEdit;
@@ -6328,6 +7549,7 @@ useEffect(() => {
                 theme={theme}
                 darkMode={darkMode}
               />
+              </Profiler>
              )}
 
              {offcanvas === "Heading" && (
@@ -6358,7 +7580,18 @@ useEffect(() => {
              )}
 
              {offcanvas === "Counter" && (
-              <CounterElementOffcanvas
+              <Profiler
+                id="CounterPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Counter",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <CounterElementOffcanvas
                 element={elementData}
                 onUpdate={(payload) => {
                   patchElementRef.current?.(payload, {
@@ -6369,6 +7602,7 @@ useEffect(() => {
                 textColor={darkTextColor}
                 theme={theme}
               />
+              </Profiler>
              )}
 
              {offcanvas === "Carousel" && (
@@ -6665,49 +7899,109 @@ useEffect(() => {
               </Profiler>
              )}
              {offcanvas === "Divider" && (
-              <DividerElementOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                textColor={darkTextColor}
-                theme={theme}
-              />
+              <Profiler
+                id="DividerPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Divider",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <DividerElementOffcanvas
+                  element={elementData}
+                  onUpdate={(payload) => {
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  textColor={darkTextColor}
+                  theme={theme}
+                />
+              </Profiler>
              )}
              {offcanvas === "FormBlock" && (
-              <FormBlockOffcanvas
-                element={elementData}
-                onUpdate={(payload) => {
-                  setElementData(payload);
-                  patchElementRef.current?.(payload, {
-                    eleID: payload?.id ?? elementData?.id,
-                  });
-                }}
-                close={openOffcavanas}
-                darkMode={darkMode}
-                textColor={darkTextColor}
-              />
+              <Profiler
+                id="FormBlockPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "FormBlock",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <FormBlockOffcanvas
+                  element={elementData}
+                  onUpdate={(payload) => {
+                    setElementData(payload);
+                    patchElementRef.current?.(payload, {
+                      eleID: payload?.id ?? elementData?.id,
+                    });
+                  }}
+                  close={openOffcavanas}
+                  darkMode={darkMode}
+                  textColor={darkTextColor}
+                />
+              </Profiler>
              )}
              
              {offcanvas === "Top" && (
-              <TopBarOffcanvas open={offcanvas === "Top"} close={setOffcanvas} topBar={topBar} darkMode={darkMode} darkTextColor={darkTextColor} updateTopBar={updateTopBarForPreset} device={device}/>
+              <Profiler
+                id="TopPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Top",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <TopBarOffcanvas open={offcanvas === "Top"} close={setOffcanvas} topBar={topBar} darkMode={darkMode} darkTextColor={darkTextColor} updateTopBar={updateTopBarForPreset} device={device}/>
+              </Profiler>
              )}
              {offcanvas === "Footer" && (
-              <FooterBarOffcanvas
-                open={offcanvas === "Footer"}
-                close={setOffcanvas}
-                footerBar={footerBar}
-                darkMode={darkMode}
-                darkTextColor={darkTextColor}
-                updateFooterBar={updateFooterBarForPreset}
-              />
+              <Profiler
+                id="FooterPanel"
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    "Footer",
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <FooterBarOffcanvas
+                  open={offcanvas === "Footer"}
+                  close={setOffcanvas}
+                  footerBar={footerBar}
+                  darkMode={darkMode}
+                  darkTextColor={darkTextColor}
+                  updateFooterBar={updateFooterBarForPreset}
+                />
+              </Profiler>
              )}
 
 {["Menu","Nav"].includes(offcanvas) && (
-              <MenuBarOffcanvas  open={["Menu","Nav"].includes(offcanvas)} device={device} close={setOffcanvas} navBottom={navBottom} topBar={topBar} updateTopBar={updateTopBarForPreset} textColor={darkTextColor} menuBarDesktop={menuBarDesktop} menuBarMobile={menuBarForCurrentDevice} updateMenuBar={(data,isNav=false)=>editMenuBar(data,isNav)} darkMode={darkMode} darkTextColor={darkTextColor}/>
+              <Profiler
+                id={`${offcanvas}Panel`}
+                onRender={(_id, phase, actualDuration, baseDuration) =>
+                  handleLayoutPanelRender(
+                    offcanvas,
+                    phase,
+                    actualDuration,
+                    baseDuration
+                  )
+                }
+              >
+                <MenuBarOffcanvas  open={["Menu","Nav"].includes(offcanvas)} device={device} close={setOffcanvas} navBottom={navBottom} topBar={topBar} updateTopBar={updateTopBarForPreset} textColor={darkTextColor} menuBarDesktop={menuBarDesktop} menuBarMobile={menuBarForCurrentDevice} updateMenuBar={(data,isNav=false)=>editMenuBar(data,isNav)} darkMode={darkMode} darkTextColor={darkTextColor}/>
+              </Profiler>
 )}
 </Suspense>
 </aside>

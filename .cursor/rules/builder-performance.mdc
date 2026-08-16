@@ -1,0 +1,31 @@
+---
+description: Protect Builder performance behavior and measurement accuracy
+globs: client/src/Builder/**/*.{js,jsx}
+alwaysApply: false
+---
+
+# Builder Performance
+
+- Treat Builder interaction performance as a primary requirement.
+- Analyze and identify the root cause before changing code.
+- Limit each performance fix to the reported interaction and affected element.
+- Preserve UI, behavior, layout structure, drag-and-drop semantics, and saved data.
+- Do not optimize by removing required work or delaying it beyond the measured interaction.
+- Avoid new render cascades, unstable references, broad Context subscriptions, and unnecessary store subscriptions.
+- Prefer selectors, stable callbacks, refs for transient drag state, and scoped updates.
+- Verify Hook dependencies semantically; never add or remove dependencies blindly.
+
+# Performance Monitor Integrity
+
+- Do not change Builder Performance Monitor thresholds to make results pass.
+- Do not suppress, skip, or redefine valid samples without evidence of measurement error.
+- Keep interaction labels, ownership, frame-gap, commit, render, and long-task measurements accurate.
+- If the application is slow, fix application work rather than the monitor.
+- If measurement is suspected, reproduce repeatedly and compare with browser performance tooling first.
+
+# Verification
+
+- Run targeted lint after edits and full lint before handoff.
+- Run the production build.
+- Re-test the same interaction 3–5 times.
+- Report remaining warnings or uncertainty; stop for manual UI testing when requested.

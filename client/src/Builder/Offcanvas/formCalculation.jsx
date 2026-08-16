@@ -157,7 +157,7 @@ export default function FormCalculationPanel({
       }
       return { ...prev, values: nextValues };
     });
-  }, [open, pathKeys.join("|"), list, editingId]);
+  }, [editingId, list, open, pathKeys]);
 
   const hasChanges = useMemo(() => {
     const name = String(draft.name || "").trim();

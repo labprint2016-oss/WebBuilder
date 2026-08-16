@@ -1,4 +1,4 @@
-import { useState,useEffect,useRef } from "react";
+import { useCallback,useState,useEffect,useRef } from "react";
 import { Modal,Box,Fade,Backdrop,Button} from "@mui/material";
 import {uploadImage,listImages,deleteImage,uploadMedia,listMedia,deleteMedia} from "../../Functions/media";
 import { Check,X } from "lucide-react";
@@ -58,18 +58,18 @@ function ImageModal({openModal,setOpenModal,handleChange,isPost=false,allowVideo
     const [images,setImage] = useState([]);
 
 
-    const loadImages = ()=>{
+    const loadImages = useCallback(()=>{
         const mediaLoader = allowVideo ? listMedia : listImages;
         mediaLoader()
         .then((res)=>{
           const nextImages = Array.isArray(res?.data) ? res.data : [];
           setImage(nextImages);
-          if (selectedImage && !nextImages.includes(selectedImage)) {
-            setSelectedImage("");
-          }
+          setSelectedImage((previous) =>
+            previous && !nextImages.includes(previous) ? "" : previous
+          );
         })
         .catch((err)=>console.log(err))
-    }
+    }, [allowVideo])
 
     const removeOptions = [
       {
@@ -105,7 +105,7 @@ function ImageModal({openModal,setOpenModal,handleChange,isPost=false,allowVideo
 
     useEffect(()=>{
         loadImages()
-    },[allowVideo])
+    },[loadImages])
     useEffect(() => {
       if (!openModal || isRemove) return undefined;
       const onKeyDown = (event) => {
@@ -258,10 +258,10 @@ if(isRemove){
       }}
     >
       {images.map((img, index) => (
-        <div key={index} className={`col-span-1 relative`} style={{borderRadius: 5,backgroundColor:hover === img ? "#333333":""}}  onMouseEnter={(e)=>{
+        <div key={index} className={`col-span-1 relative`} style={{borderRadius: 5,backgroundColor:hover === img ? "#333333":""}}  onMouseEnter={()=>{
           setHover(img)
         }}
-        onMouseLeave={(e)=>{
+        onMouseLeave={()=>{
           setHover("")
         }}
         onClick={() => setSelectedImage(img)}>
@@ -272,8 +272,8 @@ if(isRemove){
             flex items-center justify-center
           ">
                 <div className="grid-cols-2">
-                    {options.map(({Funct,Icon,id})=>(
-                        <Button onClick={()=>Funct(img)} key={id} sx={{
+                    {options.map((option)=>(
+                        <Button onClick={()=>option.Funct(img)} key={option.id} sx={{
                           bgcolor: "#ffffffc9",
                           minWidth: 0,
                           width: 30,
@@ -281,7 +281,7 @@ if(isRemove){
                           borderRadius: "50%",
                           marginX:1,
                           p: 0,
-                        }}><Icon strokeWidth={3} size={18} color="#333333"/></Button>
+                        }}><option.Icon strokeWidth={3} size={18} color="#333333"/></Button>
                     ))}
                 </div>
               </div>

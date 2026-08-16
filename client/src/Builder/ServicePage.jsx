@@ -1,5 +1,6 @@
-import { useEffect, useState,useRef } from "react";
+import { useState } from "react";
 import { createPage } from "../../Functions/pages";
+import { usePageDocumentStore } from "./store/pageDocument";
 
 import {
     Dialog,
@@ -31,13 +32,9 @@ import {
   
   
   } from "@mui/material";
-  import lodash, { first, isNull, set } from "lodash";
-
   import { Minus, Plus,Check,Palette,ImageOff,Trash2} from "lucide-react";
-  import { styled } from '@mui/material/styles';
   import Switch from '@mui/material/Switch';
   import Stack from '@mui/material/Stack';
-  import { text } from "@fortawesome/fontawesome-svg-core";
 
 
 
@@ -113,15 +110,9 @@ const ServicePage = ({open,onClose,darkMode,complete,onCreated=null})=>{
     const primaryColor = darkMode === "dark" ? "#3d85c6" : "#3677b2";
     const secondaryColor = darkMode === "dark" ? "#3d85c6" : "#18354f";
     const textSecondaryColor = darkMode === "dark" ? "#bebebe" : "#555555";
-    const thirdColor = darkMode === "dark" ? "#494d55" : "#18354f";
-    const fouthColor = darkMode === "dark" ? "#ebf2f9" : "#ebf2f9";
     const fifthColor = darkMode === "dark" ? "#494d55" : "#e0e0e0";
 
-    const dangerColor = darkMode === "dark" ? "#cc0000" : "#ea9999";
-    
     const textColor = darkMode === "dark" ? "#ffffff" : "#202020";
-    const cencelColor = darkMode === "dark" ? "gray" : "gray";
-    const bgColor = darkMode === "dark" ? "#494d54" : "#A1A1AA"
    
     const [data,setData] = useState({pageName:""})
     const [error,setError] = useState("")
@@ -141,9 +132,6 @@ const ServicePage = ({open,onClose,darkMode,complete,onCreated=null})=>{
         setError(nextError);
         return !nextError;
     }
-
-    const bgColorValidate = error ? dangerColor :bgColor
-
 
     const handleClose = ()=>{
         setData({...data,pageName:""})
@@ -293,6 +281,11 @@ const ServicePage = ({open,onClose,darkMode,complete,onCreated=null})=>{
                     if(!isValid) return
                     createPage({pageName:trimmedPageName})
                     .then((res)=>{
+                        if (res?.data) {
+                          usePageDocumentStore
+                            .getState()
+                            .hydrateServerPage(res.data)
+                        }
                         complete?.()
                         onCreated?.(res?.data || null)
                         handleClose()

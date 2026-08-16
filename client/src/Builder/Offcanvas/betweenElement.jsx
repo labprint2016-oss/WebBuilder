@@ -17,6 +17,10 @@ import { panelGroupButtonSx, panelGroupRootBorderSx } from "../panelControlSx";
 
 /** Slider fill ตาม Settings → Panel → สี Slider Active */
 const DASH_SLIDER_ACCENT = "var(--dash-panel-accent, #333333)";
+const finiteNumberOr = (value, fallback) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
 import {
   BETWEEN_ELEMENT_DEFAULTS,
   mergeBetweenElement,
@@ -146,6 +150,10 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
   );
   const mountBreakdownLoggedRef = useRef(false);
   const [data, setData] = useState(() => mergeBetweenElement(element));
+  const initialMountMetricsRef = useRef({
+    textMode: data?.betweenTextMode,
+    frameEnabled: data?.betweenFrameEnabled === true,
+  });
   const rangeGestureActiveRef = useRef(false);
   const sliderChangedFieldsRef = useRef([]);
   const layoutSyncScheduledRef = useRef(false);
@@ -163,8 +171,8 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
             : null,
           panelRenderToCommitMs:
             Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
-          textMode: data?.betweenTextMode,
-          frameEnabled: data?.betweenFrameEnabled === true,
+          textMode: initialMountMetricsRef.current.textMode,
+          frameEnabled: initialMountMetricsRef.current.frameEnabled,
         });
       }
     }
@@ -286,11 +294,20 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
   );
   const backgroundOpacity = Math.min(
     255,
-    Math.max(0, Number(merged.betweenFrameColorOpacity) ?? 255)
+    Math.max(0, finiteNumberOr(merged.betweenFrameColorOpacity, 255))
   );
-  const glassLevel = Math.min(100, Math.max(0, Number(merged.betweenGlass) ?? 0));
-  const insetX = Math.min(24, Math.max(0, Number(merged.betweenInsetX) ?? 0));
-  const insetY = Math.min(16, Math.max(0, Number(merged.betweenInsetY) ?? 0));
+  const glassLevel = Math.min(
+    100,
+    Math.max(0, finiteNumberOr(merged.betweenGlass, 0))
+  );
+  const insetX = Math.min(
+    24,
+    Math.max(0, finiteNumberOr(merged.betweenInsetX, 0))
+  );
+  const insetY = Math.min(
+    16,
+    Math.max(0, finiteNumberOr(merged.betweenInsetY, 0))
+  );
 
   return (
     <aside
@@ -460,12 +477,12 @@ const BetweenElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                     min={0}
                     max={255}
                     step={1}
-                    value={Math.min(255, Math.max(0, Number(merged.betweenLineOpacity) ?? 255))}
+                    value={Math.min(255, Math.max(0, finiteNumberOr(merged.betweenLineOpacity, 255)))}
                     handleChange={(e) =>
                       patch({ betweenLineOpacity: Number(e.target.value) || 0 })
                     }
                     pos={(
-                      Math.min(255, Math.max(0, Number(merged.betweenLineOpacity) ?? 255)) / 255
+                      Math.min(255, Math.max(0, finiteNumberOr(merged.betweenLineOpacity, 255))) / 255
                     ) * 100}
                     color={DASH_SLIDER_ACCENT}
                   />

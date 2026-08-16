@@ -86,7 +86,6 @@ export function mergeTableElement(element) {
     : TABLE_ELEMENT_DEFAULTS.tableColumns.map((col, i) => sanitizeColumn(col, i));
   const tableRows = normalizeRows(base.tableRows, tableColumns.length);
   const tableFontSize = Number(merged.tableFontSize);
-  const tableCellPaddingX = Number(merged.tableCellPaddingX);
   const tableCellPaddingY = Number(merged.tableCellPaddingY);
   const tableMinWidth = Number(merged.tableMinWidth);
   const tableMarginTop = Number(merged.tableMarginTop);

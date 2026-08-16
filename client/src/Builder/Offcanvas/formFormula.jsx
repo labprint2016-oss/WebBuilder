@@ -66,7 +66,6 @@ const tokenChipLabel = (token, fieldsById) => {
 export default function FormFormulaPanel({
   open = false,
   onClose,
-  currentFieldId = "",
   selectFields = [],
   calculations = [],
   onSaveCalculations,

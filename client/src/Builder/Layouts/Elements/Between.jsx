@@ -65,7 +65,6 @@ const BetweenElement = ({
   const showLeftText = data.betweenTextMode === "left" || data.betweenTextMode === "both";
   const showRightText = data.betweenTextMode === "right" || data.betweenTextMode === "both";
   const isLeftOnly = data.betweenTextMode === "left";
-  const isRightOnly = data.betweenTextMode === "right";
   const isBoth = data.betweenTextMode === "both";
   const showLeftLine = data.betweenTextMode !== "right";
   const showRightLine = data.betweenTextMode !== "left";

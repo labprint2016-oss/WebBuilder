@@ -5,13 +5,21 @@ import {
   useRef,
   useSyncExternalStore,
 } from "react";
+import {
+  beginBuilderPerformanceTransaction,
+  cancelBuilderPerformanceTransaction,
+  finishBuilderPerformanceTransaction,
+  finishBuilderPerformanceTransactionAfterPaint,
+  isBuilderPerformanceEnabled,
+  setBuilderPerformanceTarget,
+} from "./performance/builderPerformanceStore";
 
 const snapshots = new Map();
 const listeners = new Map();
 const scopedLayoutSnapshots = new WeakSet();
 const EMPTY_SNAPSHOT = null;
 
-const perfEnabled =
+const legacyPerfEnabled =
   typeof window !== "undefined" &&
   (new URLSearchParams(window.location.search).get("builderSectionPerf") === "1" ||
     new URLSearchParams(window.location.search).get("structurePerf") === "1" ||
@@ -32,6 +40,9 @@ const perfEnabled =
     new URLSearchParams(window.location.search).get("textPerf") === "1" ||
     new URLSearchParams(window.location.search).get("headingPerf") === "1" ||
     new URLSearchParams(window.location.search).get("buttonGroupPerf") === "1");
+
+const isPerfEnabled = () =>
+  legacyPerfEnabled || isBuilderPerformanceEnabled();
 
 let activeSliderPerf = null;
 let activePanelOpenPerf = null;
@@ -277,7 +288,7 @@ export function usePanelPreview(type, id) {
 }
 
 export function startPanelSliderPerf(type, targetId) {
-  if (!perfEnabled) return null;
+  if (!isPerfEnabled()) return null;
   if (activeSliderPerf) {
     finishPanelSliderPerf(
       activeSliderPerf.commitReason || "superseded",
@@ -297,6 +308,8 @@ export function startPanelSliderPerf(type, targetId) {
     previewIntervalMax: 0,
     inputUpdateCount: 0,
     lastInputUpdateAt: null,
+    lastMeasuredInputAt: null,
+    interactionLatencyMaxMs: 0,
     inputUpdateIntervalTotal: 0,
     inputUpdateIntervalCount: 0,
     inputUpdateIntervalMax: 0,
@@ -335,20 +348,60 @@ export function startPanelSliderPerf(type, targetId) {
     pendingFinalCommitObserved: false,
     scopedLayoutCacheActive: false,
     scopedLayoutSnapshotMatched: false,
+    performanceTransactionId: beginBuilderPerformanceTransaction(
+      "panel-slider",
+      {
+        label: `${String(type || "Panel")} / slider`,
+        panelType: type,
+        elementType: type,
+        elementId: targetId,
+        controlKind: "slider",
+      },
+      { trackFrames: false }
+    ),
   };
   startSliderGestureDiagnostics(activeSliderPerf);
   return gestureId;
 }
 
 export function markBuilderPanelOpen(type, targetId) {
-  if (!perfEnabled) return;
+  if (!isPerfEnabled()) return;
+  setBuilderPerformanceTarget(type, targetId);
+  if (activePanelOpenPerf?.performanceTransactionId != null) {
+    finishBuilderPerformanceTransaction(
+      activePanelOpenPerf.performanceTransactionId,
+      {},
+      { reason: "superseded" }
+    );
+  }
   activePanelOpenPerf = {
     type: String(type || ""),
     targetId: String(targetId ?? ""),
     startedAt: performance.now(),
     canvasCommits: 0,
     canvasActualMs: 0,
+    performanceTransactionId: beginBuilderPerformanceTransaction(
+      "panel-open",
+      {
+        label: `เปิด Panel / ${String(type || "Unknown")}`,
+        panelType: type,
+        elementType: type,
+        elementId: targetId,
+      },
+      {
+        trackFrames: true,
+        skipInitialFrameGap: String(type || "") === "Container",
+      }
+    ),
   };
+}
+
+export function markBuilderPanelClosed() {
+  if (!activePanelOpenPerf) return;
+  cancelBuilderPerformanceTransaction(
+    activePanelOpenPerf.performanceTransactionId
+  );
+  activePanelOpenPerf = null;
 }
 
 export function recordBuilderPanelOpenCanvasCommit(actualDuration) {
@@ -378,20 +431,41 @@ export function markBuilderPanelMounted(type, targetId) {
   }
   const perf = activePanelOpenPerf;
   activePanelOpenPerf = null;
-  console.info("[Builder Panel Perf]", {
-    panelType: perf.type,
-    target: perf.targetId,
-    openToMountedMs:
-      Math.round((performance.now() - perf.startedAt) * 100) / 100,
-    canvasProfilerCommits: perf.canvasCommits,
-    canvasProfilerActualMs:
-      Math.round(perf.canvasActualMs * 100) / 100,
-  });
+  const finish = () => {
+    const openToPaintMs =
+      Math.round((performance.now() - perf.startedAt) * 100) / 100;
+    finishBuilderPerformanceTransaction(
+      perf.performanceTransactionId,
+      {
+        openToMountedMs: openToPaintMs,
+        openToPaintMs,
+        interactionToPaintMs: openToPaintMs,
+        canvasCommits: perf.canvasCommits,
+        canvasActualMs: perf.canvasActualMs,
+      },
+      { reason: "mounted" }
+    );
+  };
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(finish);
+  } else {
+    finish();
+  }
 }
 
 export function recordPanelSliderPreviewUpdate(gestureId) {
   if (!activeSliderPerf || activeSliderPerf.gestureId !== gestureId) return;
   const now = performance.now();
+  if (
+    activeSliderPerf.lastInputUpdateAt != null &&
+    activeSliderPerf.lastMeasuredInputAt !== activeSliderPerf.lastInputUpdateAt
+  ) {
+    activeSliderPerf.interactionLatencyMaxMs = Math.max(
+      activeSliderPerf.interactionLatencyMaxMs,
+      now - activeSliderPerf.lastInputUpdateAt
+    );
+    activeSliderPerf.lastMeasuredInputAt = activeSliderPerf.lastInputUpdateAt;
+  }
   // Kept for compatibility: this is spacing between rAF-batched publishes,
   // not spacing between input events and not the synchronous publish work.
   const elapsed = now - activeSliderPerf.lastPreviewAt;
@@ -504,68 +578,59 @@ export function finishPanelSliderPerf(
     perf.inputUpdateIntervalCount > 0
       ? perf.inputUpdateIntervalTotal / perf.inputUpdateIntervalCount
       : 0;
-  const averageFrameGap =
-    perf.frameCount > 0 ? perf.frameGapTotalMs / perf.frameCount : 0;
   const averagePublishDuration =
     perf.panelPreviewPublishBatchCount > 0
       ? perf.panelPreviewPublishBatchTotalMs /
         perf.panelPreviewPublishBatchCount
       : 0;
-  console.info("[Builder Panel Slider Perf]", {
-    type: perf.type,
-    target: perf.targetId,
-    reason,
-    durationMs: Math.round((performance.now() - perf.startedAt) * 100) / 100,
-    gestureActiveDurationMs: roundMs(
-      perf.diagnosticsStoppedAt - perf.startedAt
-    ),
-    previewUpdateCount: perf.previewCount,
-    previewIntervalAvgMs: Math.round(averageInterval * 100) / 100,
-    previewIntervalMaxMs:
-      Math.round(perf.previewIntervalMax * 100) / 100,
-    inputUpdateCount: perf.inputUpdateCount,
-    inputUpdateIntervalAvgMs: roundMs(averageInputInterval),
-    inputUpdateIntervalMaxMs: roundMs(perf.inputUpdateIntervalMax),
-    panelPreviewPublishBatchCount: perf.panelPreviewPublishBatchCount,
-    panelPreviewPublishBatchAvgMs: roundMs(averagePublishDuration),
-    panelPreviewPublishBatchMaxMs: roundMs(
-      perf.panelPreviewPublishBatchMaxMs
-    ),
-    frameCount: perf.frameCount,
-    frameGapAvgMs: roundMs(averageFrameGap),
-    frameGapMaxMs: roundMs(perf.frameGapMaxMs),
-    droppedFrameCount: perf.droppedFrameCount,
-    severeFrameCount: perf.severeFrameCount,
-    topFrameGaps: perf.topFrameGaps,
-    longTaskSupported: perf.longTaskSupported,
-    longTaskCount: perf.longTaskCount,
-    longTaskTotalMs: roundMs(perf.longTaskTotalMs),
-    longTaskMaxMs: roundMs(perf.longTaskMaxMs),
-    topLongTasks: perf.topLongTasks,
-    globalCommitCount: perf.globalCommitCount,
-    globalCommitMs: Math.round(perf.globalCommitMs * 100) / 100,
-    previewCanvasProfilerCommits: perf.previewCanvasCommits,
-    previewCanvasProfilerActualMs:
-      Math.round(perf.previewCanvasActualMs * 100) / 100,
-    previewCanvasProfilerMaxMs:
-      Math.round(perf.previewCanvasMaxMs * 100) / 100,
-    finalCanvasProfilerCommits: perf.finalCanvasCommits,
-    finalCanvasProfilerActualMs:
-      Math.round(perf.finalCanvasActualMs * 100) / 100,
-    finalCanvasProfilerMaxMs:
-      Math.round(perf.finalCanvasMaxMs * 100) / 100,
-    sectionCacheHits: perf.sectionCacheHits,
-    sectionCacheMisses: perf.sectionCacheMisses,
-    sectionCacheMissReasons: perf.sectionCacheMissReasons,
-    pendingFinalCommitObserved: perf.pendingFinalCommitObserved,
-    scopedLayoutCacheActive: perf.scopedLayoutCacheActive,
-    scopedLayoutSnapshotMatched: perf.scopedLayoutSnapshotMatched,
-    canvasProfilerCommits: perf.canvasCommits,
-    canvasProfilerActualMs:
-      Math.round(perf.canvasActualMs * 100) / 100,
-    canvasProfilerMaxMs:
-      Math.round(perf.canvasActualMaxMs * 100) / 100,
-  });
+  const interactionStartedAt = perf.lastInputUpdateAt ?? perf.startedAt;
+  const isSectionSlider = String(perf.type || "") === "section";
+  finishBuilderPerformanceTransactionAfterPaint(
+    perf.performanceTransactionId,
+    {
+      ...(isSectionSlider
+        ? {
+            interactionToPaintMs: roundMs(
+              Math.max(
+                perf.interactionLatencyMaxMs,
+                perf.canvasActualMaxMs,
+                perf.globalCommitMs
+              )
+            ),
+          }
+        : {}),
+      gestureActiveDurationMs: roundMs(
+        perf.diagnosticsStoppedAt - perf.startedAt
+      ),
+      previewUpdateCount: perf.previewCount,
+      previewIntervalAvgMs: roundMs(averageInterval),
+      previewIntervalMaxMs: roundMs(perf.previewIntervalMax),
+      inputUpdateCount: perf.inputUpdateCount,
+      inputUpdateIntervalAvgMs: roundMs(averageInputInterval),
+      inputUpdateIntervalMaxMs: roundMs(perf.inputUpdateIntervalMax),
+      panelPreviewPublishBatchAvgMs: roundMs(averagePublishDuration),
+      panelPreviewPublishBatchMaxMs: roundMs(
+        perf.panelPreviewPublishBatchMaxMs
+      ),
+      frameCount: perf.frameCount,
+      frameGapMaxMs: roundMs(perf.frameGapMaxMs),
+      droppedFrameCount: perf.droppedFrameCount,
+      severeFrameCount: perf.severeFrameCount,
+      longTaskCount: perf.longTaskCount,
+      longTaskTotalMs: roundMs(perf.longTaskTotalMs),
+      longTaskMaxMs: roundMs(perf.longTaskMaxMs),
+      globalCommitMs: roundMs(perf.globalCommitMs),
+      canvasCommits: perf.canvasCommits,
+      canvasActualMs: roundMs(perf.canvasActualMs),
+      canvasMaxMs: roundMs(perf.canvasActualMaxMs),
+      finalCanvasActualMs: roundMs(perf.finalCanvasActualMs),
+      finalCanvasMaxMs: roundMs(perf.finalCanvasMaxMs),
+    },
+    {
+      reason,
+      interactionStartedAt: isSectionSlider ? performance.now() : interactionStartedAt,
+    }
+  );
 }
 
 export function usePanelSliderPreview({
@@ -712,6 +777,7 @@ export function usePanelSliderPreview({
       }
       if (publishPreviewRef.current) {
         publishLatest(gestureId);
+        recordPanelSliderPreviewUpdate(gestureId);
       }
       beginPanelSliderFinalCommit(gestureId, reason);
       beginPanelLayoutCommit();
@@ -744,6 +810,25 @@ export function usePanelSliderPreview({
     onKeyUp: () => commitSlider("keyboard"),
     onBlur: () => commitSlider("blur"),
   };
+
+  useEffect(() => {
+    if (
+      disabled ||
+      String(type || "") !== "section" ||
+      typeof window === "undefined"
+    ) {
+      return undefined;
+    }
+    const finishPointerGesture = (event) => {
+      commitSlider(event.type);
+    };
+    window.addEventListener("pointerup", finishPointerGesture);
+    window.addEventListener("pointercancel", finishPointerGesture);
+    return () => {
+      window.removeEventListener("pointerup", finishPointerGesture);
+      window.removeEventListener("pointercancel", finishPointerGesture);
+    };
+  }, [commitSlider, disabled, type]);
 
   useEffect(() => {
     if (disabled) return undefined;

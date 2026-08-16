@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef, use } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Home,
   SwatchBook,
@@ -70,9 +70,8 @@ import {
 import { ChevronUpDownIcon } from "@heroicons/react/16/solid";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { SketchPicker } from "react-color";
-import lodash, { isNull, set, update } from "lodash";
-import { getTheme, updateTheme } from "../../Functions/theme";
-import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate, matchPath, useParams } from "react-router-dom"
+import { getTheme } from "../../Functions/theme";
+import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate } from "react-router-dom"
 
 const AntSwitch = styled(Switch)(({ theme }) => ({
   width: 28,
@@ -215,7 +214,7 @@ function RadioInput({ label,name, value,datas,handleChange, color = "black" ,gap
       value={v}
       control={
         <Radio
-          sx={(t) => {
+          sx={() => {
             return {
               // ยังไม่ติ๊ก = สีตามโหมด
               color: color,
@@ -552,9 +551,6 @@ function Navbar({ handleDragElement,prepareDragElement,isDark,updateNewTheme,nav
    };
  }, [refreshUnreadMessageCount]);
 
-  const bgMenu = "#efefef"
-  const bgMenuOption = "#f8f8f8"
-
   const defaultPost = {
     title: { text: "", size: 15, bold: false, padding: 8 },
     category: "-",
@@ -591,20 +587,7 @@ function Navbar({ handleDragElement,prepareDragElement,isDark,updateNewTheme,nav
   };
 
 
-  const [currentPost,setCurrentPost] = useState(defaultPost)
-
-  useEffect(()=>{
-    setCurrentPost(defaultPost);
-  },[])
-
-
-  const getImg = (path)=>{
-    if(typeof path === "string"){
-      return `http://localhost:5000/${path}`
-    }else if(typeof path !== "string"){
-      return URL.createObjectURL(path)
-    }
-  }
+  const [currentPost] = useState(defaultPost)
 
 
 
@@ -620,24 +603,24 @@ function Navbar({ handleDragElement,prepareDragElement,isDark,updateNewTheme,nav
 
   const [updated, setUpdated] = useState(0);
 
-  const loadTheme = () => {
+  useEffect(() => {
     getTheme("68d37327bedb0efab7dacafb")
       .then((res) => {
         setTheme(res.data);
-        setData({
-          ...data,
+        setData((previous) => ({
+          ...previous,
           Theme: {
-            ...data.Theme,
+            ...previous.Theme,
             mainColor: res.data.mainColor,
             textColor: res.data.textColor,
             otherColor: res.data.otherColor,
           },
-        });
+        }));
         setHeading(res.data.textHeading);
         setText(res.data.text);
       })
       .catch((err) => console.log(err));
-  };
+  }, []);
 
   const pickerStyles = {
     default: {
@@ -961,11 +944,6 @@ function Navbar({ handleDragElement,prepareDragElement,isDark,updateNewTheme,nav
     return { r, g, b, a: 1 };
   }
 
-  const renderRGBA = (rgba) => {
-    let { r, g, b, a } = rgba;
-    return `rgba(${r},${g},${b},${a})`;
-  };
-
   const setColor = (e, typeColor, i) => {
     if (e.source === "rgb") return;
     const newColor = [...data.Theme[typeColor]];
@@ -988,14 +966,14 @@ function Navbar({ handleDragElement,prepareDragElement,isDark,updateNewTheme,nav
     setUpdated((prev) => prev + 1);
   };
 
-  useEffect(() => {
-    loadTheme();
-  }, []);
-
+  const latestThemeRef = useRef(theme);
+  latestThemeRef.current = theme;
+  const updateNewThemeRef = useRef(updateNewTheme);
+  updateNewThemeRef.current = updateNewTheme;
   useEffect(() => {
     if (updated !== 0) {
-      console.log(theme);
-      updateNewTheme(theme)
+      console.log(latestThemeRef.current);
+      updateNewThemeRef.current(latestThemeRef.current)
     }
   }, [updated]);
 
@@ -1057,19 +1035,6 @@ const setElementColor = (color) => {
 }
 
 
-const types = [
-  {label:"หน้า",value:"page"},
-  {label:"URL",value:"URL"},
-]
-
-const targets = [
-  {label:"หน้าเดิม",value:"_self"},
-  {label:"หน้าใหม่",value:"_blank"},
-]
-
-const pages = ["Page1","Page2","Page3"]
-
-
  const demo = {
     id:Math.round(Math.random()*1E9),
     name:"",
@@ -1080,42 +1045,9 @@ const pages = ["Page1","Page2","Page3"]
  }
 
 
- const [demos, setDemos] = useState(
-  Array.from({ length: 3 }, (_, i) => ({ ...demo, id: Math.round(Math.random() * 1e9) }))
+ useState(
+  Array.from({ length: 3 }, () => ({ ...demo, id: Math.round(Math.random() * 1e9) }))
 );
-
- const handleChange = (e,id)=>{
-
-  const index = demos.findIndex(d=>d.id === id)
-  const {name,value} = e.target
-  setDemos(prev=>{
-    const clonePrev = lodash.cloneDeep(prev)
-    clonePrev[index][name] = value
-    return clonePrev
-  })
- }
-
-
- const cloneMenu = (id)=>{
-  const index = demos.findIndex(d=>d.id === id)
-  const cloneMenus = lodash.cloneDeep(demos)
-  const newMenu = lodash.cloneDeep(demos[index])
-  newMenu.id = Math.round(Math.random()*1E9)
-  cloneMenus.splice(index,0,newMenu)
-  setDemos(prev=>{
-    return cloneMenus
-  })
- }
-
- const deleteMenu = (id)=>{
-  if(demos.length === 1) return
-  const index = demos.findIndex(d=>d.id === id)
-  const cloneMenus = lodash.cloneDeep(demos)
-  cloneMenus.splice(index,1)
-  setDemos(prev=>{
-    return cloneMenus
-  })
- }
 
   const builderElementsPanels = useMemo(() => {
     const els = data.Elements;
@@ -1699,7 +1631,9 @@ function IconButton({ icon: Icon, label, onClick, active = false, expanded = fal
       title={expanded ? undefined : ariaLabel}
     >
       <span className="relative inline-flex shrink-0">
-        <Icon className={`shrink-0 ${expanded ? "h-6 w-6" : "h-5 w-5"}`} />
+        {React.createElement(Icon, {
+          className: `shrink-0 ${expanded ? "h-6 w-6" : "h-5 w-5"}`,
+        })}
         {showBadge ? (
           <span
             className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[9px] font-bold leading-none text-white"

@@ -137,7 +137,7 @@ const PreviewElement = ({ element, theme, device, ids }) => {
   );
 };
 
-const PreviewMiniSpan = ({ miniSpan, theme, device, ids, noColumnGap }) => {
+const PreviewMiniSpan = ({ miniSpan, theme, device, ids }) => {
   const bg = resolveSurfaceBackground(miniSpan, theme);
   const borderColor = resolveSurfaceBorder(miniSpan, theme);
   const miniElements = Array.isArray(miniSpan?.elements) ? miniSpan.elements : [];
@@ -349,7 +349,10 @@ const PreviewColumn = ({
 
 const PreviewSection = ({ layout, theme, device, conI }) => {
   const container = layout?.container || {};
-  const columns = Array.isArray(layout?.columns) ? layout.columns : [];
+  const columns = useMemo(
+    () => (Array.isArray(layout?.columns) ? layout.columns : []),
+    [layout?.columns]
+  );
   const isFluid = container?.isFluid === true;
   const bg = resolveSurfaceBackground(container, theme);
   const sectionDividerMeta = resolveSectionDividerMeta(container, theme);

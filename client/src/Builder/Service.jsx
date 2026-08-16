@@ -1,4 +1,4 @@
-import { useEffect, useState,useRef } from "react";
+import { useEffect, useState } from "react";
 import { getTheme } from "../../Functions/theme";
 
 import {
@@ -28,7 +28,7 @@ import {
   
   
   } from "@mui/material";
-  import lodash, { isNull, set } from "lodash";
+  import lodash from "lodash";
 
   import { Minus, Plus,Check,Palette,ImageOff,Trash2} from "lucide-react";
   import { swatchSelectedCheckClassName } from "./Layouts/Elements/swatchCheckClass";
@@ -176,7 +176,7 @@ import {
    
                  return (
                    <div className={`col col-sapn-1 ${margin}`} key={i}>
-                     <button  className={`size-[25px] rounded-full border flex items-center justify-center`} style={{backgroundColor:bgColor}} onClick={(e)=>{
+                     <button  className={`size-[25px] rounded-full border flex items-center justify-center`} style={{backgroundColor:bgColor}} onClick={()=>{
                       console.log("Service =>",value,field,index,mainField);
                       handleColor(value,field,index,mainField)
                       }}>
@@ -269,7 +269,7 @@ const Service = ({color,field,opacity,opacityField,open,anchorRef,anchorEl,click
         }else return
          
       
-    },[theme])
+    },[allColors.length, basicColors, theme])
 
 
 
@@ -287,7 +287,7 @@ const Service = ({color,field,opacity,opacityField,open,anchorRef,anchorEl,click
      value={hexColor(color)}
      className="bg-none  rounded-l-[5px] "
      InputProps={{ readOnly: true }}
-     sx={(t) => {
+     sx={() => {
      
        return {
          flex: 1,
@@ -349,7 +349,7 @@ const Service = ({color,field,opacity,opacityField,open,anchorRef,anchorEl,click
      <Button
      id="btn-popper"
      variant="contained"
-     sx={(t) => {
+     sx={() => {
      
        return {
          boxShadow: "none",      // 1) เอาเงาออก
@@ -388,7 +388,7 @@ const Service = ({color,field,opacity,opacityField,open,anchorRef,anchorEl,click
          },
        };
      }}
-     onClick={(e) => {
+     onClick={() => {
       click()
      }}
      

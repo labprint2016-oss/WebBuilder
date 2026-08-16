@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { getTheme } from "../../Functions/theme";
 
 import {
     Dialog,
@@ -31,7 +30,7 @@ import {
   
   
   } from "@mui/material";
-  import lodash, { first, isNull, set } from "lodash";
+  import { isNull } from "lodash";
 
   import { Minus, Plus,Check,Palette,ImageOff,Trash2} from "lucide-react";
   import IconAwsome from "./IconAwsome";

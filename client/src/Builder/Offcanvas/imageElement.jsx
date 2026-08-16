@@ -37,14 +37,11 @@ import {
   IMAGE_MARGIN_BOTTOM_DEFAULT,
   IMAGE_CORNER_RADIUS_MAX_PX,
   getImageCornerRadiusValue,
-  imageBrightnessFilterStyle,
-  imageCornerRadiusStyle,
   mergeImageBadge,
   patchImageCornerRadius,
 } from "../Layouts/Elements/imageAspectConfig";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
-import { setColor } from "../../../function";
 import ImageBadge from "../Layouts/Elements/ImageBadge";
 import {
   getBuilderPanelOpenStartedAt,
@@ -440,6 +437,12 @@ const ImageElementOffcanvas = ({
       : null
   );
   const mountBreakdownLoggedRef = useRef(false);
+  const initialColorCountRef = useRef(
+    (theme?.mainColor?.length || 0) +
+      (theme?.textColor?.length || 0) +
+      (theme?.otherColor?.length || 0) +
+      THEME_PANEL_BASIC_COLOR_SWATCHES.length
+  );
   const layoutSyncRafRef = useRef(0);
   const layoutSyncScheduledRef = useRef(false);
   const pendingLayoutRef = useRef(null);
@@ -528,7 +531,7 @@ const ImageElementOffcanvas = ({
             : null,
           panelRenderToCommitMs:
             Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
-          colorSwatchCount: allColors.length,
+          colorSwatchCount: initialColorCountRef.current,
         });
       }
     }
@@ -538,12 +541,7 @@ const ImageElementOffcanvas = ({
   const currentAspect = data?.aspectRatio ?? IMAGE_ASPECT_DEFAULT;
   const brightness =
     data?.brightness ?? IMAGE_BRIGHTNESS_DEFAULT;
-  const previewBrightnessStyle = imageBrightnessFilterStyle(brightness);
   const cornerRadius = getImageCornerRadiusValue(data?.borderRadius, cornerTarget);
-  const previewCornerStyle = imageCornerRadiusStyle(
-    data?.borderRadius,
-    currentAspect
-  );
   const badgeMergeOpts = useMemo(
     () => ({ elementType: layoutElementType }),
     [layoutElementType]
@@ -867,9 +865,6 @@ const ImageElementOffcanvas = ({
   const isVideoPanel = layoutElementType === "vid";
   const isImageHoverPanel = layoutElementType === "imgh" || layoutElementType === "imgo";
   const isImageOverlayPanel = layoutElementType === "imgo";
-  const imageHoverBackgroundEnabled = isImageHoverPanel
-    ? data?.imageHoverBackgroundEnabled !== false
-    : false;
   const imageHoverBackgroundColorRaw =
     data?.imageHoverBackgroundColor ?? { type: "mainColor", index: 0 };
   const imageHoverBackgroundOpacityRaw = Number(data?.imageHoverBackgroundOpacity);
@@ -1312,7 +1307,7 @@ const ImageElementOffcanvas = ({
                   ? {
                       handleSwitch: () =>
                         handleBadgePatch({
-                          hover: !Boolean(badgeMerged.hover),
+                          hover: !badgeMerged.hover,
                         }),
                       checked: badgeMerged.hover,
                       switchLabel: "เมาส์สัมผัส",
@@ -1338,7 +1333,7 @@ const ImageElementOffcanvas = ({
                   />
                   <BTN
                     handleClick={() =>
-                      handleBadgePatch({ bold: !Boolean(badgeMerged.bold) })
+                      handleBadgePatch({ bold: !badgeMerged.bold })
                     }
                     icon={{
                       Icon: Bold,
@@ -1620,7 +1615,7 @@ const ImageElementOffcanvas = ({
                 textColor={textColor}
                 handleSwitch={() =>
                   handleBadgePatch({
-                    hover: !Boolean(badgeMerged.hover),
+                    hover: !badgeMerged.hover,
                   })
                 }
                 checked={badgeMerged.hover}
@@ -1641,7 +1636,7 @@ const ImageElementOffcanvas = ({
                   />
                   <BTN
                     handleClick={() =>
-                      handleBadgePatch({ bold: !Boolean(badgeMerged.bold) })
+                      handleBadgePatch({ bold: !badgeMerged.bold })
                     }
                     icon={{
                       Icon: Bold,

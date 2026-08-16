@@ -47,9 +47,11 @@ const listItemsPanelPerfEnabled =
 const getListPanelPerfName = (data) =>
   data?.listImageElement ? "List Images" : "List Items";
 
-const Box = ({ component: Component = "div", sx: _sx, ...props }) => (
-  <Component {...props} />
-);
+const Box = ({ component: Component = "div", sx, ...props }) => {
+  const Element = Component;
+  void sx;
+  return <Element {...props} />;
+};
 
 const Stack = ({ direction = "column", spacing = 0, sx: _sx, ...props }) => (
   <div
@@ -66,67 +68,80 @@ const Stack = ({ direction = "column", spacing = 0, sx: _sx, ...props }) => (
 
 const ButtonGroup = ({
   children,
-  sx: _sx,
-  fullWidth: _fullWidth,
-  variant: _variant,
-  color: _color,
-  disableElevation: _disableElevation,
+  sx,
+  fullWidth,
+  variant,
+  color,
+  disableElevation,
   ...props
-}) => (
-  <div
-    {...props}
-    className={`flex h-[34px] w-full overflow-hidden rounded-md ${props.className || ""}`}
-    style={{
-      border: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)",
-      ...props.style,
-    }}
-  >
-    {children}
-  </div>
-);
+}) => {
+  void sx;
+  void fullWidth;
+  void variant;
+  void color;
+  void disableElevation;
+  return (
+    <div
+      {...props}
+      className={`flex h-[34px] w-full overflow-hidden rounded-md ${props.className || ""}`}
+      style={{
+        border: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)",
+        ...props.style,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
 
-const Button = ({ children, sx, color: _color, ...props }) => (
-  <button
-    type="button"
-    {...props}
-    className={`inline-flex h-[34px] min-w-0 flex-1 items-center justify-center border-0 border-r px-1 text-[11px] font-normal leading-tight last:border-r-0 hover:opacity-90 ${
-      props.className || ""
-    }`}
-    style={{
-      backgroundColor: sx?.backgroundColor,
-      color: sx?.color,
-      borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)",
-      ...props.style,
-    }}
-  >
-    {children}
-  </button>
-);
+const Button = ({ children, sx, color, ...props }) => {
+  void color;
+  return (
+    <button
+      type="button"
+      {...props}
+      className={`inline-flex h-[34px] min-w-0 flex-1 items-center justify-center border-0 border-r px-1 text-[11px] font-normal leading-tight last:border-r-0 hover:opacity-90 ${
+        props.className || ""
+      }`}
+      style={{
+        backgroundColor: sx?.backgroundColor,
+        color: sx?.color,
+        borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)",
+        ...props.style,
+      }}
+    >
+      {children}
+    </button>
+  );
+};
 
 const Typography = ({
   component: Component = "div",
   sx,
   children,
   ...props
-}) => (
-  <Component
-    {...props}
-    style={{
-      display: sx?.display,
-      alignItems: sx?.alignItems,
-      gap: typeof sx?.gap === "number" ? `${sx.gap * 8}px` : sx?.gap,
-      flex: sx?.flex,
-      fontSize: sx?.fontSize,
-      fontWeight: sx?.fontWeight,
-      color: sx?.color,
-      marginBottom:
-        typeof sx?.mb === "number" ? `${sx.mb * 8}px` : sx?.mb,
-      ...props.style,
-    }}
-  >
-    {children}
-  </Component>
-);
+}) => {
+  const Element = Component;
+  return (
+    <Element
+      {...props}
+      style={{
+        display: sx?.display,
+        alignItems: sx?.alignItems,
+        gap: typeof sx?.gap === "number" ? `${sx.gap * 8}px` : sx?.gap,
+        flex: sx?.flex,
+        fontSize: sx?.fontSize,
+        fontWeight: sx?.fontWeight,
+        color: sx?.color,
+        marginBottom:
+          typeof sx?.mb === "number" ? `${sx.mb * 8}px` : sx?.mb,
+        ...props.style,
+      }}
+    >
+      {children}
+    </Element>
+  );
+};
 
 const Switch = ({
   checked,
@@ -572,6 +587,17 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
       null
   );
   const mountBreakdownLoggedRef = useRef(false);
+  const initialMountMetricsRef = useRef({
+    panelName: getListPanelPerfName(draft),
+    listVariant: draft?.buttonMultiElement
+      ? "buttonMulti"
+      : draft?.listImageElement
+        ? "image"
+        : draft?.listIconsElement
+          ? "icons"
+          : "items",
+    itemCount: Array.isArray(draft?.listItems) ? draft.listItems.length : 0,
+  });
   const { updateSlider, commitSlider } = usePanelSliderPreview({
     type: "list",
     targetIds: [panelTargetId],
@@ -616,23 +642,15 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
       mountBreakdownLoggedRef.current = true;
       if (listItemsPanelPerfEnabled) {
         const now = performance.now();
-        console.info(`[${getListPanelPerfName(draft)} Panel Mount Breakdown]`, {
+        console.info(`[${initialMountMetricsRef.current.panelName} Panel Mount Breakdown]`, {
           target: String(panelTargetId || ""),
-          listVariant: draft?.buttonMultiElement
-            ? "buttonMulti"
-            : draft?.listImageElement
-              ? "image"
-              : draft?.listIconsElement
-                ? "icons"
-                : "items",
+          listVariant: initialMountMetricsRef.current.listVariant,
           openToPanelCommitMs: panelOpenStartedAtRef.current
             ? Math.round((now - panelOpenStartedAtRef.current) * 100) / 100
             : null,
           panelRenderToCommitMs:
             Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
-          itemCount: Array.isArray(draft?.listItems)
-            ? draft.listItems.length
-            : 0,
+          itemCount: initialMountMetricsRef.current.itemCount,
         });
       }
     }
@@ -1176,6 +1194,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                   </div>
                   <ButtonGroup variant="outlined" fullWidth sx={dividerGroupRootSx}>
                     {ALIGN_OPTIONS.map(({ value, label, Icon }) => {
+                      void Icon;
                       const sel = (draft.listIconsAlign ?? "flex-start") === value;
                       return (
                         <Button
@@ -2128,7 +2147,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                           setDraft(m);
                           commit(m);
                           if (on) setListIconsColorEditMode("frame");
-                          else if (Boolean(m.listDividerEnabled)) {
+                          else if (m.listDividerEnabled) {
                             setListIconsColorEditMode("divider");
                           }
                         }}
@@ -2149,7 +2168,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                         }}
                         inputProps={{ "aria-label": "สลับเส้นคั่นแนวตั้ง" }}
                       />
-                      <span className={`text-[11px] font-medium tabular-nums transition-colors ${Boolean(draft.listVerticalTimelineDivider) ? "text-slate-600 dark:text-white/70" : "text-slate-400 dark:text-white/30"}`}>
+                      <span className={`text-[11px] font-medium tabular-nums transition-colors ${draft.listVerticalTimelineDivider ? "text-slate-600 dark:text-white/70" : "text-slate-400 dark:text-white/30"}`}>
                         แนวตั้ง
                       </span>
                     </div>

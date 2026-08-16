@@ -12,50 +12,17 @@ import {
   imageBrightnessFilterStyle,
   imageCornerRadiusStyle,
 } from "./Layouts/Elements/imageAspectConfig";
-
-const POPUP_ANIMATION_OPTIONS = [
-  { value: "none", label: "ไม่มี" },
-  { value: "fade-in", label: "ค่อยๆ แสดง" },
-  { value: "zoom-in", label: "ซูมเข้า" },
-  { value: "slide-in-up", label: "เลื่อนจากล่าง" },
-  { value: "slide-in-down", label: "เลื่อนจากบน" },
-];
-
-export const DEFAULT_PAGE_POPUP = {
-  enabled: false,
-  src: "",
-  brightness: IMAGE_BRIGHTNESS_DEFAULT,
-  borderRadius: IMAGE_CORNER_RADIUS_DEFAULT,
-  animationType: "fade-in",
-  linkUrl: "",
-  /** โหลดทับหน้าเดิมอัตโนมัติ */
-  linkTarget: "_self",
-};
-
-export function normalizePagePopup(raw) {
-  const base =
-    raw && typeof raw === "object" ? raw : {};
-  const brightnessRaw = Number(base.brightness);
-  const radiusRaw = Number(base.borderRadius);
-  const animationType = POPUP_ANIMATION_OPTIONS.some(
-    (o) => o.value === base.animationType
-  )
-    ? base.animationType
-    : DEFAULT_PAGE_POPUP.animationType;
-  return {
-    enabled: base.enabled === true,
-    src: typeof base.src === "string" ? base.src : "",
-    brightness: Number.isFinite(brightnessRaw)
-      ? Math.max(-100, Math.min(100, brightnessRaw))
-      : DEFAULT_PAGE_POPUP.brightness,
-    borderRadius: Number.isFinite(radiusRaw)
-      ? Math.max(0, Math.min(IMAGE_CORNER_RADIUS_MAX_PX, radiusRaw))
-      : DEFAULT_PAGE_POPUP.borderRadius,
-    animationType,
-    linkUrl: typeof base.linkUrl === "string" ? base.linkUrl : "",
-    linkTarget: "_self",
-  };
-}
+import {
+  DEFAULT_PAGE_POPUP,
+  normalizePagePopup,
+  POPUP_ANIMATION_OPTIONS,
+} from "./pagePopupConfig";
+import {
+  normalizePageSeo,
+  normalizeSeoSlug,
+  SEO_ROBOTS_VALUES,
+  useSeoStore,
+} from "./store/seo";
 
 const PageSettingsAntSwitch = styled(Switch, {
   shouldForwardProp: (prop) => prop !== "accentColor",
@@ -209,6 +176,9 @@ function PageSettingsPanel({
   isMenuPresetHydrated = true,
   pagePopup = null,
   onUpdatePagePopup = null,
+  pageSeo = null,
+  pageName = "",
+  onUpdatePageSeo = null,
   textColor = "#0d9488",
 }) {
   const optionBaseClass =
@@ -217,6 +187,8 @@ function PageSettingsPanel({
     "border-transparent bg-[#333333] text-white shadow-sm";
   const optionInactiveClass =
     "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-900/40 dark:text-white/80 dark:hover:bg-white/10";
+  const seoInputClass =
+    "dash-input w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] text-slate-800 outline-none placeholder:text-slate-400 dark:border-white/10 dark:bg-[#27272a] dark:text-white/90";
   const overlayStateClass = isOpen
     ? "pointer-events-auto opacity-100"
     : "pointer-events-none opacity-0";
@@ -228,10 +200,20 @@ function PageSettingsPanel({
   );
   const [popup, setPopup] = useState(normalizedPopup);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const normalizedSeo = useMemo(
+    () => normalizePageSeo(pageSeo, pageName),
+    [pageName, pageSeo]
+  );
+  const [seo, setSeo] = useState(normalizedSeo);
+  const [seoImagePickerOpen, setSeoImagePickerOpen] = useState(false);
+  const seoOperation = useSeoStore((state) => state.operation);
 
   useEffect(() => {
     setPopup(normalizedPopup);
   }, [normalizedPopup, pageOid]);
+  useEffect(() => {
+    setSeo(normalizedSeo);
+  }, [normalizedSeo, pageOid]);
 
   const persistPopup = (next) => {
     const normalized = normalizePagePopup(next);
@@ -242,6 +224,20 @@ function PageSettingsPanel({
 
   const patchPopup = (patch) => {
     persistPopup({ ...popup, ...patch });
+  };
+  const persistSeo = (next) => {
+    const normalized = normalizePageSeo(next, pageName);
+    setSeo(normalized);
+    onUpdatePageSeo?.(normalized);
+  };
+  const patchSeo = (patch) => {
+    persistSeo({ ...seo, ...patch });
+  };
+  const patchOpenGraph = (patch) => {
+    persistSeo({
+      ...seo,
+      openGraph: { ...seo.openGraph, ...patch },
+    });
   };
 
   const pageIdLabel = (() => {
@@ -394,6 +390,111 @@ function PageSettingsPanel({
                   })}
                 </div>
               )}
+
+              <div className="mt-5 mb-3">
+                <MainLabel label="SEO ของหน้านี้" mb={0} textColor={textColor} />
+              </div>
+              <div className="space-y-3 rounded-md border border-slate-200 p-3 dark:border-white/10">
+                <input
+                  type="text"
+                  className={seoInputClass}
+                  placeholder={pageName || "ชื่อหน้า SEO"}
+                  value={seo.title}
+                  onChange={(event) => patchSeo({ title: event.target.value })}
+                  aria-label="SEO title"
+                />
+                <textarea
+                  className={`${seoInputClass} min-h-20 resize-y`}
+                  placeholder="คำอธิบายหน้าเว็บ"
+                  value={seo.description}
+                  onChange={(event) =>
+                    patchSeo({ description: event.target.value })
+                  }
+                  aria-label="SEO description"
+                />
+                <div>
+                  <input
+                    type="text"
+                    className={seoInputClass}
+                    placeholder="page-slug"
+                    value={seo.slug}
+                    onChange={(event) =>
+                      patchSeo({
+                        slug: normalizeSeoSlug(event.target.value),
+                      })
+                    }
+                    aria-label="SEO slug"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-white/45">
+                    URL: /{seo.slug || normalizeSeoSlug(pageName)}
+                  </p>
+                </div>
+                <input
+                  type="url"
+                  className={seoInputClass}
+                  placeholder="Canonical URL"
+                  value={seo.canonicalUrl}
+                  onChange={(event) =>
+                    patchSeo({ canonicalUrl: event.target.value })
+                  }
+                  aria-label="Canonical URL"
+                />
+                <select
+                  className={seoInputClass}
+                  value={seo.robots}
+                  onChange={(event) => patchSeo({ robots: event.target.value })}
+                  aria-label="Robots"
+                >
+                  {SEO_ROBOTS_VALUES.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  className={seoInputClass}
+                  placeholder="Open Graph title"
+                  value={seo.openGraph.title}
+                  onChange={(event) =>
+                    patchOpenGraph({ title: event.target.value })
+                  }
+                  aria-label="Open Graph title"
+                />
+                <textarea
+                  className={`${seoInputClass} min-h-16 resize-y`}
+                  placeholder="Open Graph description"
+                  value={seo.openGraph.description}
+                  onChange={(event) =>
+                    patchOpenGraph({ description: event.target.value })
+                  }
+                  aria-label="Open Graph description"
+                />
+                <button
+                  type="button"
+                  className="dash-button flex w-full items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-[12px] dark:border-white/10"
+                  onClick={() => setSeoImagePickerOpen(true)}
+                >
+                  <ImagePlus size={16} />
+                  {seo.openGraph.image ? "เปลี่ยนรูป Open Graph" : "เลือกรูป Open Graph"}
+                </button>
+                {seo.openGraph.image ? (
+                  <img
+                    src={seo.openGraph.image}
+                    alt=""
+                    className="max-h-32 w-full rounded-md object-cover"
+                  />
+                ) : null}
+                {seoOperation.error ? (
+                  <p className="text-[11px] text-red-500">
+                    {seoOperation.error}
+                  </p>
+                ) : seoOperation.saving ? (
+                  <p className="text-[11px] text-slate-500 dark:text-white/45">
+                    กำลังบันทึก SEO...
+                  </p>
+                ) : null}
+              </div>
 
               <div className="mt-5 mb-3">
                 <MainLabel
@@ -634,6 +735,14 @@ function PageSettingsPanel({
         handleChange={(url) => {
           patchPopup({ src: url || "" });
           setPickerOpen(false);
+        }}
+      />
+      <ImageModal
+        openModal={seoImagePickerOpen}
+        setOpenModal={setSeoImagePickerOpen}
+        handleChange={(url) => {
+          patchOpenGraph({ image: url || "" });
+          setSeoImagePickerOpen(false);
         }}
       />
     </>

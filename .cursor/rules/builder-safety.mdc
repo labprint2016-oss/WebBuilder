@@ -1,0 +1,32 @@
+---
+description: Preserve Builder behavior during state migration and decomposition
+globs: client/src/Builder/**/*.{js,jsx}
+alwaysApply: false
+---
+
+# Builder Change Safety
+
+- Preserve current Builder UI, behavior, data contracts, and persistence semantics.
+- Keep changes narrow; do not refactor unrelated Builder code during a fix.
+- Never remove working logic merely to satisfy lint.
+- Before removing unused Context state or actions, confirm Zustand migration and search for all consumers.
+- Keep server state as the source of truth; Zustand manages client state and coordinated metadata.
+- Partition multisite state by siteId and localized state by locale where required.
+- Prevent stale async responses from one site or page updating another.
+- Do not add Auto-save unless explicitly requested.
+
+# content.jsx Decomposition
+
+- Decompose incrementally, one responsibility at a time.
+- Establish UI and performance baselines before extraction.
+- Start with low-coupling utilities; move DnD, Canvas, and performance code only with focused testing.
+- Do not split content.jsx merely to reduce line count.
+- Preserve refs, event ordering, synchronous commits, drag cleanup, Ghost behavior, and keyboard/focus behavior.
+- After each extraction, run lint and production build, then re-test affected interactions.
+
+# Quality Gate
+
+- Do not disable ESLint rules to hide root causes.
+- Do not add dependencies without explicit need.
+- Do not change Builder Performance Monitor thresholds or measurement behavior.
+- Record deferred architectural or bundle work in BUILD_FOLLOWUP_NOTES.txt.

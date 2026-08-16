@@ -5,6 +5,10 @@ import {
 } from "./headingElementConfig";
 
 const DIVIDER_POSITIONS = new Set(["left", "both", "right", "bottom"]);
+const finiteNumberOr = (value, fallback) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
 
 const DIVIDER_STYLES = new Set(["solid", "dashed", "dotted"]);
 
@@ -180,11 +184,11 @@ export function getHeadingDividerSpec(theme, elementData) {
   const style = normalizeDividerStyle(h.headingDividerStyle);
   const gap = Math.min(
     32,
-    Math.max(0, Number(h.headingDividerGap) ?? 8)
+    Math.max(0, finiteNumberOr(h.headingDividerGap, 8))
   );
   const spanPct = Math.min(
     100,
-    Math.max(10, Number(h.headingDividerSpanPercent) ?? 100)
+    Math.max(10, finiteNumberOr(h.headingDividerSpanPercent, 100))
   );
   const c = dividerColor(theme, h);
   const lineStroke = lineStrokeStyle(w, style, c);

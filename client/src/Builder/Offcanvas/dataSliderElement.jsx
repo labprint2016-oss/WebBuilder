@@ -657,7 +657,7 @@ const DataSliderElementOffcanvas = ({
                       title={deviceLabel}
                       aria-hidden
                     >
-                      <Icon className="h-4 w-4" strokeWidth={1.75} />
+                      <Icon className="h-4 w-4" strokeWidth={(void Icon, 1.75)} />
                     </span>
                     <input
                       id={id}

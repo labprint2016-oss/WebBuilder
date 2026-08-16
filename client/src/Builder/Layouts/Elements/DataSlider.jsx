@@ -191,21 +191,6 @@ function chunkDataSliderElementsForInlineRows(elements) {
   return chunks;
 }
 
-function shouldKeepElementCenteredOnSelect(el) {
-  const t = String(el?.type || "");
-  if (t === "btn" || t === "btnG") {
-    return String(el?.buttonLayoutAlign || "").trim() === "center";
-  }
-  if (t === "icon") {
-    return String(el?.iconLayoutAlign || "").trim() === "center";
-  }
-  if (t === "ctn") {
-    const raw = String(el?.counterAlign || el?.counterRowAlign || "").trim();
-    return raw === "center";
-  }
-  return false;
-}
-
 function selectionFrameAlignClass(el) {
   const t = String(el?.type || "");
   const mapToClass = (raw) => {
@@ -246,7 +231,10 @@ const DataSlider = ({
   const data = mergeDataSliderElement(
     panelPreview ? { ...elementData, ...panelPreview } : elementData
   );
-  const items = data.dataSliderItems || [];
+  const items = useMemo(
+    () => data.dataSliderItems || [],
+    [data.dataSliderItems]
+  );
   const activeId = items.some((it) => it.id === data.dataSliderActiveId)
     ? data.dataSliderActiveId
     : items[0]?.id;
@@ -550,9 +538,6 @@ const DataSlider = ({
                                           const isIcon = String(el?.type || "") === "icon";
                                           const isCounter = String(el?.type || "") === "ctn";
                                           const widenSelectFrame = isIcon || isCounter;
-                                          const keepCenterOnSelect =
-                                            isSelectedInLayoutMode &&
-                                            shouldKeepElementCenteredOnSelect(el);
                                           const useContentSelectionFrame =
                                             isSelectedInLayoutMode &&
                                             !isImageLike &&
@@ -749,9 +734,6 @@ const DataSlider = ({
                               const isIcon = String(el?.type || "") === "icon";
                               const isCounter = String(el?.type || "") === "ctn";
                               const widenSelectFrame = isIcon || isCounter;
-                              const keepCenterOnSelect =
-                                isSelectedInLayoutMode &&
-                                shouldKeepElementCenteredOnSelect(el);
                               const useContentSelectionFrame =
                                 isSelectedInLayoutMode &&
                                 !isImageLike &&

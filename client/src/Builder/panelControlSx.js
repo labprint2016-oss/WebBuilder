@@ -24,7 +24,7 @@ export const panelGroupRootBorderSx = {
   },
 };
 
-export const panelGroupButtonSx = (selected, _accentIgnored) => ({
+export const panelGroupButtonSx = (selected) => ({
   flex: 1,
   fontSize: 11,
   height: 34,

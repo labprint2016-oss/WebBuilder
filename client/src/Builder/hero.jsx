@@ -242,7 +242,8 @@ const CLIPBOARD_BLOCK_TAGS = new Set([
 
 const normalizeClipboardText = (value) =>
   String(value ?? "")
-    .replace(/\u0000/g, "")
+    .split("\u0000")
+    .join("")
     .replace(/\r\n?/g, "\n");
 
 const extractSafePlainTextFromHtml = (html) => {
@@ -284,7 +285,7 @@ const extractSafePlainTextFromHtml = (html) => {
 
     doc.body?.childNodes.forEach((child) => walk(child));
     return normalizeClipboardText(chunks.join(""));
-  } catch (error) {
+  } catch {
     return "";
   }
 };
@@ -777,7 +778,10 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
   const previewShapeColorTokens = useMemo(() => {
     return [...themeColorTokens, ...THEME_PANEL_BASIC_COLOR_SWATCHES];
   }, [themeColorTokens]);
-  const activeLayerItems = Array.isArray(activeSlide?.layerItems) ? activeSlide.layerItems : [];
+  const activeLayerItems = useMemo(
+    () => (Array.isArray(activeSlide?.layerItems) ? activeSlide.layerItems : []),
+    [activeSlide?.layerItems]
+  );
   const sortedLayerItems = useMemo(() => {
     return activeLayerItems
       .map((item, index) => ({
@@ -1113,7 +1117,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
     );
     return { width: safeWidth, height: safeHeight };
   }, []);
-  const buildSafeCircleSize = useCallback((rawSize) => {
+  useCallback((rawSize) => {
     return buildSafeCircleStretchSize(rawSize, rawSize);
   }, [buildSafeCircleStretchSize]);
   const buildSafeIconSize = useCallback((rawSize) => {
@@ -1816,7 +1820,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
       let payload = null;
       try {
         payload = JSON.parse(rawPayload);
-      } catch (error) {
+      } catch {
         payload = null;
       }
       if (!payload || payload.source !== "hero-layer-library") return;
@@ -2455,8 +2459,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
       buildSafeRectangleSize,
       buildSafeTextFontSize,
       calculateTextLayerBoxSize,
-      themeHeadingFontFamily,
-      themeTextFontFamily,
     ]
   );
   const startLayerResize = useCallback(
@@ -2933,8 +2935,14 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
       buildSafeRectangleSize,
       buildSafeTextFontSize,
       calculateTextLayerBoxSize,
+      themeHeadingFontFamily,
+      themeTextFontFamily,
     ]
   );
+  const sectionDataRef = useRef(sectionData);
+  sectionDataRef.current = sectionData;
+  const handleUpdateSectionRef = useRef(handleUpdateSection);
+  handleUpdateSectionRef.current = handleUpdateSection;
   useEffect(() => {
     if (!dragLayerId) return undefined;
     const onMouseMove = (event) => moveLayerDrag(event);
@@ -2968,9 +2976,10 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
     setEditingTextDrafts({});
     setIsLayerImagePickerOpen(false);
     setIsLayerIconPickerOpen(false);
-    if ((sectionData?.activeLayerItemId || null) !== null) {
-      handleUpdateSection({
-        ...sectionData,
+    const latestSectionData = sectionDataRef.current;
+    if ((latestSectionData?.activeLayerItemId || null) !== null) {
+      handleUpdateSectionRef.current({
+        ...latestSectionData,
         activeLayerItemId: null,
       });
     }
@@ -3319,14 +3328,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
       );
     }
     if (item.type === "button" || item.type === "button-primary") {
-      const buttonWidth = Math.max(
-        BUTTON_LAYER_MIN_WIDTH,
-        Number(item?.width) || BUTTON_LAYER_DEFAULT_WIDTH
-      );
-      const buttonHeight = Math.max(
-        BUTTON_LAYER_MIN_HEIGHT,
-        Number(item?.height) || BUTTON_LAYER_DEFAULT_HEIGHT
-      );
       const baseButtonFontSize = Math.max(
         BUTTON_LAYER_MIN_FONT_SIZE,
         Math.min(
@@ -3448,14 +3449,6 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
       );
     }
     if (item.type === "button-dual" || item.type === "button-secondary") {
-      const buttonWidth = Math.max(
-        BUTTON_LAYER_MIN_WIDTH,
-        Number(item?.width) || BUTTON_DUAL_LAYER_DEFAULT_WIDTH
-      );
-      const buttonHeight = Math.max(
-        BUTTON_LAYER_MIN_HEIGHT,
-        Number(item?.height) || BUTTON_LAYER_DEFAULT_HEIGHT
-      );
       const baseButtonFontSize = Math.max(
         BUTTON_LAYER_MIN_FONT_SIZE,
         Math.min(

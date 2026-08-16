@@ -28,7 +28,7 @@ import {
   getBannerCaptionLayout,
 } from "./bannerCaptionLayout";
 import ImageBadge from "./ImageBadge";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Image as ImagePlaceholderIcon, CircleFadingPlus, Play } from "lucide-react";
 import { Button } from "@mui/material";
 import { setFont } from "../../../../function";
@@ -345,6 +345,7 @@ const Image = ({
     showImageHoverButton,
   ]);
   const imageHoverContentTopPx = useMemo(() => {
+    void imageHoverMetricsTick;
     const frameHeight = Number(imageHoverMetricsRef.current?.frameHeight) || 0;
     const contentHeight = Number(imageHoverMetricsRef.current?.contentHeight) || 0;
     if (frameHeight <= 0 || contentHeight <= 0) {
@@ -550,7 +551,7 @@ const Image = ({
       onMouseLeave={() => {
         setIsHover(false);
       }}
-      onMouseMove={(e) => {
+      onMouseMove={() => {
         setIsHover(true);
       }}
     >

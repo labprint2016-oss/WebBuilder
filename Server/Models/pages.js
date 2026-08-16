@@ -42,6 +42,22 @@ const pageSchema = mongoose.Schema({
             linkUrl:"",
             linkTarget:"_self",
         })
+    },
+    /** SEO ของหน้า — แยกตามหน้าและพร้อมขยายเป็น locale overrides */
+    pageSeo:{
+        type:mongoose.Schema.Types.Mixed,
+        default:() => ({
+            title:"",
+            description:"",
+            slug:"",
+            canonicalUrl:"",
+            robots:"index,follow",
+            openGraph:{
+                title:"",
+                description:"",
+                image:"",
+            },
+        })
     }
 },{timestamps:true})
 

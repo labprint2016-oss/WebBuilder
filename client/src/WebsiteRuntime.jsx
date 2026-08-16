@@ -4,6 +4,12 @@ import { getTheme } from "../Functions/theme";
 import { getMenuBar } from "../Functions/menuBar";
 import { getPage, listPages } from "../Functions/pages";
 import { useLocation, useParams } from "react-router-dom";
+import { useBuilderContextStore } from "./Builder/store/builderContextStore";
+import {
+  mergeSeoMeta,
+  normalizeSeoSlug,
+} from "./Builder/store/seo";
+import { resolvePageTemplateIds } from "./Builder/store/template/templateAdapters";
 
 const PreviewCanvas = lazy(() => import("./Builder/PreviewCanvas"));
 const PreviewSiteChrome = lazy(() => import("./Builder/PreviewSiteChrome"));
@@ -14,8 +20,25 @@ const PreviewFooterBar = lazy(() =>
 );
 const PagePopupOverlay = lazy(() => import("./Builder/PagePopupOverlay"));
 
-const MENU_BAR_ID = "69db17211be82fe7637ea096";
-const THEME_ID = "68d37327bedb0efab7dacafb";
+const RUNTIME_SCROLL_SELECTOR = ".content-area, [data-scroll-container='true']";
+
+const getRuntimeScrollElements = () => {
+  if (typeof document === "undefined") return [];
+
+  const seen = new Set();
+  const elements = [];
+  const push = (element) => {
+    if (!element || seen.has(element)) return;
+    seen.add(element);
+    elements.push(element);
+  };
+
+  push(document.scrollingElement);
+  push(document.documentElement);
+  push(document.body);
+  document.querySelectorAll(RUNTIME_SCROLL_SELECTOR).forEach(push);
+  return elements;
+};
 
 const resolveDeviceFromWidth = (width) => {
   if (!Number.isFinite(width)) return "Desktop";
@@ -44,13 +67,8 @@ const normalizeHeroSection = (value) => {
 const normalizePageLookupKey = (value) =>
   String(value || "").trim().toLowerCase();
 
-const createPageSlug = (pageName) =>
-  String(pageName || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
+const resolvePageSlug = (page) =>
+  normalizeSeoSlug(page?.pageSeo?.slug || page?.pageName);
 
 const normalizeWebsiteUrl = (value) => {
   const raw = String(value || "").trim();
@@ -69,6 +87,9 @@ const normalizeWebsiteUrl = (value) => {
 function WebsiteRuntime() {
   const location = useLocation();
   const { pageSlug = "" } = useParams();
+  const menuBarId = useBuilderContextStore((state) => state.menuBarId);
+  const themeId = useBuilderContextStore((state) => state.themeId);
+  const locale = useBuilderContextStore((state) => state.locale);
   const topAnchorRef = useRef(null);
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
   const [device, setDevice] = useState(() =>
@@ -102,36 +123,8 @@ function WebsiteRuntime() {
       return undefined;
     }
 
-    const getTrackedScrollElements = () => {
-      const seen = new Set();
-      const targets = [];
-      const push = (target) => {
-        if (!target || seen.has(target)) return;
-        seen.add(target);
-        targets.push(target);
-      };
-
-      push(window);
-      push(document);
-      push(document.scrollingElement);
-      push(document.documentElement);
-      push(document.body);
-      document
-        .querySelectorAll(".content-area, [data-scroll-container='true']")
-        .forEach((element) => push(element));
-
-      return targets;
-    };
-
     const getScrollMetrics = () => {
       let maxScrollTop = Number(window.scrollY || window.pageYOffset || 0);
-      const docScrollTop = Number(
-        document.scrollingElement?.scrollTop ||
-          document.documentElement?.scrollTop ||
-          document.body?.scrollTop ||
-          0
-      );
-      maxScrollTop = Math.max(maxScrollTop, docScrollTop);
       let maxScrollable = Math.max(
         Number(document.scrollingElement?.scrollHeight || 0) -
           Number(document.scrollingElement?.clientHeight || 0),
@@ -140,25 +133,13 @@ function WebsiteRuntime() {
         0
       );
 
-      const allElements = Array.from(document.querySelectorAll("*"));
-      allElements.forEach((element) => {
+      getRuntimeScrollElements().forEach((element) => {
         const localTop = Number(element?.scrollTop || 0);
         const localScrollable =
           Number(element?.scrollHeight || 0) - Number(element?.clientHeight || 0);
-        if (localScrollable > 2) {
-          maxScrollable = Math.max(maxScrollable, localScrollable);
-          maxScrollTop = Math.max(maxScrollTop, localTop);
-        }
+        maxScrollable = Math.max(maxScrollable, localScrollable);
+        maxScrollTop = Math.max(maxScrollTop, localTop);
       });
-
-      document
-        .querySelectorAll(".content-area, [data-scroll-container='true']")
-        .forEach((element) => {
-          maxScrollTop = Math.max(maxScrollTop, Number(element?.scrollTop || 0));
-          const localScrollable =
-            Number(element?.scrollHeight || 0) - Number(element?.clientHeight || 0);
-          maxScrollable = Math.max(maxScrollable, localScrollable);
-        });
 
       return {
         currentTop: maxScrollTop,
@@ -185,21 +166,27 @@ function WebsiteRuntime() {
       );
     };
 
-    const trackedTargets = getTrackedScrollElements();
-    updateButtonVisibility();
-    trackedTargets.forEach((target) => {
-      target.addEventListener("scroll", updateButtonVisibility, {
-        passive: true,
+    let animationFrameId = 0;
+    const scheduleVisibilityUpdate = () => {
+      if (animationFrameId) return;
+      animationFrameId = window.requestAnimationFrame(() => {
+        animationFrameId = 0;
+        updateButtonVisibility();
       });
+    };
+
+    scheduleVisibilityUpdate();
+    window.addEventListener("scroll", scheduleVisibilityUpdate, { passive: true });
+    document.addEventListener("scroll", scheduleVisibilityUpdate, {
+      passive: true,
+      capture: true,
     });
-    window.addEventListener("resize", updateButtonVisibility, { passive: true });
-    const visibilityTimer = window.setInterval(updateButtonVisibility, 160);
+    window.addEventListener("resize", scheduleVisibilityUpdate, { passive: true });
     return () => {
-      trackedTargets.forEach((target) => {
-        target.removeEventListener("scroll", updateButtonVisibility);
-      });
-      window.removeEventListener("resize", updateButtonVisibility);
-      window.clearInterval(visibilityTimer);
+      window.removeEventListener("scroll", scheduleVisibilityUpdate);
+      document.removeEventListener("scroll", scheduleVisibilityUpdate, true);
+      window.removeEventListener("resize", scheduleVisibilityUpdate);
+      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
     };
   }, [runtimeData?.layouts, runtimeData?.siteChrome]);
 
@@ -218,15 +205,15 @@ function WebsiteRuntime() {
 
         const [pagesResponse, menuBarResponse, themeResponse] = await Promise.all([
           listPages(),
-          getMenuBar(MENU_BAR_ID),
-          getTheme(THEME_ID),
+          getMenuBar(menuBarId),
+          getTheme(themeId),
         ]);
 
         const pagesList = Array.isArray(pagesResponse?.data) ? pagesResponse.data : [];
         const requestedPageBySlug = requestedPageSlug
           ? pagesList.find(
               (pageItem) =>
-                normalizePageLookupKey(createPageSlug(pageItem?.pageName)) ===
+                normalizePageLookupKey(resolvePageSlug(pageItem)) ===
                 requestedPageSlug
             )
           : null;
@@ -263,15 +250,12 @@ function WebsiteRuntime() {
           menuBarResponse?.data && typeof menuBarResponse.data === "object"
             ? menuBarResponse.data
             : {};
+        const resolvedTemplateIds = resolvePageTemplateIds(page, menuBarData);
 
         const menuPresets = Array.isArray(menuBarData?.menuPresets)
           ? menuBarData.menuPresets
           : [];
-        const resolvedMenuPresetId =
-          page?.menuPresetId ||
-          menuBarData?.defaultMenuPresetId ||
-          menuBarData?.activeMenuPresetId ||
-          "";
+        const resolvedMenuPresetId = resolvedTemplateIds.menu;
         const selectedMenuPreset =
           menuPresets.find((preset) => preset?.id === resolvedMenuPresetId) ||
           menuPresets.find(
@@ -289,11 +273,7 @@ function WebsiteRuntime() {
         const footerBar =
           selectedMenuPreset?.footerBar || menuBarData?.footerBar || {};
 
-        const resolvedHeroPresetId =
-          page?.heroPresetId ||
-          menuBarData?.defaultHeroPresetId ||
-          menuBarData?.activeHeroPresetId ||
-          "";
+        const resolvedHeroPresetId = resolvedTemplateIds.hero;
         const heroSectionsByPreset =
           menuBarData?.heroSections && typeof menuBarData.heroSections === "object"
             ? menuBarData.heroSections
@@ -341,7 +321,73 @@ function WebsiteRuntime() {
     return () => {
       isMounted = false;
     };
-  }, [location.search, pageSlug]);
+  }, [location.search, menuBarId, pageSlug, themeId]);
+
+  useEffect(() => {
+    const page = runtimeData?.page;
+    if (!page || typeof document === "undefined") return undefined;
+    const previousTitle = document.title;
+    const previousLang = document.documentElement.lang;
+    const managedNodes = [];
+    const seo = mergeSeoMeta({ title: page.pageName }, page.pageSeo);
+
+    const addMeta = (attribute, key, content) => {
+      if (!content) return;
+      const node = document.createElement("meta");
+      node.setAttribute(attribute, key);
+      node.setAttribute("content", content);
+      node.setAttribute("data-wb-seo", "true");
+      document.head.appendChild(node);
+      managedNodes.push(node);
+    };
+    const addLink = (rel, href, attributes = {}) => {
+      if (!href) return;
+      const node = document.createElement("link");
+      node.setAttribute("rel", rel);
+      node.setAttribute("href", href);
+      node.setAttribute("data-wb-seo", "true");
+      Object.entries(attributes).forEach(([key, value]) => {
+        if (value) node.setAttribute(key, value);
+      });
+      document.head.appendChild(node);
+      managedNodes.push(node);
+    };
+
+    document.title = seo.title || page.pageName || "WebBuilder";
+    document.documentElement.lang = locale || "th-TH";
+    addMeta("name", "description", seo.description);
+    addMeta("name", "robots", seo.robots);
+    addMeta("property", "og:title", seo.openGraph.title);
+    addMeta("property", "og:description", seo.openGraph.description);
+    addMeta("property", "og:url", seo.openGraph.url);
+    addMeta("property", "og:type", seo.openGraph.type || "website");
+    addMeta("property", "og:image", seo.openGraph.image);
+    addMeta("property", "og:locale", seo.openGraph.locale || locale);
+    addMeta("name", "twitter:card", seo.twitter.card);
+    addMeta("name", "twitter:title", seo.twitter.title);
+    addMeta("name", "twitter:description", seo.twitter.description);
+    addMeta("name", "twitter:image", seo.twitter.image);
+    addLink("canonical", seo.canonicalUrl);
+    seo.hreflang.forEach((entry) => {
+      addLink("alternate", entry.url, {
+        hreflang: entry.isDefault ? "x-default" : entry.locale,
+      });
+    });
+    seo.structuredData.forEach((entry) => {
+      const node = document.createElement("script");
+      node.type = "application/ld+json";
+      node.textContent = JSON.stringify(entry);
+      node.setAttribute("data-wb-seo", "true");
+      document.head.appendChild(node);
+      managedNodes.push(node);
+    });
+
+    return () => {
+      document.title = previousTitle;
+      document.documentElement.lang = previousLang;
+      managedNodes.forEach((node) => node.remove());
+    };
+  }, [locale, runtimeData?.page]);
 
   const hasContent = useMemo(() => {
     const menus = Array.isArray(runtimeData?.siteChrome?.menus)
@@ -398,7 +444,7 @@ function WebsiteRuntime() {
             normalizePageLookupKey(pageRef)
       );
       if (!matchedPage?._id) return { href: "#", target: "_self", disabled: true };
-      const slug = createPageSlug(matchedPage?.pageName);
+      const slug = resolvePageSlug(matchedPage);
       if (!slug) return { href: "#", target: "_self", disabled: true };
       return {
         href: `/${encodeURIComponent(slug)}`,
@@ -458,29 +504,7 @@ function WebsiteRuntime() {
 
   const handleScrollToTop = () => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
-    const seen = new Set();
-    const elementTargets = [];
-    const pushTarget = (target) => {
-      if (!target || seen.has(target)) return;
-      seen.add(target);
-      elementTargets.push(target);
-    };
-
-    const rootCandidates = [
-      document.scrollingElement,
-      document.documentElement,
-      document.body,
-    ];
-    rootCandidates.forEach((target) => pushTarget(target));
-
-    Array.from(document.querySelectorAll("*")).forEach((element) => {
-      const style = window.getComputedStyle(element);
-      const overflowY = String(style?.overflowY || "").toLowerCase();
-      const canScroll =
-        ["auto", "scroll", "overlay"].includes(overflowY) &&
-        Number(element.scrollHeight || 0) - Number(element.clientHeight || 0) > 2;
-      if (canScroll) pushTarget(element);
-    });
+    const elementTargets = getRuntimeScrollElements();
 
     const isRootTarget = (target) =>
       target === document.scrollingElement ||

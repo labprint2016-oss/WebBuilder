@@ -1030,7 +1030,7 @@ const ButtonElementOffcanvas = ({
                     onClick={() => patch({ buttonLayoutAlign: value })}
                     sx={{ ...groupButtonSx(sel, textColor), minHeight: 36 }}
                   >
-                    <Icon size={15} strokeWidth={3.5} />
+                    <Icon size={(void Icon, 15)} strokeWidth={3.5} />
                   </Button>
                 );
               })}

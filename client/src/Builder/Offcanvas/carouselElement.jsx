@@ -52,9 +52,6 @@ const CAROUSEL_VARIANT_OPTIONS = [
 /** ความสูง 34px — stepper / per-view / ปุ่มกลุ่ม MUI ให้เท่ากัน */
 const stepperBtnClass =
   "flex h-[34px] w-9 shrink-0 items-center justify-center border-0 bg-white text-[12px] font-normal text-slate-700 transition hover:bg-slate-50 dark:bg-slate-900/80 dark:text-white/90 dark:hover:bg-white/10";
-const stepperMidClass =
-  "flex h-[34px] min-w-0 flex-1 items-center justify-center border-x border-slate-200 bg-white px-2 text-left text-[12px] font-normal tabular-nums text-slate-800 dark:border-white/10 dark:bg-slate-900/80 dark:text-white/90";
-
 /** ช่องกลางแบบพิมพ์ได้ — min แคบพอให้ปุ่ม ± กว้างเท่ากัน; พอแสดงเลข 2 หลัก */
 const stepperMidNumericClass =
   "flex h-[34px] min-w-[2.25rem] flex-1 items-stretch justify-center border-x border-slate-200 bg-white px-0.5 dark:border-white/10 dark:bg-slate-900/80";
@@ -525,6 +522,12 @@ const CarouselElementOffcanvas = ({
   elementRef.current = element;
   const layoutSyncScheduledRef = useRef(false);
   const pendingLayoutRef = useRef(null);
+  const initialMountMetricsRef = useRef({
+    slideCount: Array.isArray(draft?.carouselSlides)
+      ? draft.carouselSlides.length
+      : 0,
+    variant: draft?.carouselVariant,
+  });
 
   useLayoutEffect(() => {
     if (!mountBreakdownLoggedRef.current) {
@@ -538,10 +541,8 @@ const CarouselElementOffcanvas = ({
             : null,
           panelRenderToCommitMs:
             Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
-          slideCount: Array.isArray(draft?.carouselSlides)
-            ? draft.carouselSlides.length
-            : 0,
-          variant: draft?.carouselVariant,
+          slideCount: initialMountMetricsRef.current.slideCount,
+          variant: initialMountMetricsRef.current.variant,
         });
       }
     }
@@ -550,7 +551,7 @@ const CarouselElementOffcanvas = ({
 
   useEffect(() => {
     setDraft(mergeCarouselElement(element));
-  }, [element]);
+  }, [element, setDraft]);
 
   useEffect(
     () => () => {
@@ -904,7 +905,7 @@ const CarouselElementOffcanvas = ({
                       title={deviceLabel}
                       aria-hidden
                     >
-                      <Icon className="h-4 w-4" strokeWidth={1.75} />
+                      <Icon className="h-4 w-4" strokeWidth={(void Icon, 1.75)} />
                     </span>
                     <input
                       id={id}

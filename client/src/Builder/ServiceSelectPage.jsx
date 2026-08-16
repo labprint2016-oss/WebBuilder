@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  listPages,
   editPage,
   createPage,
   deletePage,
   setDefaultPage,
 } from "../../Functions/pages";
+import {
+  ensurePageCatalogLoaded,
+  usePageCatalog,
+} from "./store/pageDocument";
 import { Box, Modal, Zoom, Backdrop } from "@mui/material";
 import {
   FileText,
@@ -24,23 +27,17 @@ const ServiceSelectPage = ({
   activePageId = "",
   defaultPageId = "",
   onSelectPage = null,
+  onBeforePagesChange = null,
   onPagesChanged = null,
 }) => {
   const textColor = darkMode === "dark" ? "#ffffff" : "#202020";
-  const [pages, setPages] = useState([]);
+  const pages = usePageCatalog();
   const [editingPageId, setEditingPageId] = useState(null);
   const [editingPageName, setEditingPageName] = useState("");
   const [pageFooterMessage, setPageFooterMessage] = useState("");
 
-  const loadPages = useCallback(() => {
-    return listPages()
-      .then((res) => {
-        const nextPages = Array.isArray(res?.data) ? res.data : [];
-        setPages(nextPages);
-      })
-      .catch((err) => {
-        console.log(err);
-      });
+  const loadPages = useCallback((force = false) => {
+    return ensurePageCatalogLoaded(force);
   }, []);
 
   useEffect(() => {
@@ -58,23 +55,41 @@ const ServiceSelectPage = ({
   const notifyPagesChanged = (payload = {}) => {
     onPagesChanged?.(payload);
   };
+  const preparePageMutation = async () => {
+    if (!activePageId || typeof onBeforePagesChange !== "function") {
+      return true;
+    }
+    try {
+      const result = await onBeforePagesChange();
+      if (result?.ok !== false) return true;
+      setPageFooterMessage(
+        result.message || "ไม่สามารถบันทึกหน้าปัจจุบันได้"
+      );
+      return false;
+    } catch {
+      setPageFooterMessage("ไม่สามารถบันทึกหน้าปัจจุบันได้");
+      return false;
+    }
+  };
 
-  const copyPage = (id) => {
-    const source = pages.find((page) => page._id === id);
+  const copyPage = async (id) => {
+    const source = pages.find((page) => page.id === id);
     if (!source) return;
+    if (!(await preparePageMutation())) return;
     const nextName = `${source.pageName || "Page"} - ${(Math.random() * 1e9).toString(16)}`;
     setPageFooterMessage("");
     createPage({ pageName: nextName })
       .then((res) => {
         const nextId = res?.data?._id || "";
-        loadPages().then(() => {
+        loadPages(true).then(() => {
           notifyPagesChanged({ reason: "copy", preferredPageId: nextId || activePageId });
         });
       })
       .catch((err) => console.log(err));
   };
 
-  const removePage = (id) => {
+  const removePage = async (id) => {
+    if (!(await preparePageMutation())) return;
     setPageFooterMessage("");
     deletePage(id)
       .then(() => {
@@ -82,25 +97,26 @@ const ServiceSelectPage = ({
           setEditingPageId(null);
           setEditingPageName("");
         }
-        loadPages().then(() => {
+        loadPages(true).then(() => {
           notifyPagesChanged({ reason: "delete" });
         });
       })
       .catch((err) => console.log(err));
   };
 
-  const markDefaultPage = (id) => {
+  const markDefaultPage = async (id) => {
+    if (!(await preparePageMutation())) return;
     setPageFooterMessage("");
     setDefaultPage(id)
       .then(() => {
-        loadPages().then(() => {
+        loadPages(true).then(() => {
           notifyPagesChanged({ reason: "set_default", preferredPageId: id });
         });
       })
       .catch((err) => console.log(err));
   };
 
-  const commitRenamePage = (id, nextName) => {
+  const commitRenamePage = async (id, nextName) => {
     const trimmedName = String(nextName || "").trim();
     if (trimmedName.length < 3) {
       setPageFooterMessage("ชื่อหน้าต้องอย่างน้อย 3 ตัวอักษร");
@@ -108,20 +124,21 @@ const ServiceSelectPage = ({
     }
     const hasDuplicate = pages.some(
       (item) =>
-        item?._id !== id &&
+        item?.id !== id &&
         normalizePageName(item?.pageName) === normalizePageName(trimmedName)
     );
     if (hasDuplicate) {
       setPageFooterMessage("มีชื่อหน้านี้แล้ว");
       return;
     }
+    if (!(await preparePageMutation())) return;
 
     editPage({ pageName: trimmedName }, id)
       .then(() => {
         setEditingPageId(null);
         setEditingPageName("");
         setPageFooterMessage("");
-        loadPages().then(() => {
+        loadPages(true).then(() => {
           notifyPagesChanged({ reason: "rename", preferredPageId: id });
         });
       })
@@ -136,7 +153,7 @@ const ServiceSelectPage = ({
   };
 
   const selectPage = (id) => {
-    const page = pages.find((item) => item._id === id);
+    const page = pages.find((item) => item.id === id);
     if (!page) return;
     onSelectPage?.(id, page);
     handleClose();
@@ -210,7 +227,7 @@ const ServiceSelectPage = ({
             >
               <div className="w-full rounded-md px-[10px] pt-[4px] pb-[4px]">
                 {pages.map((page) => {
-                  const { _id: id, pageName } = page;
+                  const { id, pageName } = page;
                   const isEditing = editingPageId === id;
                   const isActive = activePageId === id;
                   const isDefault = page?.isDefault === true || defaultPageId === id;

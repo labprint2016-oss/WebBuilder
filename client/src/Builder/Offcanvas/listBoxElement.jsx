@@ -291,6 +291,12 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
       null
   );
   const mountBreakdownLoggedRef = useRef(false);
+  const initialMountMetricsRef = useRef({
+    itemCount: Array.isArray(draft?.listBoxItems)
+      ? draft.listBoxItems.length
+      : 0,
+    variant: draft?.listBoxVariant,
+  });
 
   useLayoutEffect(() => {
     if (!mountBreakdownLoggedRef.current) {
@@ -304,10 +310,8 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
             : null,
           panelRenderToCommitMs:
             Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
-          itemCount: Array.isArray(draft?.listBoxItems)
-            ? draft.listBoxItems.length
-            : 0,
-          variant: draft?.listBoxVariant,
+          itemCount: initialMountMetricsRef.current.itemCount,
+          variant: initialMountMetricsRef.current.variant,
         });
       }
     }
@@ -317,7 +321,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
   useEffect(() => {
     const merged = mergeListBoxElement(element);
     setDraft((prev) => (lodash.isEqual(prev, merged) ? prev : merged));
-  }, [element]);
+  }, [element, setDraft]);
 
   useEffect(
     () => () => {
@@ -408,7 +412,10 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
     [scheduleLayoutSync, updateSlider]
   );
 
-  const items = draft.listBoxItems || [];
+  const items = useMemo(
+    () => draft.listBoxItems || [],
+    [draft.listBoxItems]
+  );
 
   const moveItem = useCallback(
     (fromIdx, toIdx) => {
@@ -419,7 +426,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
       setDraft(m);
       commit(m);
     },
-    [items, draft, commit]
+    [items, draft, commit, setDraft]
   );
 
   const deleteItem = useCallback(
@@ -434,7 +441,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
       setDraft(m);
       commit(m);
     },
-    [items, draft, commit]
+    [items, draft, commit, setDraft]
   );
 
   const cloneItem = useCallback(
@@ -450,7 +457,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
       setDraft(m);
       commit(m);
     },
-    [items, draft, commit]
+    [items, draft, commit, setDraft]
   );
 
   const addItem = useCallback(() => {
@@ -463,7 +470,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
     });
     setDraft(m);
     commit(m);
-  }, [items, draft, commit]);
+  }, [items, draft, commit, setDraft]);
 
   const marginTopDefault = LIST_BOX_ELEMENT_DEFAULTS.listBoxMarginTop;
   const marginBottomDefault = LIST_BOX_ELEMENT_DEFAULTS.listBoxMarginBottom;
@@ -607,7 +614,7 @@ const ListBoxElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                         title={deviceLabel}
                         aria-hidden
                       >
-                        <Icon className="h-4 w-4" strokeWidth={1.75} />
+                        <Icon className="h-4 w-4" strokeWidth={(void Icon, 1.75)} />
                       </span>
                       <input
                         id={id}

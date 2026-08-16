@@ -430,8 +430,6 @@ function PreviewMenuBar({
     subMenuFontWeight: s_fw_D = 200,
     subMenuColor: s_color_D = "#000000",
     subMenuColorOpacity: s_opct_D = 255,
-    activeSubMenuColor: s_active_D = { type: "mainColor", index: 0 },
-    activeSubMenuColorOpacity: s_activeOpct_D = 255,
     hoverSubMenuColor: s_hover_D = { type: "mainColor", index: 1 },
     hoverSubMenuColorOpacity: s_hoverOpct_D = 255,
     hoverSubMenuBgColor: s_hoverBg_D = s_color_D,

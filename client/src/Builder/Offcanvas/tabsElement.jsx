@@ -32,9 +32,11 @@ const tabsPanelPerfEnabled =
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).get("tabsPerf") === "1";
 
-const Box = ({ component: Component = "div", sx: _sx, ...props }) => (
-  <Component {...props} />
-);
+const Box = ({ component: Component = "div", sx, ...props }) => {
+  const Element = Component;
+  void sx;
+  return <Element {...props} />;
+};
 
 const Stack = ({ direction = "column", spacing = 0, sx: _sx, ...props }) => (
   <div
@@ -51,47 +53,57 @@ const Stack = ({ direction = "column", spacing = 0, sx: _sx, ...props }) => (
 
 const ButtonGroup = ({
   children,
-  sx: _sx,
-  fullWidth: _fullWidth,
-  disableElevation: _disableElevation,
-  color: _color,
-  variant: _variant,
+  sx,
+  fullWidth,
+  disableElevation,
+  color,
+  variant,
   ...props
-}) => (
-  <div
-    {...props}
-    className={`flex h-[34px] w-full overflow-hidden rounded-md ${props.className || ""}`}
-    style={{
-      border: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)",
-      ...props.style,
-    }}
-  >
-    {children}
-  </div>
-);
+}) => {
+  void sx;
+  void fullWidth;
+  void disableElevation;
+  void color;
+  void variant;
+  return (
+    <div
+      {...props}
+      className={`flex h-[34px] w-full overflow-hidden rounded-md ${props.className || ""}`}
+      style={{
+        border: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)",
+        ...props.style,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
 
 const Button = ({
   children,
   sx,
-  color: _color,
+  color,
   ...props
-}) => (
-  <button
-    type="button"
-    {...props}
-    className={`inline-flex h-[34px] min-w-0 flex-1 items-center justify-center border-0 border-r px-1 text-[11px] font-normal leading-tight last:border-r-0 hover:opacity-90 ${
-      props.className || ""
-    }`}
-    style={{
-      backgroundColor: sx?.backgroundColor,
-      color: sx?.color,
-      borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)",
-      ...props.style,
-    }}
-  >
-    {children}
-  </button>
-);
+}) => {
+  void color;
+  return (
+    <button
+      type="button"
+      {...props}
+      className={`inline-flex h-[34px] min-w-0 flex-1 items-center justify-center border-0 border-r px-1 text-[11px] font-normal leading-tight last:border-r-0 hover:opacity-90 ${
+        props.className || ""
+      }`}
+      style={{
+        backgroundColor: sx?.backgroundColor,
+        color: sx?.color,
+        borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)",
+        ...props.style,
+      }}
+    >
+      {children}
+    </button>
+  );
+};
 
 /** สลับแก้สี (แท็บที่ทำงานอยู่ / ไม่ทำงาน) — รูปแบบเดียวกับ Image panel */
 const TabsActiveColorSelectLine = ({
@@ -332,6 +344,9 @@ const TabsElementOffcanvas = ({
       null
   );
   const mountBreakdownLoggedRef = useRef(false);
+  const initialItemCountRef = useRef(
+    Array.isArray(data?.tabsItems) ? data.tabsItems.length : 0
+  );
 
   const { updateSlider, commitSlider } = usePanelSliderPreview({
     type: "tabs",
@@ -359,9 +374,7 @@ const TabsElementOffcanvas = ({
             : null,
           panelRenderToCommitMs:
             Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
-          itemCount: Array.isArray(data?.tabsItems)
-            ? data.tabsItems.length
-            : 0,
+          itemCount: initialItemCountRef.current,
         });
       }
     }
@@ -390,13 +403,13 @@ const TabsElementOffcanvas = ({
     pendingLayoutRef.current = null;
   }, []);
 
-  const patch = (partial) => {
+  const patch = useCallback((partial) => {
     setData((prev) => {
       const next = { ...prev, ...partial };
       scheduleLayoutSync(next);
       return next;
     });
-  };
+  }, [scheduleLayoutSync]);
 
   useEffect(() => {
     if (
@@ -406,7 +419,12 @@ const TabsElementOffcanvas = ({
     ) {
       patch({ tabsInactiveColorMode: "text" });
     }
-  }, [data?.tabsLayoutAxis, data?.tabsStyle, data?.tabsInactiveColorMode]);
+  }, [
+    data?.tabsInactiveColorMode,
+    data?.tabsLayoutAxis,
+    data?.tabsStyle,
+    patch,
+  ]);
 
   useEffect(() => {
     if (data?.tabsTabLabelStyle === "iconText") return;
@@ -418,6 +436,7 @@ const TabsElementOffcanvas = ({
     data?.tabsTabLabelStyle,
     data?.tabsActiveColorMode,
     data?.tabsInactiveColorMode,
+    patch,
   ]);
 
   const tabsItems = useMemo(() => normalizeTabsItems(data?.tabsItems), [data?.tabsItems]);

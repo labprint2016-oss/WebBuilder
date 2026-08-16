@@ -5,6 +5,11 @@ import {
   mergeCounterElement,
 } from "./counterElementConfig";
 
+const finiteNumberOr = (value, fallback) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+
 const clampNumber = (value, fallback) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -13,8 +18,6 @@ const clampNumber = (value, fallback) => {
 const Counter = ({
   elementData,
   selected,
-  isHover,
-  isPanelOpen,
   hover,
   theme,
   animationForElement,
@@ -115,7 +118,14 @@ const Counter = ({
     };
     frameRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameRef.current);
-  }, [isInViewport, startValue, targetValue, durationMs, id]);
+  }, [
+    durationMs,
+    id,
+    isInViewport,
+    shouldPreviewAnimate,
+    startValue,
+    targetValue,
+  ]);
 
   const color = setColor(theme, merged.counterColor, merged.counterColorOpacity ?? 255);
   const compositionColor = setColor(
@@ -150,7 +160,7 @@ const Counter = ({
   /** 0–64 → translateY (ค่า - 32) px เลื่อนข้อความประกอบขึ้น–ลง */
   const compositionGapSlider = Math.min(
     64,
-    Math.max(0, Number(merged.counterCompositionGapPx) ?? 32)
+    Math.max(0, finiteNumberOr(merged.counterCompositionGapPx, 32))
   );
   const compositionTranslateYpx = compositionGapSlider - 32;
   /** ระยะแนวนอนระหว่างข้อความประกอบกับตัวเลข (คงที่) */

@@ -168,7 +168,6 @@ const ButtonGroupElementOffcanvas = ({
   close,
   textColor,
   theme,
-  darkMode = "light",
 }) => {
   const initialRenderStartedAtRef = useRef(
     buttonGroupPanelPerfEnabled ? performance.now() : 0
@@ -182,6 +181,9 @@ const ButtonGroupElementOffcanvas = ({
       null
   );
   const mountBreakdownLoggedRef = useRef(false);
+  const initialItemCountRef = useRef(
+    Array.isArray(draft?.listItems) ? draft.listItems.length : 0
+  );
   const rangeGestureActiveRef = useRef(false);
   const sliderChangedFieldsRef = useRef([]);
   const itemNodeRefs = useRef(new Map());
@@ -271,9 +273,7 @@ const ButtonGroupElementOffcanvas = ({
             : null,
           panelRenderToCommitMs:
             Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
-          itemCount: Array.isArray(draft?.listItems)
-            ? draft.listItems.length
-            : 0,
+          itemCount: initialItemCountRef.current,
         });
       }
     }
@@ -597,7 +597,7 @@ const ButtonGroupElementOffcanvas = ({
 
           <li>
             <MainLabel label="เส้นคั่นระหว่างปุ่ม" checked={Boolean(draft.listDividerEnabled)} handleSwitch={(e) => patch({ listDividerEnabled: e.target.checked })} color={textColor} mb={0} />
-            {Boolean(draft.listDividerEnabled) ? (
+            {draft.listDividerEnabled ? (
               <Stack spacing={1.5} sx={{ mt: "10px" }}>
                 <ButtonGroup fullWidth variant="outlined" disableElevation color="inherit" sx={groupRootSx}>
                   {DIVIDER_STYLE_OPTIONS.map((opt) => (

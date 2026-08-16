@@ -84,8 +84,7 @@ import {
 import { ChevronUpDownIcon } from "@heroicons/react/16/solid";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { SketchPicker } from "react-color";
-import lodash, { head, isNull, set, update } from "lodash";
-import { getTheme, updateTheme } from "../../Functions/theme";
+import lodash from "lodash";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation, Pagination, Autoplay } from "swiper/modules";
 import "swiper/css";
@@ -93,7 +92,10 @@ import "swiper/css/navigation";
 import "swiper/css/pagination";
 import IconAwsome from "./IconAwsome";
 import ServiceIcon from "./ServiceIcon";
-import { listPages } from "../../Functions/pages";
+import {
+  ensurePageCatalogLoaded,
+  usePageCatalog,
+} from "./store/pageDocument";
 
 
 
@@ -263,7 +265,7 @@ function RadioInput({ label,name, value,datas,handleChange, color,textColor,gap=
       value={v}
       control={
         <Radio
-          sx={(t) => {
+          sx={() => {
             return {
               // ยังไม่ติ๊ก = สีตามโหมด
               color: color,
@@ -720,7 +722,7 @@ const MenuList = memo(function MenuList({
   darkMode,
   darkTextColor,setOpenIconModal,openIconModal,
 }) {
-  const { id,icon, name, type, page,menuDisplay, url, target } = item;
+  const { id,icon, name, type, page, url, target } = item;
 
 
 
@@ -972,7 +974,7 @@ const MenuList = memo(function MenuList({
 
 
 
-function MenuPage({menus, setMenus,navOpen,device,menuBar,theme,setNavOpen,navBottom,setFont,darkMode,darkTextColor,menuButtonRef,topBar,footerBar,setOpenBar}){
+function MenuPage({menus, setMenus,navOpen,device,menuBar,theme,setNavOpen,navBottom,darkMode,darkTextColor,menuButtonRef,topBar,footerBar,setOpenBar}){
 
 
 
@@ -1005,7 +1007,7 @@ const handleChange = useCallback((e, id) => {
     }
     return next;
   });
-}, []);
+}, [setMenus]);
 
 
 
@@ -1049,7 +1051,7 @@ const cloneMenu = useCallback((id) => {
     return next;
  
   });
-}, []);
+}, [setMenus]);
 
 const deleteMenu = useCallback((id) => {
   setMenus((prev) => {
@@ -1076,7 +1078,7 @@ const deleteMenu = useCallback((id) => {
     return next;
     
   });
-}, []);
+}, [setMenus]);
 
 
 const [openMenu,setOpenMenu] = useState({})
@@ -1102,7 +1104,7 @@ const toggleOpen = useCallback((id) => {
 }, []);
 
 
-const [pages,setPages] = useState([])
+const pages = usePageCatalog()
 
 const getTotalScrollFromElement = useCallback((element) => {
   let top = window.scrollY || window.pageYOffset || 0;
@@ -1140,14 +1142,8 @@ const clearDragScrollCompensation = useCallback(() => {
 }, []);
 
 
-   const loadPages = ()=>{
-    listPages()
-    .then(res=>{setPages(res.data)})
-    .catch(err => console.log(err))
-   }
-
    useEffect(()=>{
-    loadPages()
+    ensurePageCatalogLoaded()
    },[])
 
 
@@ -1168,7 +1164,7 @@ const renderMenu = useCallback(
       openIconModal={openIconModal}
     />
   ),
-  [openMenu, toggleOpen, deleteMenu, cloneMenu, handleChange,darkMode,openIconModal,pages]
+  [openMenu, toggleOpen, deleteMenu, cloneMenu, handleChange,darkMode,darkTextColor,openIconModal,pages]
 );
 
 const disableDrag = useCallback(
@@ -1184,8 +1180,6 @@ const{
 
   menuColor,
   menuColorOpacity,
-  activeMenuColor,
-  activeMenuColorOpacity,
 
   isMenuBarGradient,
   bgMenuBarColor,
@@ -1222,8 +1216,6 @@ const{
 
   subMenuColor,
   subMenuColorOpacity,
-  activeSubMenuColor,
-  activeSubMenuColorOpacity,
 
 } = menuBar;
 
@@ -1362,24 +1354,24 @@ useEffect(() => {
 
 
 
-const collectDescendantIds = (items, acc = []) => {
+const collectDescendantIds = useCallback((items, acc = []) => {
   for (const m of items) {
     acc.push(m.id);
     if (m.children?.length) collectDescendantIds(m.children, acc);
   }
   return acc;
-};
+}, []);
 
 
 
-const closeSubTree = (menus) => {
+const closeSubTree = useCallback((menus) => {
   const ids = collectDescendantIds(menus);
   setOpeing((prev) => {
     const next = { ...prev };
     for (const id of ids) next[id] = false;
     return next;
   });
-};
+}, [collectDescendantIds]);
 
 
 
@@ -1387,7 +1379,7 @@ useEffect(()=>{
   if(!previewNavOpen){
     closeSubTree(menus)
   }
-},[previewNavOpen])
+},[closeSubTree, menus, previewNavOpen])
 
 
 const mainBG = setColor(
@@ -1398,8 +1390,6 @@ const navBottomBg = setColor(bgNav, bgNavOpacity)
 
 const paddingDivider = (10*navHeight)/56
 const isModernNavBottom = navBottomDesign === "modern";
-const modernCenterIndex = Math.floor((navBottoms?.length || 1) / 2);
-const modernActiveIndex = Math.min(1, Math.max((navBottoms?.length || 1) - 1, 0));
 const isTextNavBottomDisplay = navBottomDisplay === "text";
 const textModeIcon =
   navIcon &&
@@ -1606,7 +1596,7 @@ const SubMenu = ({menus})=>{
       sx={{ background: mainBG, p: 0, cursor: "pointer" }}
       onClickCapture={() => setOpenBar?.("Menu")}
     >
-            {menus.map((m,i)=>{
+            {menus.map((m)=>{
             const {name,id,icon,children} = m
 
 
@@ -1687,30 +1677,13 @@ className="pl-[10px]"
 const phoneRef = useRef(null);
 const drawerPaperRef = useRef(null);
 
-const closeDrawer = () => {
-  const active = document.activeElement;
-
-  // blur เฉพาะกรณี focus อยู่ใน Drawer จริง ๆ
-  if (
-    active instanceof HTMLElement &&
-    drawerPaperRef.current?.contains(active)
-  ) {
-    active.blur();
-  }
-
-  // ย้าย focus กลับไปที่ปุ่มเปิดก่อน/พร้อมปิด
-  menuButtonRef.current?.focus?.();
-  setPreviewNavOpen(false);
-  setNavOpen(false);
-};
-
 useEffect(() => {
   if (!previewNavOpen) {
     requestAnimationFrame(() => {
       menuButtonRef.current?.focus?.();
     });
   }
-}, [previewNavOpen]);
+}, [menuButtonRef, previewNavOpen]);
 
 
 
@@ -2248,7 +2221,7 @@ size={menuFontSize}
   }}
 >
 {navBottomItemsForDisplay.map((nav, i) => {
-  const { icon, label, link } = nav;
+  const { icon, label } = nav;
   const isTextModeItem = isTextNavBottomDisplay;
 
   return (

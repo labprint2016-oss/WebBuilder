@@ -1,5 +1,4 @@
-import { useEffect, useState, useRef, useCallback,memo } from "react";
-import { getTheme } from "../../../Functions/theme";
+import { useEffect, useState, useRef, useCallback } from "react";
 import TextField from "@mui/material/TextField";
 import { panelGroupButtonSx } from "../panelControlSx";
 import {
@@ -31,7 +30,7 @@ import {
 } from "@mui/material";
 
 import { TabContext, TabPanel } from "@mui/lab";
-import lodash, { isNull, set } from "lodash";
+import lodash from "lodash";
 import {
   Minus,
   Plus,
@@ -43,7 +42,6 @@ import {
   Image,
   Home,
 } from "lucide-react";
-import { use } from "react";
 import Popper from "@mui/material/Popper";
 import { styled } from "@mui/material/styles";
 import Switch from "@mui/material/Switch";
@@ -53,17 +51,8 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import ServiceColor from "../Services/ServiceColor";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faUser, faHouse, faGear } from "@fortawesome/free-solid-svg-icons";
-import {
-  faFacebook,
-  faGithub,
-  faLine,
-  faGoogle,
-  faApple,
-} from "@fortawesome/free-brands-svg-icons";
 import ServiceIcon from "../ServiceIcon";
 import IconAwsome from "../IconAwsome";
-import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 const TOPBAR_GRADIENT_STOPS = [
   { value: "start", label: "จุดเริ่ม" },
   { value: "end", label: "จุดสิ้น" },
@@ -347,7 +336,7 @@ const NumberInput = ({ value, field, handChange, plus, minus }) => {
       <div className="absolute pr-2 -left-px">
         <button
           className="bg-transparent flex items-center justify-center rounded-md"
-          onClick={(e) => handChange(field, minus)}
+          onClick={() => handChange(field, minus)}
         >
           <Minus className="size-3 m-[10px] text-dark dark:text-white" />
         </button>
@@ -360,7 +349,7 @@ const NumberInput = ({ value, field, handChange, plus, minus }) => {
       <div className="absolute pr-2 -right-px">
         <button
           className=" bg-transparent flex items-center justify-center rounded-md"
-          onClick={(e) => handChange(field, plus)}
+          onClick={() => handChange(field, plus)}
         >
           <Plus className="size-3 m-[10px] text-dark dark:text-white" />
         </button>
@@ -386,7 +375,6 @@ function Btn({
   bgColor = "#454b58",
   borderColor = "#A1A1AA",
   color = "white",
-  iconSize=16,
   hideBorder = false,
   softBg = false,
   className = "",
@@ -1290,10 +1278,12 @@ const TopBarOffcanvas = ({
 
   const [openColorTable, setOpenColorTable] = useState(-1);
   const [updated, setUpdated] = useState(false);
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [anchorElGradient, setAnchorElGradient] = useState(null);
-  const anchorRef = useRef(null);
-  const anchorRefGradient = useRef(null);
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+  useState(null);
+  useState(null);
+  useRef(null);
+  useRef(null);
 
   useEffect(() => {
     setData(lodash.cloneDeep(topBar));
@@ -1412,34 +1402,6 @@ const TopBarOffcanvas = ({
   }, []);
 
 
-  const minusPadding = (value) => {
-    return value - 1;
-  };
-
-  const plusPadding = (value) => {
-    return value + 1;
-  };
-
-  const handlePadding = (field, valueOrUpdater) => {
-    setData((prev) => {
-      const current = prev[field];
-      let next =
-        typeof valueOrUpdater === "function"
-          ? valueOrUpdater(current)
-          : valueOrUpdater;
-
-      if (next === "") {
-        // อนุญาตค่าว่างระหว่างพิมพ์ (เก็บเฉพาะ local)
-        return { ...prev, [field]: "" };
-      }
-      next = Number(next);
-      if (Number.isNaN(next) || next < 0) return prev;
-
-      return { ...prev, [field]: next };
-    });
-    setUpdated(true);
-  };
-
   const changeTopBarDisplayLayout = (value) => {
     setData((prev) => ({ ...prev, isFluidLayout: value === true }));
     setUpdated(true);
@@ -1486,7 +1448,7 @@ const TopBarOffcanvas = ({
         clonedData[key] = 0;
       }
     }
-    onUpdate(clonedData);
+    onUpdateRef.current(clonedData);
   }, [data, updated]);
 
   const handleSelect = useCallback((value, field, index = -1, mainField = null) => {
@@ -1517,8 +1479,7 @@ const TopBarOffcanvas = ({
 
 
 
-  const [allColors, setAllColors] = useState([]);
-  const basicColors = THEME_PANEL_BASIC_COLOR_SWATCHES;
+  useState([]);
 
 
   const [openIcon,setOpenIcon] = useState(-1)
@@ -1572,7 +1533,7 @@ const TopBarOffcanvas = ({
       return { ...prev, [field]: nextGroup };
     });
     setUpdated(true);
-  }, []);
+  }, [openIcon]);
 
   const toggleOpenIcon = useCallback((index) => {
     setOpenIcon((prev) => (prev === index ? -1 : index));

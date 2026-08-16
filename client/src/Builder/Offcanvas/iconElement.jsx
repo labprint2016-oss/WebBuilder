@@ -401,18 +401,6 @@ const IconElementOffcanvas = ({
     iconRowDividerStyleRaw === "dashed" || iconRowDividerStyleRaw === "dotted"
       ? iconRowDividerStyleRaw
       : "solid";
-  const iconLayoutAlignLabel =
-    BUTTON_LAYOUT_ALIGN_OPTIONS.find((o) => o.value === iconLayoutAlign)
-      ?.label ?? "ตรงกลาง";
-
-  const cycleIconLayoutAlign = (delta) => {
-    const list = BUTTON_LAYOUT_ALIGN_OPTIONS;
-    const idx = list.findIndex((o) => o.value === iconLayoutAlign);
-    const base = idx === -1 ? 0 : idx;
-    const next = (base + delta + list.length) % list.length;
-    patch({ iconLayoutAlign: list[next].value });
-  };
-
   const fa = merged.faIcon;
   const shape = merged.iconShape === "rounded" ? "rounded" : "circle";
 
@@ -1276,7 +1264,7 @@ const IconElementOffcanvas = ({
                     onClick={() => patch({ iconLayoutAlign: value })}
                     sx={{ ...groupButtonSx(sel, textColor), minHeight: 36 }}
                   >
-                    <Icon size={15} strokeWidth={3.5} />
+                    <Icon size={(void Icon, 15)} strokeWidth={3.5} />
                   </Button>
                 );
               })}

@@ -184,6 +184,7 @@ function Container({
       } relative${extraClassName ? ` ${extraClassName}` : ""}`}
       style={{
         background: color,
+        contain: "layout style",
         ...(hasOverlap ? { overflow: "visible", marginBottom: `-${overlapPx}px` } : {}),
       }}
       ref={mergedSectionRef}

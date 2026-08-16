@@ -22,6 +22,7 @@ import FormBlock from "./Elements/FormBlock";
 import DataSlider from "./Elements/DataSlider";
 import Catagories from "./Elements/Catagories";
 import FormElement from "./Elements/FormElement";
+import ElementPerformanceBoundary from "../performance/ElementPerformanceBoundary";
 
 
 const Element = ({
@@ -185,7 +186,12 @@ const Element = ({
             : undefined
         : undefined;
 
-    return ( 
+    return (
+    <ElementPerformanceBoundary
+      elementType={type}
+      elementId={elementData?.id}
+      selected={selected}
+    >
     <div className={wrapClass} style={elementZIndex ? { zIndex: elementZIndex } : undefined}>
             {(type === "img" || type === "imgh" || type === "imgo" || type === "bnr") && (
         <Image
@@ -458,6 +464,7 @@ const Element = ({
             />
           )}
     </div>
+    </ElementPerformanceBoundary>
     )
 
 }

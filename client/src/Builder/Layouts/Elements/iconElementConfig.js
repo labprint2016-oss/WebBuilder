@@ -73,7 +73,7 @@ export function isValidFaIconRef(faIcon) {
   return type === "fas" || type === "fab" || type === "far";
 }
 
-export function resolveIconBackgroundCss(elementData, theme, slot = 1) {
+export function resolveIconBackgroundCss(elementData, theme) {
   const s = mergeIconElement(elementData);
   const raw = resolveThemeOrHexColor(s.backgroundColor, theme);
   const op = numOr(s.backgroundOpacity, ICON_ELEMENT_DEFAULTS.backgroundOpacity);
@@ -82,7 +82,7 @@ export function resolveIconBackgroundCss(elementData, theme, slot = 1) {
   return applyOpacityToCssColor(raw, o);
 }
 
-export function resolveIconGlyphColor(elementData, theme, slot = 1) {
+export function resolveIconGlyphColor(elementData, theme) {
   const s = mergeIconElement(elementData);
   const raw = resolveThemeOrHexColor(s.iconColor, theme);
   const op = numOr(s.iconOpacity, ICON_ELEMENT_DEFAULTS.iconOpacity);

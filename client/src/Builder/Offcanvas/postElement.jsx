@@ -23,46 +23,56 @@ const postPanelPerfEnabled =
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).get("postPerf") === "1";
 
-const Box = ({ component: Component = "div", sx: _sx, ...props }) => (
-  <Component {...props} />
-);
+const Box = ({ component: Component = "div", sx, ...props }) => {
+  const Element = Component;
+  void sx;
+  return <Element {...props} />;
+};
 
 const ButtonGroup = ({
   children,
-  sx: _sx,
-  fullWidth: _fullWidth,
-  variant: _variant,
+  sx,
+  fullWidth,
+  variant,
   ...props
-}) => (
-  <div
-    {...props}
-    className={`flex h-[34px] w-full overflow-hidden rounded-md ${props.className || ""}`}
-    style={{
-      border: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)",
-      ...props.style,
-    }}
-  >
-    {children}
-  </div>
-);
+}) => {
+  void sx;
+  void fullWidth;
+  void variant;
+  return (
+    <div
+      {...props}
+      className={`flex h-[34px] w-full overflow-hidden rounded-md ${props.className || ""}`}
+      style={{
+        border: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)",
+        ...props.style,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
 
-const Button = ({ children, sx, color: _color, ...props }) => (
-  <button
-    type="button"
-    {...props}
-    className={`inline-flex h-[34px] min-w-0 flex-1 items-center justify-center border-0 border-r px-1 text-[11px] font-normal leading-tight last:border-r-0 hover:opacity-90 ${
-      props.className || ""
-    }`}
-    style={{
-      backgroundColor: sx?.backgroundColor,
-      color: sx?.color,
-      borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)",
-      ...props.style,
-    }}
-  >
-    {children}
-  </button>
-);
+const Button = ({ children, sx, color, ...props }) => {
+  void color;
+  return (
+    <button
+      type="button"
+      {...props}
+      className={`inline-flex h-[34px] min-w-0 flex-1 items-center justify-center border-0 border-r px-1 text-[11px] font-normal leading-tight last:border-r-0 hover:opacity-90 ${
+        props.className || ""
+      }`}
+      style={{
+        backgroundColor: sx?.backgroundColor,
+        color: sx?.color,
+        borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)",
+        ...props.style,
+      }}
+    >
+      {children}
+    </button>
+  );
+};
 
 const PostPanelSwitch = ({
   checked,
@@ -243,6 +253,9 @@ const PostElementOffcanvas = ({
       null
   );
   const mountBreakdownLoggedRef = useRef(false);
+  const initialNestedElementCountRef = useRef(
+    Array.isArray(draft?.postElements) ? draft.postElements.length : 0
+  );
 
   useEffect(() => {
     setDraft(mergePostElement(element));
@@ -319,9 +332,7 @@ const PostElementOffcanvas = ({
             : null,
           panelRenderToCommitMs:
             Math.round((now - initialRenderStartedAtRef.current) * 100) / 100,
-          nestedElementCount: Array.isArray(draft?.postElements)
-            ? draft.postElements.length
-            : 0,
+          nestedElementCount: initialNestedElementCountRef.current,
         });
       }
     }
@@ -688,19 +699,22 @@ const PostElementOffcanvas = ({
                   <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <ButtonGroup variant="outlined" fullWidth sx={chipRootSx}>
-                  {ALIGN_OPTIONS.map(({ value, label, Icon }) => (
-                    <Button
-                      key={value}
-                      color="inherit"
-                      title={label}
-                      sx={chipBtnSx(draft.postAlign === value, textColor)}
-                      onClick={() => patch({ postAlign: value })}
-                    >
-                      <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                        <Icon size={14} strokeWidth={2.8} />
-                      </Box>
-                    </Button>
-                  ))}
+                  {ALIGN_OPTIONS.map(({ value, label, Icon }) => {
+                    void Icon;
+                    return (
+                      <Button
+                        key={value}
+                        color="inherit"
+                        title={label}
+                        sx={chipBtnSx(draft.postAlign === value, textColor)}
+                        onClick={() => patch({ postAlign: value })}
+                      >
+                        <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                          <Icon size={14} strokeWidth={2.8} />
+                        </Box>
+                      </Button>
+                    );
+                  })}
                 </ButtonGroup>
               </li>
             </>

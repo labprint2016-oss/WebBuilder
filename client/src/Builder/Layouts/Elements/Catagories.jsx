@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { setColor, setFont } from "../../../../function";
 import {
   DndContext,
@@ -15,7 +15,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { mergeCatagoriesElement } from "./catagoriesElementConfig";
-import { isButtonFullWidthEnabled } from "./buttonElementConfig";
 import { usePanelPreview } from "../../panelPreviewStore";
 
 const catagoriesButtonStripScrollMemory = new Map();
@@ -330,8 +329,8 @@ const Catagories = ({
   }, [scrollMemoryKey, items.length]);
 
   useEffect(() => {
+    const node = buttonStripRef.current;
     return () => {
-      const node = buttonStripRef.current;
       if (!node) return;
       catagoriesButtonStripScrollMemory.set(scrollMemoryKey, node.scrollLeft);
     };
@@ -940,7 +939,6 @@ const Catagories = ({
                                                         ["btn", "btnG", "icon"].includes(
                                                           String(el?.type || "")
                                                         );
-                                                      const isDivider = String(el?.type || "") === "divider";
                                                       const imageBorderRadiusRaw = Number(
                                                         el?.borderRadius
                                                       );
@@ -1256,6 +1254,9 @@ const Catagories = ({
                                                         isSelectedCounterInLayoutMode ||
                                                         isSelectedHeadingInLayoutMode ||
                                                         isSelectedDividerInLayoutMode;
+                                                      const isDivider =
+                                                        String(el?.type || "") ===
+                                                        "divider";
                                                       const imageBorderRadiusRaw = Number(
                                                         el?.borderRadius
                                                       );

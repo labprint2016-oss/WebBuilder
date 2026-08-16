@@ -168,16 +168,20 @@ const Carousel = ({
 
   /** ห้ามสร้าง object ใหม่ทุก render — parent (เช่น Column mouseleave → setHover) re-render แล้ว Embla จะ reset ไปสไลด์แรก */
   const emblaOptions = useMemo(
-    () => ({
-      align: "start",
-      loop: useLoop,
-      startIndex: persistedStartIndex,
-      /** trimSnaps ทำให้ snap สุดท้องชิดแล้ว flex gap ระหว่างสไลด์ที่เห็นหายไป — ปิดเพื่อคงระยะห่าง */
-      containScroll: false,
-      slidesToScroll: slidesToScrollGroup,
-      /** แคนวาส builder: ปิดลากสไลด์ — ไม่งั้น drag handler แย่ง pointer ทำให้ดับเบิลคลิกแก้รูป/ข้อความใช้ได้แค่หน้าแรก */
-      watchDrag: !isBuilderCanvas,
-    }),
+    () => {
+      void slides.length;
+      void pv;
+      return {
+        align: "start",
+        loop: useLoop,
+        startIndex: persistedStartIndex,
+        /** trimSnaps ทำให้ snap สุดท้องชิดแล้ว flex gap ระหว่างสไลด์ที่เห็นหายไป — ปิดเพื่อคงระยะห่าง */
+        containScroll: false,
+        slidesToScroll: slidesToScrollGroup,
+        /** แคนวาส builder: ปิดลากสไลด์ — ไม่งั้น drag handler แย่ง pointer ทำให้ดับเบิลคลิกแก้รูป/ข้อความใช้ได้แค่หน้าแรก */
+        watchDrag: !isBuilderCanvas,
+      };
+    },
     [
       slides.length,
       pv,
