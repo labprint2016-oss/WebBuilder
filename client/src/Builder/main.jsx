@@ -165,6 +165,7 @@ import TableElementOffcanvas from "./Offcanvas/tableElement";
 import BetweenElementOffcanvas from "./Offcanvas/betweenElement";
 import ImageElementOffcanvas from "./Offcanvas/imageElement";
 import HeadingElementOffcanvas from "./Offcanvas/headingElement";
+import ButtonElementOffcanvas from "./Offcanvas/buttonElement";
 import BuilderPerformanceMonitor from "./performance/BuilderPerformanceMonitor";
 import {
   beginBuilderPerformanceTransaction,
@@ -178,7 +179,6 @@ const Content = lazy(() => import("./content"));
 const PageSettingsPanel = lazy(() => import("./pageSettingsPanel"));
 
 const HeaderOffcanvas = lazy(() => import("./Offcanvas/header"));
-const ButtonElementOffcanvas = lazy(() => import("./Offcanvas/buttonElement"));
 const IconElementOffcanvas = lazy(() => import("./Offcanvas/iconElement"));
 const loadDataSliderElementOffcanvas = () =>
   import("./Offcanvas/dataSliderElement");
@@ -632,6 +632,7 @@ const Builder = ()=>{
     if (isPreviewRoute || typeof window === "undefined") return undefined;
     const preload = () => {
       loadDataSliderElementOffcanvas().catch(() => {});
+      import("./Offcanvas/iconElement").catch(() => {});
     };
     if (typeof window.requestIdleCallback === "function") {
       const idleId = window.requestIdleCallback(preload, { timeout: 1500 });
@@ -734,14 +735,12 @@ const Builder = ()=>{
     const setSelectedMenuId = useBuilderContextStore(
       (state) => state.setBuilderSection
     );
-    const canvasBuilderMode = useBuilderContextStore(
-      (state) => state.builderMode
-    );
     const setBuilderContextMode = useBuilderContextStore(
       (state) => state.setBuilderMode
     );
-    const builderModeRef = useRef(canvasBuilderMode);
-    builderModeRef.current = canvasBuilderMode;
+    const builderModeRef = useRef(
+      useBuilderContextStore.getState().builderMode
+    );
     const builderModePerformanceTransactionRef = useRef(null);
     const changeBuilderMode = useCallback((nextMode) => {
       if (!nextMode || nextMode === builderModeRef.current) return;
@@ -759,7 +758,7 @@ const Builder = ()=>{
             label: `เปลี่ยน Builder Mode / ${builderModeRef.current} → ${nextMode}`,
             scope: nextMode,
           },
-          { trackFrames: true }
+          { trackFrames: true, skipInitialFrameGap: true }
         );
       if (
         new URLSearchParams(window.location.search).get("modePerf") === "1"
@@ -774,9 +773,7 @@ const Builder = ()=>{
         };
       }
       builderModeRef.current = nextMode;
-      startTransition(() => {
-        setBuilderContextMode(nextMode);
-      });
+      setBuilderContextMode(nextMode);
     }, [setBuilderContextMode]);
     const recordBuilderModeCanvasRender = useCallback(
       (_id, _phase, actualDuration) => {
@@ -789,41 +786,45 @@ const Builder = ()=>{
       []
     );
     useLayoutEffect(() => {
-      const perf = window.__builderModePerf;
-      if (!perf || perf.to !== canvasBuilderMode) return;
-      perf.stateCommitMs = performance.now() - perf.startedAt;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (window.__builderModePerf !== perf) return;
-          console.info("[Builder Mode Perf]", {
-            from: perf.from,
-            to: perf.to,
-            updateToPaintMs: Number(
-              (performance.now() - perf.startedAt).toFixed(1)
-            ),
-            stateCommitMs: Number(perf.stateCommitMs.toFixed(1)),
-            headerCommitMs:
-              perf.headerCommitMs == null
-                ? null
-                : Number(perf.headerCommitMs.toFixed(1)),
-            canvasProfilerCommits: perf.canvasCommits,
-            canvasProfilerActualMs: Number(perf.canvasActualMs.toFixed(1)),
-            canvasProfilerMaxMs: Number(perf.canvasMaxMs.toFixed(1)),
+      let previousMode = useBuilderContextStore.getState().builderMode;
+      return useBuilderContextStore.subscribe((state) => {
+        if (state.builderMode === previousMode) return;
+        previousMode = state.builderMode;
+        const perf = window.__builderModePerf;
+        if (perf && perf.to === state.builderMode) {
+          perf.stateCommitMs = performance.now() - perf.startedAt;
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (window.__builderModePerf !== perf) return;
+              console.info("[Builder Mode Perf]", {
+                from: perf.from,
+                to: perf.to,
+                updateToPaintMs: Number(
+                  (performance.now() - perf.startedAt).toFixed(1)
+                ),
+                stateCommitMs: Number(perf.stateCommitMs.toFixed(1)),
+                headerCommitMs:
+                  perf.headerCommitMs == null
+                    ? null
+                    : Number(perf.headerCommitMs.toFixed(1)),
+                canvasProfilerCommits: perf.canvasCommits,
+                canvasProfilerActualMs: Number(perf.canvasActualMs.toFixed(1)),
+                canvasProfilerMaxMs: Number(perf.canvasMaxMs.toFixed(1)),
+              });
+              window.__builderModePerf = null;
+            });
           });
-          window.__builderModePerf = null;
-        });
+        }
+        const transactionId = builderModePerformanceTransactionRef.current;
+        if (transactionId == null) return;
+        builderModePerformanceTransactionRef.current = null;
+        finishBuilderPerformanceTransactionAfterPaint(
+          transactionId,
+          {},
+          { reason: "mode-painted" }
+        );
       });
-    }, [canvasBuilderMode]);
-    useLayoutEffect(() => {
-      const transactionId = builderModePerformanceTransactionRef.current;
-      if (transactionId == null) return;
-      builderModePerformanceTransactionRef.current = null;
-      finishBuilderPerformanceTransactionAfterPaint(
-        transactionId,
-        {},
-        { reason: "mode-painted" }
-      );
-    }, [canvasBuilderMode]);
+    }, []);
     // Payload ชั่วคราวระหว่างลากจาก palette ไม่ควร trigger render Builder ทั้งหน้า
     const dragElementRef = useRef(null);
     const darkMode = useBuilderContextStore((state) => state.colorMode);
@@ -1010,12 +1011,11 @@ const Builder = ()=>{
         pageName: activePageMetadata?.pageName || page?.pageName,
         device,
         colorMode: darkMode,
-        builderMode: canvasBuilderMode,
+        builderMode: useBuilderContextStore.getState().builderMode,
       });
     }, [
       activeBuilderPageId,
       activePageMetadata?.pageName,
-      canvasBuilderMode,
       darkMode,
       defaultBuilderPageId,
       device,
@@ -1677,12 +1677,18 @@ const Builder = ()=>{
     }, [setIsPageSettingsPanelOpen]);
 
     useEffect(() => {
-      if (canvasBuilderMode !== "Editor Mode") return;
-      if (offcanvas !== "Image Hover" && offcanvas !== "Overlay") return;
-      setOffcanvas(null);
-      setElementData(null);
-      elementFunction.current = null;
-    }, [canvasBuilderMode, offcanvas, setElementData, setOffcanvas]);
+      let previousMode = useBuilderContextStore.getState().builderMode;
+      return useBuilderContextStore.subscribe((state) => {
+        const changed = state.builderMode !== previousMode;
+        previousMode = state.builderMode;
+        if (!changed || state.builderMode !== "Editor Mode") return;
+        const panel = offcanvasRef.current;
+        if (panel !== "Image Hover" && panel !== "Overlay") return;
+        setOffcanvas(null);
+        setElementData(null);
+        elementFunction.current = null;
+      });
+    }, [setElementData, setOffcanvas]);
 
     /** แผง Section ไม่ sync จาก layouts อัตโนมัติ — หลังโคลนคอลัมน์ latestColID ใน layout เดินไปข้างหน้า ต้องดึงมาไม่งั้นบันทึก Section จะเขียนทับด้วยค่าเก่าและ id คอลัมน์ซ้ำ */
     useEffect(() => {
@@ -6214,7 +6220,13 @@ const handleNavigationPerformanceEvent = useCallback((event) => {
 }, []);
 
 const handleBuilderUiPerformanceEvent = useCallback((event) => {
-  if (event?.target?.closest?.(".dash-panel")) return;
+  if (
+    event?.target?.closest?.(
+      ".dash-panel, [data-builder-canvas='true'], [data-drop='ELEMENT'], [data-text-editor-modal='true'], [data-builder-performance-owned='true']"
+    )
+  ) {
+    return;
+  }
   recordBuilderPanelControlEvent(event, {
     panelType: "Builder UI",
     elementType: "Builder",
@@ -6338,7 +6350,6 @@ useEffect(() => {
                       isDark={darkMode}
                       menus={menus}
                       setBuilderMode={changeBuilderMode}
-                      builderMode={canvasBuilderMode}
                       deviceType={device}
                       setDevice={setDevice}
                       pageName={activePageMetadata?.pageName || page.pageName}
@@ -6680,7 +6691,6 @@ useEffect(() => {
                             onRender={recordBuilderModeCanvasRender}
                           >
                             <Content
-                              builderMode={canvasBuilderMode}
                               handleDropElement={handleDropElement}
                               device={device}
                               openOffcavanas={openOffcavanas}
@@ -6831,7 +6841,6 @@ useEffect(() => {
   className="
     dash-panel flex flex-col min-h-0 h-full max-h-full overflow-hidden
     border-r
-    transition-[width,transform,opacity] duration-300 ease-in-out
   "
   style={{
     ...dashboardChromeCssVars,
@@ -6841,11 +6850,12 @@ useEffect(() => {
     bottom: isAbsoluteOffcanvas ? 0 : undefined,
     zIndex: offcanvasZIndex,
     width: isAbsoluteOffcanvas
-      ? effectiveOffcanvasWidth
+      ? offcanvasWidth
       : offcanvas
         ? offcanvasWidth
         : 0,
-    transform: isAbsoluteOffcanvas ? "translateX(0)" : "translateX(0)",
+    transform: "translateX(0)",
+    visibility: offcanvas ? "visible" : "hidden",
     pointerEvents: offcanvas ? "auto" : "none",
     height: shouldOffsetMenuChromeOffcanvas
       ? `calc(100% - ${BUILDER_HEADER_HEIGHT}px)`

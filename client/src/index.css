@@ -5,8 +5,12 @@
 /* แถบความคืบหน้า range ที่ใช้ --fill / --track / --thumb */
 @layer components {
   .theme-range-fill-track {
+    -webkit-appearance: none;
+    appearance: none;
+    accent-color: transparent;
     background-color: var(--track, #e4e4e7);
     background-repeat: no-repeat;
+    background-position: left center;
     background-size: var(--pos, 0%) 100%;
     background-image: linear-gradient(
       to right,
@@ -22,14 +26,42 @@
       var(--fill, #29b7a5)
     );
   }
+  /* WebKit ถ้าไม่รีเซ็ตแทร็ก จะวาดแถบพื้นเมืองสูงเท่า thumb ด้านซ้าย */
+  .theme-range-fill-track::-webkit-slider-runnable-track {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+  }
   .theme-range-fill-track::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -4px;
+    border: 0;
+    border-radius: 9999px;
     background: var(--thumb, #0f172a);
     background-color: var(--thumb, #0f172a);
   }
+  .theme-range-fill-track::-moz-range-track {
+    height: 8px;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+  }
+  .theme-range-fill-track::-moz-range-progress {
+    background: transparent;
+  }
   .theme-range-fill-track::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: 0;
+    border-radius: 9999px;
     background: var(--thumb, #0f172a);
     background-color: var(--thumb, #0f172a);
-    border: 0;
   }
 }
 
@@ -299,9 +331,19 @@ p {
 .dash-panel .theme-range-fill-track {
   background-color: var(--dash-panel-slider-track, #e4e4e7) !important;
 }
+.dash-panel .theme-range-fill-track::-webkit-slider-runnable-track {
+  height: 8px;
+  border: 0;
+  background: transparent;
+}
 .dash-panel .theme-range-fill-track::-webkit-slider-thumb {
+  margin-top: -4px;
   background: var(--dash-panel-slider-thumb, #0f172a) !important;
   background-color: var(--dash-panel-slider-thumb, #0f172a) !important;
+}
+.dash-panel .theme-range-fill-track::-moz-range-track,
+.dash-panel .theme-range-fill-track::-moz-range-progress {
+  background: transparent;
 }
 .dash-panel .theme-range-fill-track::-moz-range-thumb {
   background: var(--dash-panel-slider-thumb, #0f172a) !important;
@@ -450,5 +492,29 @@ p {
 .split-section-half:has([data-drop="BTN"]) {
   z-index: 30 !important;
   overflow: visible !important;
+}
+
+/* เส้นประด้านบนของแถวแรก — อัปเดตจาก DOM ไม่พึ่งแคช React */
+[data-builder-canvas="true"].is-layout-desktop
+  > .container-area.is-first-canvas-section
+  [data-section-visual] {
+  border-top-width: 1px !important;
+}
+[data-builder-canvas="true"].is-layout-desktop
+  > .container-area:not(.is-first-canvas-section)
+  [data-section-visual] {
+  border-top-width: 0 !important;
+}
+
+/* สลับ Layout ↔ Editor ไม่สร้าง Section ใหม่ — ซ่อนเส้นประ/ป้าย/ปุ่มด้วยคลาสที่ canvas */
+[data-builder-canvas="true"]:not(.is-layout-desktop) [data-section-visual],
+[data-builder-canvas="true"]:not(.is-layout-desktop) [data-layout-outline] {
+  border-color: transparent !important;
+  border-width: 0 !important;
+}
+[data-builder-canvas="true"]:not(.is-layout-desktop) [data-layout-badge],
+[data-builder-canvas="true"]:not(.is-layout-desktop) [data-layout-controls],
+[data-builder-canvas="true"]:not(.is-layout-desktop) [data-section-overlap-guide] {
+  display: none !important;
 }
 

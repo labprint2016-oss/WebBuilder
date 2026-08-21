@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, ButtonGroup, Typography } from "@mui/material";
 import { AlignCenter, AlignLeft, AlignRight, Check, Sparkles } from "lucide-react";
 import lodash from "lodash";
@@ -8,6 +8,8 @@ import {
   ICON_ELEMENT_DEFAULTS,
   ICON_STANDALONE_CONTAINER_MAX,
   ICON_STANDALONE_CONTAINER_MIN,
+  applyIconCanvasPreview,
+  clearIconCanvasPreview,
   mergeIconElement,
   normalizeIconBorderStyle,
   normalizeIconBorderPosition,
@@ -20,9 +22,13 @@ import {
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import MainLabel from "../HTML/MainLabel";
-import Range from "../HTML/Range";
+import Range, { applyRangeFillPos } from "../HTML/Range";
 import SelectLine from "../HTML/SelectLine";
 import { panelGroupButtonSx } from "../panelControlSx";
+import {
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
 
 const LINK_TARGET_OPTIONS = [
   { value: "_self", label: "ลิงค์หน้าเดิม" },
@@ -79,6 +85,14 @@ const ICON_COLOR_MODES_ALL = [
   ICON_COLOR_MODE_DIVIDER,
 ];
 
+function colorSwatchKey(value) {
+  if (typeof value === "string") return value.toLowerCase();
+  if (value && typeof value === "object") {
+    return `${value.type}:${value.index}`;
+  }
+  return String(value ?? "");
+}
+
 const OPTION_CHIP_RADIUS = "0.375rem";
 
 const groupButtonSx = panelGroupButtonSx;
@@ -114,32 +128,6 @@ const groupRootSx = {
   },
 };
 
-const THEME_RANGE_INPUT_CLASS = `
-                    w-full cursor-pointer appearance-none h-2 rounded-full
-                    bg-zinc-200
-                    dark:bg-zinc-700
-
-                    theme-range-fill-track
-
-                    [&::-webkit-slider-runnable-track]:border-0
-                    [&::-moz-range-track]:border-0
-
-                    [&::-webkit-slider-thumb]:cursor-pointer
-                    [&::-webkit-slider-thumb]:appearance-none
-                    [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4
-                    [&::-webkit-slider-thumb]:rounded-full
-                    [&::-webkit-slider-thumb]:bg-emerald-300
-                    dark:[&::-webkit-slider-thumb]:bg-emerald-300
-                    [&::-webkit-slider-thumb]:bg-slate-900
-                    [&::-webkit-slider-thumb]:border-0
-
-                    [&::-moz-range-thumb]:cursor-pointer
-                    [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4
-                    [&::-moz-range-thumb]:rounded-full
-                    [&::-moz-range-thumb]:bg-emerald-300
-                    [&::-moz-range-thumb]:border-0
-                  `;
-
 /** สีเทาอ่อนในแถบพื้นฐานของแผง iCons (ลำดับ: #000 → #6a6a6a → นี้ → #fff) */
 const ICON_PANEL_BASIC_LIGHT_GRAY_HEX = "#d8d8d8";
 
@@ -156,6 +144,10 @@ const IconElementOffcanvas = ({
   const pendingLayoutRef = useRef(null);
   const elementRef = useRef(element);
   elementRef.current = element;
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+  const swatchRootRef = useRef(null);
+  const selectedSwatchKeyRef = useRef("");
 
   const scheduleLayoutSync = useCallback(
     (next) => {
@@ -181,10 +173,22 @@ const IconElementOffcanvas = ({
   );
 
   const [data, setData] = useState(element);
+  const dataRef = useRef(element);
+
+  useLayoutEffect(() => {
+    if (!element?.id) return;
+    markBuilderPanelMounted("Icon", element.id);
+  }, [element?.id]);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
-  const [iconColorMode, setIconColorMode] = useState(
-    ICON_COLOR_MODES_BASE[0].value
+  const iconColorModeRef = useRef(
+    element?.type === "list" && element?.listIconsElement === true
+      ? "text"
+      : ICON_COLOR_MODES_BASE[0].value
   );
+  const colorModeLabelRef = useRef(null);
+  const opacitySliderRef = useRef(null);
+  const colorPickerRootRef = useRef(null);
+  const colorModesRef = useRef(ICON_COLOR_MODES_BASE);
   const isListItemIcon = data?.type === "list";
   const isListIconsElement =
     isListItemIcon && data?.listIconsElement === true;
@@ -211,35 +215,105 @@ const IconElementOffcanvas = ({
   useEffect(() => {
     if (!element?.id) return;
     setData((prev) => {
-      if (!prev || prev.id !== element.id) return element;
+      if (!prev || prev.id !== element.id) {
+        dataRef.current = element;
+        return element;
+      }
       return prev;
     });
   }, [element]);
 
   useEffect(() => {
     setIconPickerOpen(false);
-    /* List iCons ดับเบิลคลิกไอคอน — เริ่มที่โหมดสีไอคอน (ไม่ใช่พื้นหลัง) เพื่อให้สวอตช์แก้ iconColor */
-    const openListIconsItemGlyph =
-      element?.type === "list" && element?.listIconsElement === true;
-    setIconColorMode(
-      openListIconsItemGlyph ? "text" : ICON_COLOR_MODES_BASE[0].value
-    );
-  }, [element?.id, element?.type, element?.listIconsElement]);
+  }, [element?.id]);
+
+  const rememberLatest = (next) => {
+    dataRef.current = next;
+    return next;
+  };
+
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "icon",
+    targetIds: [element?.id],
+    data,
+    setData,
+    onCommit: (latest) => {
+      const id = elementRef.current?.id ?? latest?.id;
+      dataRef.current = latest;
+      setData(latest);
+      scheduleLayoutSync(latest);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          clearIconCanvasPreview(id);
+        });
+      });
+    },
+  });
 
   const patch = (partial) => {
-    setData((prev) => {
-      const next = { ...prev, ...partial };
-      scheduleLayoutSync(next);
-      return next;
+    const next = rememberLatest(
+      updateSlider((prev) => ({ ...prev, ...partial }), {
+        publish: false,
+        trackPerf: false,
+      })
+    );
+    scheduleLayoutSync(next);
+  };
+
+  const patchIcon = (partial) => {
+    const next = rememberLatest(
+      updateSlider((prev) => ({ ...prev, ...partial }), {
+        setData: false,
+        publish: false,
+        trackPerf: false,
+      })
+    );
+    scheduleLayoutSync(next);
+    return next;
+  };
+
+  const patchStyle = (partial) => {
+    const next = rememberLatest(
+      updateSlider((prev) => ({ ...prev, ...partial }), {
+        setData: false,
+        publish: false,
+        trackPerf: false,
+      })
+    );
+    const id = elementRef.current?.id ?? data?.id;
+    applyIconCanvasPreview(id, next, themeRef.current);
+    scheduleLayoutSync(next);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        clearIconCanvasPreview(id);
+      });
     });
+    return next;
+  };
+
+  const patchSlider = (partial) => {
+    const next = rememberLatest(
+      updateSlider((prev) => ({ ...prev, ...partial }), {
+        setData: false,
+        publish: false,
+      })
+    );
+    applyIconCanvasPreview(
+      elementRef.current?.id ?? data?.id,
+      next,
+      themeRef.current
+    );
+    return next;
   };
 
   const handleLinkPatch = (p) => {
-    setData((prev) => {
-      const next = { ...prev, ...p };
-      scheduleLayoutSync(next);
-      return next;
-    });
+    const next = rememberLatest(
+      updateSlider((prev) => ({ ...prev, ...p }), {
+        publish: false,
+        trackPerf: false,
+      })
+    );
+    scheduleLayoutSync(next);
   };
 
   const merged = useMemo(() => mergeIconElement(data), [data]);
@@ -258,16 +332,6 @@ const IconElementOffcanvas = ({
     const basic = THEME_PANEL_BASIC_COLOR_SWATCHES;
     return [...mc, ...tc, ...oc, ...basic];
   }, [theme]);
-
-  const bgOpacityRaw = Number(data?.backgroundOpacity);
-  const bgOpacity = Number.isFinite(bgOpacityRaw)
-    ? Math.max(0, Math.min(255, bgOpacityRaw))
-    : ICON_ELEMENT_DEFAULTS.backgroundOpacity;
-
-  const iconOpacityRaw = Number(data?.iconOpacity);
-  const iconOpacity = Number.isFinite(iconOpacityRaw)
-    ? Math.max(0, Math.min(255, iconOpacityRaw))
-    : ICON_ELEMENT_DEFAULTS.iconOpacity;
 
   const chipSelected = (active, chip) => {
     if (typeof active === "string" && typeof chip === "string") {
@@ -313,70 +377,117 @@ const IconElementOffcanvas = ({
           ? ICON_COLOR_MODES_BASE.concat([ICON_COLOR_MODE_DIVIDER])
           : ICON_COLOR_MODES_BASE
       );
+  colorModesRef.current = iconColorModesEffective;
   const iconColorModeLabel =
-    iconColorModesEffective.find((o) => o.value === iconColorMode)?.label ?? "";
+    iconColorModesEffective.find((o) => o.value === iconColorModeRef.current)
+      ?.label ?? "";
 
-  const cycleIconColorMode = (delta) => {
-    const list = iconColorModesEffective;
-    const idx = list.findIndex((o) => o.value === iconColorMode);
-    const base = idx === -1 ? 0 : idx;
-    const next = (base + delta + list.length) % list.length;
-    setIconColorMode(list[next].value);
+  const resolveColorMode = (mode, d) => {
+    if (mode === "text") {
+      return {
+        color: d?.iconColor ?? ICON_ELEMENT_DEFAULTS.iconColor,
+        opacity: Number.isFinite(Number(d?.iconOpacity))
+          ? Math.max(0, Math.min(255, Number(d.iconOpacity)))
+          : ICON_ELEMENT_DEFAULTS.iconOpacity,
+      };
+    }
+    if (mode === "divider") {
+      return {
+        color: d?.iconRowDividerColor ?? ICON_ELEMENT_DEFAULTS.iconRowDividerColor,
+        opacity: Number.isFinite(Number(d?.iconRowDividerOpacity))
+          ? Math.max(0, Math.min(255, Number(d.iconRowDividerOpacity)))
+          : ICON_ELEMENT_DEFAULTS.iconRowDividerOpacity,
+      };
+    }
+    if (mode === "border") {
+      return {
+        color: d?.borderColor ?? ICON_ELEMENT_DEFAULTS.borderColor,
+        opacity: Number.isFinite(Number(d?.borderOpacity))
+          ? Math.max(0, Math.min(255, Number(d.borderOpacity)))
+          : ICON_ELEMENT_DEFAULTS.borderOpacity,
+      };
+    }
+    return {
+      color: d?.backgroundColor ?? ICON_ELEMENT_DEFAULTS.backgroundColor,
+      opacity: Number.isFinite(Number(d?.backgroundOpacity))
+        ? Math.max(0, Math.min(255, Number(d.backgroundOpacity)))
+        : ICON_ELEMENT_DEFAULTS.backgroundOpacity,
+    };
   };
 
-  useEffect(() => {
-    if (!borderEnabled && !allowFillModeWithoutBorder && iconColorMode !== "text") {
-      setIconColorMode("text");
+  const applySwatchSelection = (value) => {
+    const nextKey = colorSwatchKey(value);
+    selectedSwatchKeyRef.current = nextKey;
+    swatchRootRef.current?.querySelectorAll("[data-swatch-key]").forEach((btn) => {
+      const check = btn.querySelector("[data-swatch-check]");
+      if (check) check.hidden = btn.getAttribute("data-swatch-key") !== nextKey;
+    });
+  };
+
+  const paintIconColorMode = (mode) => {
+    iconColorModeRef.current = mode;
+    const label =
+      colorModesRef.current.find((o) => o.value === mode)?.label ?? "";
+    if (colorModeLabelRef.current) colorModeLabelRef.current.textContent = label;
+    colorPickerRootRef.current
+      ?.querySelectorAll("[data-icon-border-only]")
+      .forEach((node) => {
+        node.hidden = mode !== "border";
+      });
+    const resolved = resolveColorMode(mode, dataRef.current);
+    if (opacitySliderRef.current) {
+      opacitySliderRef.current.value = String(resolved.opacity);
+      applyRangeFillPos(opacitySliderRef.current, 0, 255);
+    }
+    applySwatchSelection(resolved.color);
+  };
+
+  const cycleIconColorMode = (delta) => {
+    const list = colorModesRef.current;
+    const idx = list.findIndex((o) => o.value === iconColorModeRef.current);
+    const base = idx === -1 ? 0 : idx;
+    paintIconColorMode(list[(base + delta + list.length) % list.length].value);
+  };
+
+  useLayoutEffect(() => {
+    const openListIconsItemGlyph =
+      element?.type === "list" && element?.listIconsElement === true;
+    paintIconColorMode(
+      openListIconsItemGlyph ? "text" : ICON_COLOR_MODES_BASE[0].value
+    );
+    // เปิดแผงใหม่เท่านั้น — อย่า paint ซ้ำทุกครั้งที่ data เปลี่ยน
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [element?.id, element?.type, element?.listIconsElement]);
+
+  useLayoutEffect(() => {
+    const mode = iconColorModeRef.current;
+    if (!borderEnabled && !allowFillModeWithoutBorder && mode !== "text") {
+      paintIconColorMode("text");
       return;
     }
-    if ((!allowBorderColorMode || isListItemIcon) && iconColorMode === "border") {
-      setIconColorMode(ICON_COLOR_MODES_BASE[0].value);
+    if ((!allowBorderColorMode || isListItemIcon) && mode === "border") {
+      paintIconColorMode(ICON_COLOR_MODES_BASE[0].value);
+      return;
     }
     if (
-      iconColorMode === "divider" &&
+      mode === "divider" &&
       !(showIconRowGapControl && data?.iconRowDividerEnabled === true)
     ) {
-      setIconColorMode(ICON_COLOR_MODES_BASE[0].value);
+      paintIconColorMode(ICON_COLOR_MODES_BASE[0].value);
     }
   }, [
     allowBorderColorMode,
     allowFillModeWithoutBorder,
     borderEnabled,
     isListItemIcon,
-    iconColorMode,
     showIconRowGapControl,
     data?.iconRowDividerEnabled,
   ]);
 
-  const activeIconColorSwatch =
-    iconColorMode === "text"
-      ? data?.iconColor ?? ICON_ELEMENT_DEFAULTS.iconColor
-      : iconColorMode === "divider"
-        ? data?.iconRowDividerColor ?? ICON_ELEMENT_DEFAULTS.iconRowDividerColor
-      : iconColorMode === "border"
-        ? data?.borderColor ?? ICON_ELEMENT_DEFAULTS.borderColor
-        : data?.backgroundColor ?? ICON_ELEMENT_DEFAULTS.backgroundColor;
-
-  const borderOpacityRaw = Number(data?.borderOpacity);
-  const borderOpacity = Number.isFinite(borderOpacityRaw)
-    ? Math.max(0, Math.min(255, borderOpacityRaw))
-    : ICON_ELEMENT_DEFAULTS.borderOpacity;
-
-  const iconThemeOpacitySliderValue =
-    iconColorMode === "text"
-      ? iconOpacity
-      : iconColorMode === "divider"
-        ? Math.max(
-            0,
-            Math.min(
-              255,
-              Number(data?.iconRowDividerOpacity) ||
-                ICON_ELEMENT_DEFAULTS.iconRowDividerOpacity
-            )
-          )
-      : iconColorMode === "border"
-        ? borderOpacity
-        : bgOpacity;
+  const iconThemeOpacitySliderValue = resolveColorMode(
+    iconColorModeRef.current,
+    data
+  ).opacity;
 
   const borderWRaw = Number(data?.borderWidth);
   const borderWVal = Number.isFinite(borderWRaw)
@@ -438,10 +549,6 @@ const IconElementOffcanvas = ({
     Math.max(0, Number(merged.iconCornerRadius) || 12)
   );
   const cornerSliderPosPct = (cornerSliderValue / 48) * 100;
-
-  const themeRangeFillStyle = {
-    ["--fill"]: textColor || "#0d9488",
-  };
 
   return (
     <aside
@@ -695,24 +802,21 @@ const IconElementOffcanvas = ({
                   </div>
                   <div className="w-full dash-card rounded-md bg-white px-[0px] pb-[0px] pt-[2px] dark:bg-zinc-800">
                     <div className="px-[0px] pb-0">
-                      <input
-                        type="range"
+                      <Range
                         min={containerPanelMin}
                         max={containerPanelMax}
                         step={1}
                         value={containerSliderValue}
-                        onChange={(e) =>
-                          patch({
+                        pos={containerSliderPosPct}
+                        color={textColor}
+                        uncontrolled
+                        handleChange={(e) =>
+                          patchSlider({
                             containerSize:
                               Number(e.target.value) || containerDefault,
                           })
                         }
-                        className={THEME_RANGE_INPUT_CLASS}
-                        style={{
-                          ...themeRangeFillStyle,
-                          ["--pos"]: `${containerSliderPosPct}%`,
-                        }}
-                        aria-label="ความกว้างกรอบไอคอน"
+                        onCommit={(_, reason) => commitSlider(reason)}
                       />
                     </div>
                   </div>
@@ -729,21 +833,20 @@ const IconElementOffcanvas = ({
                   </div>
                   <div className="w-full dash-card rounded-md bg-white px-[0px] pb-[0px] pt-[0px] dark:bg-zinc-800">
                     <div className="px-[0px] pb-0">
-                      <input
-                        type="range"
+                      <Range
                         min={12}
                         max={96}
                         step={1}
                         value={iconSliderValue}
-                        onChange={(e) =>
-                          patch({ iconSize: Number(e.target.value) || 28 })
+                        pos={iconSliderPosPct}
+                        color={textColor}
+                        uncontrolled
+                        handleChange={(e) =>
+                          patchSlider({
+                            iconSize: Number(e.target.value) || 28,
+                          })
                         }
-                        className={THEME_RANGE_INPUT_CLASS}
-                        style={{
-                          ...themeRangeFillStyle,
-                          ["--pos"]: `${iconSliderPosPct}%`,
-                        }}
-                        aria-label="ขนาดไอคอน"
+                        onCommit={(_, reason) => commitSlider(reason)}
                       />
                     </div>
                   </div>
@@ -762,21 +865,20 @@ const IconElementOffcanvas = ({
                 </div>
                 <div className="w-full dash-card rounded-md bg-white px-[0px] pb-[0px] pt-[0px] dark:bg-zinc-800">
                   <div className="px-[0px] pb-0">
-                    <input
-                      type="range"
+                    <Range
                       min={12}
                       max={96}
                       step={1}
                       value={iconSliderValue}
-                      onChange={(e) =>
-                        patch({ iconSize: Number(e.target.value) || 28 })
+                      pos={iconSliderPosPct}
+                      color={textColor}
+                      uncontrolled
+                      handleChange={(e) =>
+                        patchSlider({
+                          iconSize: Number(e.target.value) || 28,
+                        })
                       }
-                      className={THEME_RANGE_INPUT_CLASS}
-                      style={{
-                        ...themeRangeFillStyle,
-                        ["--pos"]: `${iconSliderPosPct}%`,
-                      }}
-                      aria-label="ขนาดไอคอน"
+                      onCommit={(_, reason) => commitSlider(reason)}
                     />
                   </div>
                 </div>
@@ -809,10 +911,11 @@ const IconElementOffcanvas = ({
                 value={iconRowGap}
                 pos={(iconRowGap / 80) * 100}
                 color={textColor}
+                uncontrolled
                 handleChange={(e) =>
-                  patch({ iconRowGap: Number(e.target.value) || 0 })
+                  patchSlider({ iconRowGap: Number(e.target.value) || 0 })
                 }
-                className={THEME_RANGE_INPUT_CLASS}
+                onCommit={(_, reason) => commitSlider(reason)}
               />
             </div>
             {data?.iconRowDividerEnabled === true && (
@@ -864,21 +967,20 @@ const IconElementOffcanvas = ({
                   {merged.iconCornerRadius}
                 </span>
               </div>
-              <input
-                type="range"
+              <Range
                 min={0}
                 max={48}
                 step={1}
                 value={cornerSliderValue}
-                onChange={(e) =>
-                  patch({ iconCornerRadius: Number(e.target.value) || 0 })
+                pos={cornerSliderPosPct}
+                color={textColor}
+                uncontrolled
+                handleChange={(e) =>
+                  patchSlider({
+                    iconCornerRadius: Number(e.target.value) || 0,
+                  })
                 }
-                className={THEME_RANGE_INPUT_CLASS}
-                style={{
-                  ...themeRangeFillStyle,
-                  ["--pos"]: `${cornerSliderPosPct}%`,
-                }}
-                aria-label="มุมมนกรอบไอคอน"
+                onCommit={(_, reason) => commitSlider(reason)}
               />
             </li>
           )}
@@ -900,17 +1002,23 @@ const IconElementOffcanvas = ({
               </span>
               <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
+            <div ref={colorPickerRootRef}>
             {iconColorModesEffective.length > 1 ? (
               <div className="mb-1">
                 <SelectLine
                   prev={() => cycleIconColorMode(-1)}
                   next={() => cycleIconColorMode(1)}
                   value={iconColorModeLabel}
+                  valueRef={colorModeLabelRef}
                 />
               </div>
             ) : null}
-            {borderEnabled && iconColorMode === "border" && (
-              <div className="mb-2 mt-3 space-y-2">
+            {borderEnabled && (
+              <div
+                data-icon-border-only=""
+                hidden={iconColorModeRef.current !== "border"}
+                className="mb-2 mt-3 space-y-2"
+              >
                 <div className="mb-1 flex items-center gap-2">
                   <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                     ความหนากรอบ
@@ -1070,35 +1178,39 @@ const IconElementOffcanvas = ({
                 </ButtonGroup>
               </div>
             )}
-            <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+            <div
+              className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800"
+            >
               <div className="px-[5px] pb-2">
-                <input
-                  type="range"
+                <Range
                   min={0}
                   max={255}
                   step={1}
                   value={iconThemeOpacitySliderValue}
-                  onChange={(e) => {
+                  pos={(iconThemeOpacitySliderValue / 255) * 100}
+                  color={textColor}
+                  uncontrolled
+                  inputRef={opacitySliderRef}
+                  handleChange={(e) => {
                     const v = Number(e.target.value);
-                    patch(
-                      iconColorMode === "text"
+                    const mode = iconColorModeRef.current;
+                    patchSlider(
+                      mode === "text"
                         ? { iconOpacity: v }
-                        : iconColorMode === "divider"
+                        : mode === "divider"
                           ? { iconRowDividerOpacity: v }
-                        : iconColorMode === "border"
+                        : mode === "border"
                           ? { borderOpacity: v }
                           : { backgroundOpacity: v }
                     );
                   }}
-                  className={THEME_RANGE_INPUT_CLASS}
-                  style={{
-                    ...themeRangeFillStyle,
-                    ["--pos"]: `${(iconThemeOpacitySliderValue / 255) * 100}%`,
-                  }}
-                  aria-label="ความโปร่งแสงสี"
+                  onCommit={(_, reason) => commitSlider(reason)}
                 />
               </div>
-              <div className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]">
+              <div
+                ref={swatchRootRef}
+                className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]"
+              >
                 {allColors.map((color, i) => {
                   const bgColor =
                     typeof color === "string"
@@ -1106,9 +1218,7 @@ const IconElementOffcanvas = ({
                       : theme?.[color.type]?.[color.index];
                   if (bgColor == null) return null;
                   const value = color;
-                  const selected =
-                    chipSelected(activeIconColorSwatch, value) ||
-                    activeIconColorSwatch === value;
+                  const key = colorSwatchKey(value);
                   let margin = "";
                   if (i % 8 !== 0 && (i + 1) % 8 !== 0) {
                     margin += "mx-[65.75px] ";
@@ -1117,20 +1227,25 @@ const IconElementOffcanvas = ({
                     <div className={`${margin}`} key={i}>
                       <button
                         type="button"
+                        data-swatch-key={key}
                         className="flex size-[25px] items-center justify-center rounded-full border"
                         style={{ backgroundColor: bgColor }}
                         onClick={() => {
-                          if (iconColorMode === "text") {
-                            patch({ iconColor: value });
-                          } else if (iconColorMode === "divider") {
-                            patch({ iconRowDividerColor: value });
-                          } else if (iconColorMode === "border") {
-                            patch({ borderColor: value });
+                          applySwatchSelection(value);
+                          const mode = iconColorModeRef.current;
+                          if (mode === "text") {
+                            patchStyle({ iconColor: value });
+                          } else if (mode === "divider") {
+                            patchStyle({ iconRowDividerColor: value });
+                          } else if (mode === "border") {
+                            patchStyle({ borderColor: value });
                           } else {
-                            /* fill mode: auto-set opacity ถ้ายังเป็น 0 (transparent) */
-                            patch({
+                            const bgOpacityRaw = Number(
+                              dataRef.current?.backgroundOpacity
+                            );
+                            patchStyle({
                               backgroundColor: value,
-                              ...(merged.backgroundOpacity === 0
+                              ...(bgOpacityRaw === 0
                                 ? { backgroundOpacity: 255 }
                                 : {}),
                             });
@@ -1138,17 +1253,18 @@ const IconElementOffcanvas = ({
                         }}
                         aria-label={`เลือกสี ${bgColor}`}
                       >
-                        {selected && (
-                          <Check
-                            className={swatchSelectedCheckClassName(bgColor)}
-                            strokeWidth={4}
-                          />
-                        )}
+                        <Check
+                          data-swatch-check=""
+                          hidden={selectedSwatchKeyRef.current !== key}
+                          className={swatchSelectedCheckClassName(bgColor)}
+                          strokeWidth={4}
+                        />
                       </button>
                     </div>
                   );
                 })}
               </div>
+            </div>
             </div>
           </li>
 
@@ -1306,14 +1422,15 @@ const IconElementOffcanvas = ({
                       100
                     }
                     color={textColor}
+                    uncontrolled
                     handleChange={(e) =>
-                      patch(
+                      patchSlider(
                         isListItemIcon
                           ? { listMarginTop: Number(e.target.value) || 0 }
                           : { iconMarginTop: Number(e.target.value) || 0 }
                       )
                     }
-                    className={THEME_RANGE_INPUT_CLASS}
+                    onCommit={(_, reason) => commitSlider(reason)}
                   />
                 </div>
               </div>
@@ -1350,14 +1467,15 @@ const IconElementOffcanvas = ({
                       100
                     }
                     color={textColor}
+                    uncontrolled
                     handleChange={(e) =>
-                      patch(
+                      patchSlider(
                         isListItemIcon
                           ? { listMarginBottom: Number(e.target.value) || 0 }
                           : { iconMarginBottom: Number(e.target.value) || 0 }
                       )
                     }
-                    className={THEME_RANGE_INPUT_CLASS}
+                    onCommit={(_, reason) => commitSlider(reason)}
                   />
                 </div>
               </div>
@@ -1372,7 +1490,7 @@ const IconElementOffcanvas = ({
         icon={data?.faIcon}
         open={iconPickerOpen}
         onClose={() => setIconPickerOpen(false)}
-        handleChange={(ic) => patch({ faIcon: ic })}
+        handleChange={(ic) => patchIcon({ faIcon: ic })}
         darkColor={textColor || "#0d9488"}
         darkMode={darkMode}
       />

@@ -9,6 +9,9 @@ const NormalBtn = ({handleClick,btnClass,style,label=null,icon=null,})=>{
       onClick={handleClick}
       className={btnClass}
       style={style}
+      aria-label={
+        typeof label === "string" && label.trim() !== "" ? label : undefined
+      }
     >
        {icon && (
         <Icon className={iconClass} strokeWidth={strokeWidth}/>

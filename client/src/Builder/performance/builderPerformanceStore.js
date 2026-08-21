@@ -57,34 +57,104 @@ const roundMs = (value) =>
 
 const normalizeId = (value) => String(value ?? "").slice(0, 120);
 
+const STRUCTURAL_UNRELATED_IGNORE_KINDS = new Set([
+  "dnd-sidebar",
+  "dnd",
+  "canvas-clone",
+  "canvas-delete",
+  "canvas-reorder",
+  "canvas-column-split",
+  "canvas-resize",
+]);
+
+const shouldScoreUnrelatedRatio = (transaction) => {
+  const kind = transaction?.kind;
+  if (STRUCTURAL_UNRELATED_IGNORE_KINDS.has(kind)) return false;
+  const unrelated = Number(transaction?.metrics?.unrelatedRenderCount) || 0;
+  const target = Number(transaction?.metrics?.targetRenderCount) || 0;
+  return unrelated >= 3 && unrelated + target >= 6;
+};
+
+export const getUnrelatedMetricStatus = (transaction) => {
+  if (!shouldScoreUnrelatedRatio(transaction)) return "neutral";
+  const ratio = Number(transaction?.metrics?.unrelatedRenderRatio);
+  if (!Number.isFinite(ratio) || ratio <= 0) return "neutral";
+  if (ratio > 0.25) return "red";
+  if (ratio > 0.1) return "yellow";
+  return "green";
+};
+
+const LIFECYCLE_TRANSACTION_KINDS = new Set([
+  "page-load",
+  "page-switch",
+  "page-save",
+  "resource-load",
+  "resource-save",
+]);
+const ONE_SHOT_DURATION_KINDS = new Set([
+  "panel-open",
+  "panel-control",
+  "builder-control",
+  "header-control",
+  "navigation-control",
+  "text-editor-open",
+  "text-editor-save",
+  "canvas-selection",
+]);
+
+export const usesInteractionDuration = (kind) =>
+  !ONE_SHOT_DURATION_KINDS.has(kind) &&
+  !LIFECYCLE_TRANSACTION_KINDS.has(kind);
+
+export const getDisplayedDurationMs = (transaction) => {
+  const metrics = transaction?.metrics || {};
+  const kind = transaction?.kind;
+  if (LIFECYCLE_TRANSACTION_KINDS.has(kind)) {
+    return Number(metrics.lifecycleTotalMs) || 0;
+  }
+  const values = usesInteractionDuration(kind)
+    ? [
+        metrics.interactionToPaintMs,
+        metrics.openToPaintMs,
+        metrics.canvasMaxMs,
+        metrics.panelMaxMs,
+        metrics.renderMaxMs,
+        metrics.dropCommitMs,
+      ]
+    : [
+        metrics.canvasMaxMs,
+        metrics.panelMaxMs,
+        metrics.renderMaxMs,
+        metrics.dropCommitMs,
+      ];
+  return values.find((value) => Number(value) > 0) || 0;
+};
+
 const getMetricStatus = (transaction) => {
   const metrics = transaction?.metrics || {};
   if (metrics.failed) return "red";
-  const values = [
-    ["api", metrics.apiLatencyMs, 800, 2000],
-    ["lifecycle", metrics.lifecycleTotalMs, 1000, 2500],
-    ["interaction", metrics.interactionToPaintMs, 100, 200],
-    ["panel", metrics.openToPaintMs, 100, 200],
-    ["drop", metrics.dropCommitMs, 50, 100],
-    ["commit", metrics.canvasMaxMs, 8, 16.7],
-    ["panel-render", metrics.panelMaxMs, 8, 16.7],
-    ["render", metrics.renderMaxMs, 8, 16.7],
-    ["frame", metrics.frameGapP95Ms || metrics.frameGapMaxMs, 20, 33],
-    ["longtask", metrics.longTaskMaxMs, 30, 50],
-    ["unrelated", metrics.unrelatedRenderRatio, 0.1, 0.25],
-    ["rerenders", metrics.targetRenderCount, 2, 5],
-    [
-      "dnd-work",
-      Math.max(
-        metrics.moveMaxMs || 0,
-        metrics.collisionMaxMs || 0,
-        metrics.dragoverMaxMs || 0,
-        metrics.hoverUpdateMaxMs || 0
-      ),
-      8,
-      16.7,
-    ],
-  ].filter(([, value]) => Number.isFinite(value) && value > 0);
+  const isLifecycle = LIFECYCLE_TRANSACTION_KINDS.has(transaction?.kind);
+  const isPanelOpen = transaction?.kind === "panel-open";
+  const renderMs = metrics.renderMaxMs || metrics.panelMaxMs;
+  const frameMs = metrics.frameGapP95Ms || metrics.frameGapMaxMs;
+  const values = (
+    isLifecycle
+      ? [
+          ["api", metrics.apiLatencyMs, 800, 2000],
+          ["lifecycle", metrics.lifecycleTotalMs, 1000, 2500],
+          ["commit", metrics.canvasMaxMs, 8, 16.7],
+          ["frame", frameMs, 20, 33],
+        ]
+      : [
+          ["commit", metrics.canvasMaxMs, 8, 16.7],
+          ["render", renderMs, 8, 16.7],
+          ...(isPanelOpen ? [] : [["frame", frameMs, 20, 33]]),
+          ["rerenders", metrics.targetRenderCount, 2, 5],
+          ...(shouldScoreUnrelatedRatio(transaction)
+            ? [["unrelated", metrics.unrelatedRenderRatio, 0.1, 0.25]]
+            : []),
+        ]
+  ).filter(([, value]) => Number.isFinite(value) && value > 0);
 
   if (values.some(([, value, , red]) => value > red)) return "red";
   if (values.some(([, value, yellow]) => value > yellow)) return "yellow";
@@ -129,35 +199,33 @@ const createSnapshot = () => {
       maxInteractionMs: roundMs(
         Math.max(
           0,
-          ...visibleTransactions.map(
-            (transaction) =>
-              transaction.metrics?.interactionToPaintMs ||
-              transaction.metrics?.openToPaintMs ||
-              0
-          )
+          ...visibleTransactions
+            .filter(
+              (transaction) =>
+                !LIFECYCLE_TRANSACTION_KINDS.has(transaction.kind)
+            )
+            .map((transaction) => getDisplayedDurationMs(transaction))
         )
       ),
       maxCommitMs: roundMs(
         Math.max(
           0,
           ...visibleTransactions.map(
-            (transaction) =>
-              transaction.metrics?.canvasMaxMs ||
-              transaction.metrics?.panelMaxMs ||
-              transaction.metrics?.renderMaxMs ||
-              0
+            (transaction) => Number(transaction.metrics?.canvasMaxMs) || 0
           )
         )
       ),
       maxFrameGapMs: roundMs(
         Math.max(
           0,
-          ...visibleTransactions.map(
-            (transaction) =>
-              transaction.metrics?.frameGapP95Ms ||
-              transaction.metrics?.frameGapMaxMs ||
-              0
-          )
+          ...visibleTransactions
+            .filter((transaction) => transaction.kind !== "panel-open")
+            .map(
+              (transaction) =>
+                transaction.metrics?.frameGapP95Ms ||
+                transaction.metrics?.frameGapMaxMs ||
+                0
+            )
         )
       ),
       maxTargetRenderCount: Math.max(
@@ -212,8 +280,11 @@ const ensureFrameMonitor = () => {
     );
     const hasTrackedTransaction = Boolean(transaction);
     if (transaction) {
-      const shouldRecordGap =
-        !transaction.skipInitialFrameGap || transaction.frameBaselineReady;
+      const skipCount = transaction.skipInitialFrameGap
+        ? transaction.skipInitialFrameGapCount || 1
+        : 0;
+      const shouldRecordGap = transaction.skippedFrameGaps >= skipCount;
+      transaction.skippedFrameGaps += 1;
       transaction.frameBaselineReady = true;
       if (shouldRecordGap) {
         transaction.frameGaps.push(gap);
@@ -397,6 +468,11 @@ export function beginBuilderPerformanceTransaction(kind, meta = {}, options = {}
     startedAt: collectorStartedAt,
     trackFrames: options.trackFrames === true,
     skipInitialFrameGap: options.skipInitialFrameGap === true,
+    skipInitialFrameGapCount:
+      Number(options.skipInitialFrameGapCount) > 0
+        ? Number(options.skipInitialFrameGapCount)
+        : 1,
+    skippedFrameGaps: 0,
     frameBaselineReady: false,
     renderedElementKeys: new Set(),
     targetRenderCount: 0,
@@ -723,7 +799,13 @@ const getControlKind = (target) => {
   const tag = String(target?.tagName || "").toLowerCase();
   const type = String(target?.type || "").toLowerCase();
   if (type === "range") return "slider";
-  if (type === "checkbox" || type === "radio") return "toggle";
+  if (
+    type === "checkbox" ||
+    type === "radio" ||
+    target?.getAttribute?.("role") === "switch"
+  ) {
+    return "toggle";
+  }
   if (type === "color") return "color";
   if (tag === "select" || target?.getAttribute?.("role") === "combobox") {
     return "select";
@@ -766,22 +848,36 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
     return;
   }
   const target = eventTarget.closest?.(
-    "input, textarea, select, button, [role='button'], [role='slider'], [role='combobox']"
+    "input, textarea, select, button, [role='button'], [role='switch'], [role='slider'], [role='combobox']"
   );
   if (!target) return;
-  if (context.skipWhenRecentActive === true) {
+  const controlKind = getControlKind(target);
+  // Range / native color belong to panel-slider (starts on first onChange).
+  // Recording them here on pointerdown creates a panel-control row whose first
+  // frame gap is the grab hitch, not commit work.
+  if (controlKind === "slider" || controlKind === "color") {
+    return;
+  }
+  const controlField = getControlField(target, controlKind);
+  if (context.skipWhenRecentActive === true && controlKind !== "text") {
     const recentTransaction = latestActiveTransaction(
-      (transaction) => performance.now() - transaction.startedAt < 100
+      (transaction) =>
+        performance.now() - transaction.startedAt < 100 &&
+        transaction.controlKind !== "text"
     );
     if (recentTransaction) return;
   }
-  const controlKind = getControlKind(target);
-  const controlField = getControlField(target, controlKind);
+  if (
+    context.transactionKind === "builder-control" &&
+    controlKind === "button" &&
+    (controlField === "ลบ" || controlField === "ใช่ ฉันต้องการลบ")
+  ) {
+    return;
+  }
   const panelType = normalizeId(context.panelType);
   const elementId = normalizeId(context.elementId);
   const eventType = String(event.type || "");
   if (
-    panelType === "Container" &&
     (controlKind === "toggle" || controlKind === "button") &&
     eventType === "pointerdown"
   ) {
@@ -795,15 +891,7 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
         transaction.elementType === "section" &&
         transaction.elementId === elementId
     );
-  if (
-    hasMatchingSectionContainerSlider ||
-    (controlKind === "slider" || controlKind === "color") &&
-    [...activeTransactions.values()].some(
-      (transaction) =>
-        transaction.kind === "panel-slider" &&
-        transaction.elementId === elementId
-    )
-  ) {
+  if (hasMatchingSectionContainerSlider) {
     return;
   }
   const sessionKey = [
@@ -833,9 +921,11 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
           (context.transactionKind === "navigation-control" &&
             controlKind === "button" &&
             controlField === "Builder") ||
-          context.transactionKind === "builder-control" &&
-          controlKind === "button" &&
-          controlField === "ลบ",
+          (context.transactionKind === "builder-control" &&
+            controlKind === "button" &&
+            (controlField === "ลบ" ||
+              controlField === "โหลด PRESET" ||
+              controlField === "บันทึกลงหน้า")),
       }
     );
     if (transactionId == null) return;
@@ -845,6 +935,7 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
       inputCount: 0,
       startedAt: performance.now(),
       lastEventAt: performance.now(),
+      finishImmediately: false,
       panelType,
       elementId,
       controlKind,
@@ -861,17 +952,33 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
   const shouldFinishImmediately =
     eventType === "blur" ||
     eventType === "pointerup" ||
-    (eventType === "click" && controlKind === "button") ||
+    eventType === "input" ||
+    (eventType === "click" &&
+      (controlKind === "button" || controlKind === "toggle")) ||
     (eventType === "change" &&
-      (controlKind === "toggle" || controlKind === "select"));
-  const delay = shouldFinishImmediately ? 0 : CONTROL_IDLE_MS;
+      (controlKind === "toggle" ||
+        controlKind === "select" ||
+        controlKind === "button"));
+  session.finishImmediately =
+    session.finishImmediately || shouldFinishImmediately;
+  const delay = session.finishImmediately ? 0 : CONTROL_IDLE_MS;
   session.timerId = setTimeout(() => {
     controlSessions.delete(sessionKey);
     const interactionStartedAt =
-      panelType === "Container" &&
-      (controlKind === "toggle" || controlKind === "button")
+      controlKind === "toggle" || controlKind === "button"
         ? session.lastEventAt
         : session.startedAt;
+    if (controlKind === "toggle" || controlKind === "button") {
+      finishBuilderPerformanceTransaction(
+        session.transactionId,
+        {},
+        {
+          reason: eventType || "idle",
+          interactionStartedAt,
+        }
+      );
+      return;
+    }
     finishBuilderPerformanceTransactionAfterPaint(
       session.transactionId,
       {},

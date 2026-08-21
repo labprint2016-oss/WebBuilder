@@ -1890,6 +1890,7 @@ const MenuBarOffcanvas = ({
             value={selectedMenuColorDesktop.label}
           />
           <ServiceColor
+            theme={theme}
             color={selectedMenuColorDesktop.data}
             opacity={selectedMenuColorDesktop.opacity}
             handleColor={(value) => {
@@ -1964,6 +1965,7 @@ const MenuBarOffcanvas = ({
       {dv_D && (
         <>
           <ServiceColor
+            theme={theme}
             color={dvc_D}
             opacity={dvo_D}
             handleColor={(value) => handleSelect(value, "dividerColor")}
@@ -2070,6 +2072,7 @@ const MenuBarOffcanvas = ({
             value={selectedSubMenuColorDesktop.label}
           />
           <ServiceColor
+            theme={theme}
             color={selectedSubMenuColorDesktop.data}
             opacity={selectedSubMenuColorDesktop.opacity}
             handleColor={(value) => {
@@ -2109,6 +2112,7 @@ const MenuBarOffcanvas = ({
              <div className="col col-span-2 ml-[5px] mr-[5px]">
                   <MainLabel label="สีเส้นคั่นเมนูย่อย" spacingClass="mt-1 mb-0"/>
                   <ServiceColor
+            theme={theme}
                     color={s_bc_D}
                     opacity={s_bo_D}
                     handleColor={(value) =>
@@ -2244,6 +2248,7 @@ const MenuBarOffcanvas = ({
             value={selectedButtonColorMobile.label}
           />
           <ServiceColor
+            theme={theme}
             color={selectedButtonColorMobile.data}
             opacity={selectedButtonColorMobile.opacity}
             handleColor={(value) => {
@@ -2379,6 +2384,7 @@ const MenuBarOffcanvas = ({
             value={selectedMenuColorMobile.label}
           />
           <ServiceColor
+            theme={theme}
             color={selectedMenuColorMobile.data}
             opacity={selectedMenuColorMobile.opacity}
             handleColor={(value) => {
@@ -2469,6 +2475,7 @@ const MenuBarOffcanvas = ({
               value={selectedSubMenuColorMobile.label}
             />
             <ServiceColor
+            theme={theme}
               color={selectedSubMenuColorMobile.data}
               opacity={selectedSubMenuColorMobile.opacity}
               handleColor={(value) => {
@@ -2504,6 +2511,7 @@ const MenuBarOffcanvas = ({
                 value={selectedSubMenuColorMobile.label}
               />
               <ServiceColor
+            theme={theme}
                 color={selectedToken}
                 opacity={selectedOpacity}
                 handleColor={(value) => handleSelect(value, selectedField)}
@@ -2766,6 +2774,7 @@ const MenuBarOffcanvas = ({
             value={selectedNavMenuStyle.label}
           />
           <ServiceColor
+            theme={theme}
             color={selectedNavMenuStyle.color}
             opacity={selectedNavMenuStyle.opacity}
             handleColor={(value) => handleSelect(value, selectedNavMenuStyle.field)}
@@ -2844,6 +2853,7 @@ const MenuBarOffcanvas = ({
         <div className="grid grid-cols-2">
           <div className="col-span-2 -mt-1">
           <ServiceColor
+            theme={theme}
             color={ndvc_M}
             opacity={ndvo_M}
             handleColor={(value) => handleSelect(value, "navDividerColor")}

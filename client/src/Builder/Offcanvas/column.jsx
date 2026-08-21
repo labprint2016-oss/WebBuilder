@@ -149,7 +149,6 @@ const ColumnOffcanvas = ({
     const elementRef = useRef(element);
     elementRef.current = element;
     const lastCommittedDataRef = useRef(element?.[elementDataKey] || {});
-    const [updated, setUpdated] = useState(false);
     const [loadedTheme, setLoadedTheme] = useState(null);
     const theme = themeProp || loadedTheme;
     useState(false);
@@ -226,46 +225,43 @@ const ColumnOffcanvas = ({
       },[themeProp]);
 
       const handlePadding = (field, valueOrUpdater) => {
-        setData((prev) => {
-          const current = prev[field];
-          let next =
-            typeof valueOrUpdater === "function"
-              ? valueOrUpdater(current)
-              : valueOrUpdater;
-    
-          if (next === "") {
-            // อนุญาตค่าว่างระหว่างพิมพ์ (เก็บเฉพาะ local)
-            return { ...prev, [field]: "" };
-          }
-          next = Number(next);
-          if (Number.isNaN(next) || next < 0) return prev;
-    
-          return { ...prev, [field]: next };
-        });
-        setUpdated(true);
+        const current = data[field];
+        let next =
+          typeof valueOrUpdater === "function"
+            ? valueOrUpdater(current)
+            : valueOrUpdater;
+        if (next === "") return;
+        next = Number(next);
+        if (Number.isNaN(next) || next < 0) return;
+        const nextData = { ...data, [field]: next };
+        setData(nextData);
+        commitData(nextData);
       };
       const handleSliderPadding = (field, value) => {
         updateSlider((prev) => ({ ...prev, [field]: value }));
       };
       const handleColor = (field,value,index=null) => {
+        const nextData = { ...data };
         if(!isNull(index)){
-    
-          setData((prev)=>{
-            const bgc = [...(prev[field] || [])]
-            bgc[index] = value
-            return{...prev,[field]:bgc}
-          })
+          const bgc = [...(data[field] || [])];
+          bgc[index] = value;
+          nextData[field] = bgc;
         }else{
-          setData((prev) => {return{...prev,[field]:value}});
+          nextData[field] = value;
         }
-        setUpdated(true);
+        setData(nextData);
+        commitData(nextData);
       };
 
       const handleOpacity = (field,value,index=null) => {
         if(!isNull(index)){
           updateSlider((prev)=>{
-            const opct = [...(prev[field] || [])]
-            opct[index] = value
+            const current = Array.isArray(prev[field]) ? prev[field] : [];
+            const opct = [
+              Number.isFinite(Number(current[0])) ? Number(current[0]) : 255,
+              Number.isFinite(Number(current[1])) ? Number(current[1]) : 255,
+            ];
+            opct[index] = Number.isFinite(Number(value)) ? Number(value) : 0;
             return{...prev,[field]:opct}
           })
         }else{
@@ -280,17 +276,7 @@ const ColumnOffcanvas = ({
         const nextData = elementRef.current?.[elementDataKey] || {};
         setData(nextData);
         lastCommittedDataRef.current = nextData;
-        setUpdated(false)
       }, [elementDataKey, panelTargetId]);
-
-    const commitDataRef = useRef(commitData);
-    commitDataRef.current = commitData;
-    useEffect(()=>{
-        if(updated){
-            commitDataRef.current(data);
-            setUpdated(false);
-        }
-    },[data, updated])
 
     const paddings = [
         { label: "ระยะห่างแนวนอน", type: "paddingX", data: data.paddingX },
@@ -599,13 +585,11 @@ const ColumnOffcanvas = ({
                         const value = color;
                         let margin = "";
                         if (i % 8 !== 0 && (i + 1) % 8 !== 0) margin += "mx-[65.75px] ";
-                        const g0 = data.backgroundColorGradient?.[0];
-                        const g1 = data.backgroundColorGradient?.[1];
+                        const activeStop =
+                          data.backgroundColorGradient?.[columnGradientGi];
                         const selected =
-                          lodash.isEqual(g0, value) ||
-                          g0 === value ||
-                          lodash.isEqual(g1, value) ||
-                          g1 === value;
+                          lodash.isEqual(activeStop, value) ||
+                          activeStop === value;
                         return (
                           <div className={margin} key={i}>
                             <button
@@ -649,7 +633,7 @@ const ColumnOffcanvas = ({
 
 
             {/* กรอบเบลอ */}
-            <div className="flex items-center gap-2 mt-5 mb-2">
+            <div className="flex items-center gap-2 mt-5 mb-[3px]">
               <span className="dash-panel-label text-[13px] font-bold">กรอบเบลอ</span>
               {data.colGlassEnabled === true && (
                 <span className="text-[13px] tabular-nums text-slate-400">
@@ -661,8 +645,12 @@ const ColumnOffcanvas = ({
                 <AntSwitch
                   checked={data.colGlassEnabled === true}
                   onChange={() => {
-                    setData((prev) => ({ ...prev, colGlassEnabled: !prev.colGlassEnabled }));
-                    setUpdated(true);
+                    const nextData = {
+                      ...data,
+                      colGlassEnabled: !data.colGlassEnabled,
+                    };
+                    setData(nextData);
+                    commitData(nextData);
                   }}
                   inputProps={{ "aria-label": "เปิดกรอบเบลอ" }}
                 />
@@ -712,7 +700,7 @@ const ColumnOffcanvas = ({
         const typography = isBgColorLabel ? "สีไล่โทน" : ""
         const checked = data.isGradient
         return (
-          <div className="flex items-center gap-2 mt-5 mb-2">
+          <div className={`flex items-center gap-2 mt-5 ${label === "องศาไล่โทน" ? "mb-[3px]" : "mb-2"}`}>
             <span className="dash-panel-label text-[13px] font-bold">
               {displayLabel}
             </span>
@@ -723,12 +711,12 @@ const ColumnOffcanvas = ({
             {colorSwitch && (
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                  <AntSwitch  inputProps={{ 'aria-label': 'ant design' }} checked={checked} onChange={()=>{
-                    setData(prev=>{return {...prev,isGradient:!prev.isGradient}})
+                    const nextData = { ...data, isGradient: !data.isGradient };
+                    setData(nextData);
                     setOpenColorTable(false)
                     setOpenColorTable1(false)
                     setOpenColorTable2(false)
-                    setUpdated(true)
-                    return
+                    commitData(nextData);
                  }}   />
                  {typography ? (
                    <Typography

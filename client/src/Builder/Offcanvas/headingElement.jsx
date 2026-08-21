@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -26,7 +27,7 @@ const finiteNumberOr = (value, fallback) => {
 };
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import Field from "../HTML/Field";
-import Range from "../HTML/Range";
+import Range, { applyRangeFillPos } from "../HTML/Range";
 import {
   HEADING_ELEMENT_DEFAULTS,
   HEADING_DIVIDER_SPAN_NARROW,
@@ -278,14 +279,33 @@ const FullWidthRangeRow = ({
   labelMb = 1.25,
   rangeWrapClassName = "w-full pt-[2px] pb-[2px] px-[2px]",
   formatLabelValue = null,
+  controlRef = null,
 }) => {
   const valueTextRef = useRef(null);
-  const handleRangeChange = (nextValue) => {
+  const rangeInputRef = useRef(null);
+  const writeLabel = (nextValue) => {
     if (valueTextRef.current && valueForLabel != null) {
       valueTextRef.current.textContent = formatLabelValue
         ? formatLabelValue(nextValue)
         : Math.round(nextValue);
     }
+  };
+  useImperativeHandle(
+    controlRef,
+    () => ({
+      setPreview(nextValue) {
+        const el = rangeInputRef.current;
+        if (el) {
+          el.value = String(nextValue);
+          applyRangeFillPos(el, min, max);
+        }
+        writeLabel(nextValue);
+      },
+    }),
+    [formatLabelValue, max, min, valueForLabel]
+  );
+  const handleRangeChange = (nextValue) => {
+    writeLabel(nextValue);
     onChange(nextValue);
   };
 
@@ -307,6 +327,7 @@ const FullWidthRangeRow = ({
         step={step}
         value={value}
         uncontrolled
+        inputRef={rangeInputRef}
         handleChange={(e) => handleRangeChange(Number(e.target.value))}
         onCommit={onCommit}
         pos={posPct}
@@ -388,9 +409,9 @@ const HeadingElementOffcanvas = ({
     }
   }, [data?.id, data?.headingTextGradient]);
 
-  const previewMarginTopDirectly = useCallback((nextMarginTop) => {
+  const collectHeadingMarginNodes = useCallback(() => {
     const targetId = String(elementRef.current?.id ?? "");
-    if (!targetId) return;
+    if (!targetId) return [];
     if (marginPreviewNodesRef.current.length === 0) {
       marginPreviewNodesRef.current = Array.from(
         document.querySelectorAll("[data-heading-margin-id]")
@@ -398,27 +419,34 @@ const HeadingElementOffcanvas = ({
         (node) => node.getAttribute("data-heading-margin-id") === targetId
       );
     }
-    marginPreviewNodesRef.current.forEach((node) => {
-      node.style.setProperty("margin-top", `${nextMarginTop}px`);
-    });
+    return marginPreviewNodesRef.current;
   }, []);
 
-  const commitMarginTopDirectly = useCallback((nextMarginTop) => {
-    const targetId = String(elementRef.current?.id ?? "");
-    if (!targetId) return;
-    const nodes =
-      marginPreviewNodesRef.current.length > 0
-        ? marginPreviewNodesRef.current
-        : Array.from(
-            document.querySelectorAll("[data-heading-margin-id]")
-          ).filter(
-            (node) => node.getAttribute("data-heading-margin-id") === targetId
-          );
-    nodes.forEach((node) => {
-      node.style.setProperty("margin-top", `${nextMarginTop}px`);
-    });
-    marginPreviewNodesRef.current = [];
-  }, []);
+  const previewHeadingMarginDirectly = useCallback(
+    (property, value) => {
+      const next = `${Number(value) || 0}px`;
+      collectHeadingMarginNodes().forEach((node) => {
+        node.style.setProperty(property, next);
+      });
+    },
+    [collectHeadingMarginNodes]
+  );
+
+  const commitHeadingMarginDirectly = useCallback(
+    (latest, fields) => {
+      const nodes = collectHeadingMarginNodes();
+      if (fields.includes("headingMarginTop")) {
+        const next = `${Number(latest?.headingMarginTop) || 0}px`;
+        nodes.forEach((node) => node.style.setProperty("margin-top", next));
+      }
+      if (fields.includes("headingMarginBottom")) {
+        const next = `${Number(latest?.headingMarginBottom) || 0}px`;
+        nodes.forEach((node) => node.style.setProperty("margin-bottom", next));
+      }
+      marginPreviewNodesRef.current = [];
+    },
+    [collectHeadingMarginNodes]
+  );
 
   const { updateSlider, commitSlider } = usePanelSliderPreview({
     type: "heading",
@@ -428,8 +456,11 @@ const HeadingElementOffcanvas = ({
     onCommit: (latest) => {
       const changedFields = Array.from(sliderChangedFieldsRef.current);
       sliderChangedFieldsRef.current.clear();
-      if (changedFields.includes("headingMarginTop")) {
-        commitMarginTopDirectly(Number(latest?.headingMarginTop) || 0);
+      if (
+        changedFields.includes("headingMarginTop") ||
+        changedFields.includes("headingMarginBottom")
+      ) {
+        commitHeadingMarginDirectly(latest, changedFields);
       }
       setData(latest);
       scheduleLayoutSync(latest, changedFields);
@@ -438,11 +469,8 @@ const HeadingElementOffcanvas = ({
 
   const patch = (partial) => {
     const changedFields = Object.keys(partial);
-    setData((prev) => {
-      const next = { ...prev, ...partial };
-      scheduleLayoutSync(next, changedFields);
-      return next;
-    });
+    const next = updateSlider((prev) => ({ ...prev, ...partial }));
+    scheduleLayoutSync(next, changedFields);
   };
 
   const patchSlider = (partial) => {
@@ -450,14 +478,23 @@ const HeadingElementOffcanvas = ({
     fields.forEach((field) =>
       sliderChangedFieldsRef.current.add(field)
     );
-    const directMarginTopPreview =
-      fields.length === 1 && fields[0] === "headingMarginTop";
-    if (directMarginTopPreview) {
-      previewMarginTopDirectly(Number(partial.headingMarginTop) || 0);
+    const directMarginProperty =
+      fields.length === 1 && fields[0] === "headingMarginTop"
+        ? "margin-top"
+        : fields.length === 1 && fields[0] === "headingMarginBottom"
+          ? "margin-bottom"
+          : null;
+    if (directMarginProperty) {
+      previewHeadingMarginDirectly(
+        directMarginProperty,
+        fields[0] === "headingMarginTop"
+          ? partial.headingMarginTop
+          : partial.headingMarginBottom
+      );
     }
     updateSlider((prev) => ({ ...prev, ...partial }), {
       setData: false,
-      publish: !directMarginTopPreview,
+      publish: !directMarginProperty,
     });
   };
 
@@ -509,13 +546,13 @@ const HeadingElementOffcanvas = ({
       Number(merged.headingFontSize) || HEADING_ELEMENT_DEFAULTS.headingFontSize
     )
   );
-  const lineGapFromHeading = Math.min(
-    32,
+  const headingLineHeight = Math.min(
+    2,
     Math.max(
-      0,
+      1,
       finiteNumberOr(
-        merged.headingDividerGap,
-        HEADING_ELEMENT_DEFAULTS.headingDividerGap
+        merged.headingLineHeight,
+        HEADING_ELEMENT_DEFAULTS.headingLineHeight
       )
     )
   );
@@ -789,11 +826,10 @@ const HeadingElementOffcanvas = ({
                         ? color
                         : theme?.[color.type]?.[color.index];
                     if (bgColor == null) return null;
-                    const selected1 = chipSelected(merged.headingColor, color);
-                    const selected2 =
-                      merged.headingTextGradient &&
-                      chipSelected(merged.headingColor2, color);
-                    const selected = selected1 || selected2;
+                    const selected = chipSelected(
+                      merged[activeHeadingColorKey],
+                      color
+                    );
                     let margin = "";
                     if (i % 8 !== 0 && (i + 1) % 8 !== 0) {
                       margin += "mx-[65.75px] ";
@@ -1107,19 +1143,22 @@ const HeadingElementOffcanvas = ({
               />
               <FullWidthRangeRow
                 mainLabel="ระยะห่างเส้นคั่น"
-                valueForLabel={lineGapFromHeading}
-                min={0}
-                max={32}
-                step={1}
-                value={lineGapFromHeading}
-                onChange={(px) => {
-                  const gap = Math.min(32, Math.max(0, Number(px) || 0));
+                valueForLabel={headingLineHeight}
+                formatLabelValue={(v) => Number(v).toFixed(2)}
+                min={1}
+                max={2}
+                step={0.05}
+                value={headingLineHeight}
+                onChange={(v) =>
                   patchSlider({
-                    headingDividerGap: gap,
-                  });
-                }}
+                    headingLineHeight: Math.min(
+                      2,
+                      Math.max(1, Number(v) || 1.35)
+                    ),
+                  })
+                }
                 onCommit={(_, reason) => commitSlider(reason)}
-                posPct={(lineGapFromHeading / 32) * 100}
+                posPct={((headingLineHeight - 1) / 1) * 100}
                 trackAriaLabel="ระยะห่างเส้นคั่น"
                 accentColor={textColor}
                 mt={0}

@@ -1,6 +1,11 @@
+export const clampOpacityByte = (opcy, fallback = 255) => {
+    const n = Number(opcy);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(255, Math.round(n)));
+  };
+
 export const opacity_2_hex = (opcy) => {
-    const hex = opcy.toString(16).toUpperCase().padStart(2, 0);
-    return hex;
+    return clampOpacityByte(opcy).toString(16).toUpperCase().padStart(2, "0");
   }; // แปลงค่า Opacity ให้เป็น Hex
 
 
@@ -31,35 +36,26 @@ export const setColor = (
     degree = null
   ) => {
     if(!theme) return "#ffffff"
-    if (Array.isArray(color) && Array.isArray(opacity) && !isNaN(degree)) {
-      let gradientColor;
-      let color1;
-      let color2;
-      if (typeof color[0] === "string") {
-        color1 = color[0]+ opacity_2_hex(opacity[0])
-        
-      } else {
-        color1 =
-          theme[color[0].type][color[0].index] + opacity_2_hex(opacity[0]);
-      }
-  
-      if (typeof color[1] === "string") {
-        color2 = color[1]+ opacity_2_hex(opacity[1])
-      } else {
-        color2 =
-          theme[color[1].type][color[1].index] + opacity_2_hex(opacity[1]);
-      }
-  
-      gradientColor = `linear-gradient(${degree}deg, ${color1} 0%, ${color2} 100%)`;
-  
-      return gradientColor;
-    } else {
-      if (color == null) return "#ffffff" + opacity_2_hex(opacity ?? 255);
-      if (typeof color === "string") {
-        return color + opacity_2_hex(opacity);
-      }
-      return theme[color.type][color.index] + opacity_2_hex(opacity);
+    const resolveStop = (stop, stopOpacity) => {
+      const hex = opacity_2_hex(stopOpacity);
+      if (typeof stop === "string") return stop + hex;
+      const palette = theme?.[stop?.type];
+      const swatch = Array.isArray(palette) ? palette[stop?.index] : null;
+      return (swatch || "#ffffff") + hex;
+    };
+    if (Array.isArray(color) && color.length >= 2) {
+      const stops = Array.isArray(opacity) ? opacity : [];
+      const angle = Number(degree);
+      const deg = Number.isFinite(angle) ? angle : 90;
+      const color1 = resolveStop(color[0], stops[0]);
+      const color2 = resolveStop(color[1], stops[1]);
+      return `linear-gradient(${deg}deg, ${color1} 0%, ${color2} 100%)`;
     }
+    if (color == null) return "#ffffff" + opacity_2_hex(opacity);
+    if (typeof color === "string") {
+      return color + opacity_2_hex(opacity);
+    }
+    return resolveStop(color, opacity);
   };
 
 

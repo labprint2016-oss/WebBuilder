@@ -5,6 +5,7 @@ import React, {
   useState,
   useRef,
 } from "react";
+import { useBuilderContextStore } from "./store/builderContextStore";
 import {
   Home,
   SwatchBook,
@@ -99,7 +100,7 @@ const Header = ({
   toggleRailExpanded = null,
   deviceType,
   setDevice,
-  builderMode,
+  builderMode: builderModeProp,
   setBuilderMode,
   menus,
   setOpenBar,
@@ -144,6 +145,8 @@ const Header = ({
   const normalizeTopBarIcon = (icon) =>
     icon?.name && icon.name !== "fa0" ? icon : { type: "fas", name: "faHouse" };
   useNavigate();
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const builderMode = storeBuilderMode || builderModeProp;
   const [optimisticBuilderMode, setOptimisticBuilderMode] =
     useState(builderMode);
   useEffect(() => {

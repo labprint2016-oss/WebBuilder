@@ -693,7 +693,6 @@ export default function RichTextEditorModal({
   const handleSave = () => {
     const merged = mergeDomToParagraph();
     onSave(merged);
-    onClose();
   };
 
   const handlePaste = (e) => {
@@ -744,8 +743,15 @@ export default function RichTextEditorModal({
   }, [open, domEpoch, syncToolbarWithSelection]);
 
   return (
-    <Modal open={open} onClose={onClose} aria-label="แก้ไขข้อความ">
+    <Modal
+      open={open}
+      onClose={onClose}
+      aria-label="แก้ไขข้อความ"
+      transitionDuration={0}
+    >
       <Box
+        data-builder-performance-owned="true"
+        data-text-editor-modal="true"
         sx={{
           position: "absolute",
           top: "50%",
@@ -1133,6 +1139,7 @@ export default function RichTextEditorModal({
             variant="contained"
             onClick={handleSave}
             disableElevation
+            data-perf-control="บันทึกลงหน้า"
             sx={saveButtonSx}
           >
             บันทึกลงหน้า (พรีวิว)

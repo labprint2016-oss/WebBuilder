@@ -4,8 +4,6 @@ import IconAwsome from "../../IconAwsome";
 import { resolveImageLinkAttrs } from "./imageAspectConfig";
 import {
   ICON_ELEMENT_DEFAULTS,
-  ICON_STANDALONE_CONTAINER_MAX,
-  ICON_STANDALONE_CONTAINER_MIN,
   mergeIconElement,
   isValidFaIconRef,
   resolveIconBackgroundCss,
@@ -14,10 +12,8 @@ import {
   normalizeIconBorderStyle,
   normalizeIconBorderPosition,
   getIconOuterContainerSx,
+  getIconShapeMetrics,
 } from "./iconElementConfig";
-
-/** ระยะว่างระหว่างพื้นหลังไอคอนกับเส้นกรอบ (px) รอบด้าน */
-const ICON_BORDER_OUTSET_GAP_PX = 5;
 
 const Icon = ({ elementData, selected, hover, theme, builderMode }) => {
   const { id } = elementData;
@@ -39,51 +35,27 @@ const Icon = ({ elementData, selected, hover, theme, builderMode }) => {
   const fg = resolveIconGlyphColor(elementData, theme);
   const size = Number(s.iconSize);
   const iconSizePx = Number.isFinite(size) ? size : 28;
-  const cs = Number(s.containerSize);
-  const containerPx = Number.isFinite(cs)
-    ? Math.max(
-        ICON_STANDALONE_CONTAINER_MIN,
-        Math.min(ICON_STANDALONE_CONTAINER_MAX, cs)
-      )
-    : ICON_ELEMENT_DEFAULTS.containerSize;
+  const metrics = getIconShapeMetrics(elementData);
+  const {
+    containerPx,
+    borderWidthPx,
+    gap,
+    centerWrapSize,
+    fillRadius: borderRadius,
+    outerRadius,
+    insetRadius: insetRingBorderRadius,
+    centerOuterRadius: centerOuterRingBorderRadius,
+  } = metrics;
   const fa = s.faIcon;
   const showFa = isValidFaIconRef(fa);
-  const shape = s.iconShape === "rounded" ? "rounded" : "circle";
-  const r = Number(s.iconCornerRadius);
-  const radiusPx = Number.isFinite(r) ? r : 12;
-  const borderRadius =
-    shape === "circle" ? "50%" : `${Math.min(radiusPx, containerPx / 2)}px`;
 
-  const bw = Number(s.borderWidth);
-  const borderWidthPx = Number.isFinite(bw)
-    ? Math.max(0, Math.min(6, bw))
-    : 0;
   const borderEnabled = s.borderEnabled !== false;
   const borderColorCss =
     borderWidthPx > 0 ? resolveIconBorderCss(elementData, theme) : "transparent";
   const borderStyleCss = normalizeIconBorderStyle(s.borderStyle);
   const borderPos = normalizeIconBorderPosition(s.borderPosition);
   const hasBorder = borderEnabled && borderWidthPx > 0;
-  const gap = ICON_BORDER_OUTSET_GAP_PX;
   const borderCss = `${borderWidthPx}px ${borderStyleCss} ${borderColorCss}`;
-  /** มุมโค้งของแหวนกรอบด้านใน (ซ้อนใน fill สีพื้นหลัง) */
-  const insetRingBorderRadius =
-    shape === "circle"
-      ? "50%"
-      : `${Math.max(
-          0,
-          Math.min(radiusPx - gap, (containerPx - 2 * gap) / 2)
-        )}px`;
-
-  /** ตรงกลาง: ขนาดรวมให้เส้นกรอบคร่อมขอบ fill ครึ่งใน / ครึ่งนอก */
-  const centerWrapSize = containerPx + borderWidthPx;
-  const centerOuterRingBorderRadius =
-    shape === "circle"
-      ? "50%"
-      : `${Math.min(
-          radiusPx + borderWidthPx / 2,
-          centerWrapSize / 2
-        )}px`;
   const centerFillInset = borderWidthPx / 2;
 
   const innerBoxSx = {
@@ -104,21 +76,32 @@ const Icon = ({ elementData, selected, hover, theme, builderMode }) => {
 
   const glyphBox = (
     <Box
+      data-icon-glyph-id={id}
       sx={{
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         lineHeight: 0,
+        width: iconSizePx,
+        height: iconSizePx,
+        fontSize: iconSizePx,
       }}
     >
       {showFa ? (
         <IconAwsome
           iconName={fa.name}
           iconType={fa.type}
-          style={{ fontSize: iconSizePx, color: fg }}
+          style={{
+            fontSize: "inherit",
+            width: "1em",
+            height: "1em",
+            color: fg,
+          }}
         />
       ) : (
-        <ScanEye size={iconSizePx} style={{ color: fg }} />
+        <ScanEye
+          style={{ width: "1em", height: "1em", color: fg }}
+        />
       )}
     </Box>
   );
@@ -128,6 +111,7 @@ const Icon = ({ elementData, selected, hover, theme, builderMode }) => {
   return (
     <Box
       component={linkAttrs ? "a" : "div"}
+      data-icon-wrap-id={id}
       href={linkAttrs?.href}
       target={linkAttrs?.target}
       rel={linkAttrs?.rel}
@@ -171,6 +155,9 @@ const Icon = ({ elementData, selected, hover, theme, builderMode }) => {
             </Box>
           ) : hasBorder && borderPos === "outside" ? (
             <Box
+              data-icon-radius-id={id}
+              data-icon-radius-kind="outer"
+              data-icon-border-id={id}
               sx={{
                 width: containerPx + 2 * gap + 2 * borderWidthPx,
                 height: containerPx + 2 * gap + 2 * borderWidthPx,
@@ -178,23 +165,27 @@ const Icon = ({ elementData, selected, hover, theme, builderMode }) => {
                 minHeight: containerPx + 2 * gap + 2 * borderWidthPx,
                 boxSizing: "border-box",
                 border: borderCss,
-                borderRadius:
-                  shape === "circle"
-                    ? "50%"
-                    : `${Math.min(
-                        radiusPx + gap + borderWidthPx,
-                        (containerPx + 2 * gap + 2 * borderWidthPx) / 2
-                      )}px`,
+                borderRadius: outerRadius,
                 padding: `${gap}px`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Box sx={innerBoxSx}>{glyphBox}</Box>
+              <Box
+                data-icon-fill-id={id}
+                data-icon-radius-id={id}
+                data-icon-radius-kind="fill"
+                sx={innerBoxSx}
+              >
+                {glyphBox}
+              </Box>
             </Box>
           ) : hasBorder && borderPos === "inside" ? (
             <Box
+              data-icon-fill-id={id}
+              data-icon-radius-id={id}
+              data-icon-radius-kind="fill"
               sx={{
                 ...innerBoxSx,
                 position: "relative",
@@ -203,6 +194,9 @@ const Icon = ({ elementData, selected, hover, theme, builderMode }) => {
               {/* แหวนกรอบอยู่ในพื้นที่สี — เว้นขอบจากขอบนอก gap px (เหมือน ref เส้นจุดในวง) */}
               <Box
                 aria-hidden
+                data-icon-radius-id={id}
+                data-icon-radius-kind="inset"
+                data-icon-border-id={id}
                 sx={{
                   position: "absolute",
                   inset: `${gap}px`,
@@ -229,6 +223,8 @@ const Icon = ({ elementData, selected, hover, theme, builderMode }) => {
             >
               <Box
                 aria-hidden
+                data-icon-radius-id={id}
+                data-icon-radius-kind="fill"
                 sx={{
                   position: "absolute",
                   inset: `${centerFillInset}px`,
@@ -239,6 +235,9 @@ const Icon = ({ elementData, selected, hover, theme, builderMode }) => {
               />
               <Box
                 aria-hidden
+                data-icon-radius-id={id}
+                data-icon-radius-kind="center-outer"
+                data-icon-border-id={id}
                 sx={{
                   position: "absolute",
                   inset: 0,
@@ -251,7 +250,14 @@ const Icon = ({ elementData, selected, hover, theme, builderMode }) => {
               <Box sx={{ position: "relative", zIndex: 1 }}>{glyphBox}</Box>
             </Box>
           ) : (
-            <Box sx={{ ...innerBoxSx }}>{glyphBox}</Box>
+            <Box
+              data-icon-fill-id={id}
+              data-icon-radius-id={id}
+              data-icon-radius-kind="fill"
+              sx={{ ...innerBoxSx }}
+            >
+              {glyphBox}
+            </Box>
           )}
         </Box>
         {useSelectionFrame && (

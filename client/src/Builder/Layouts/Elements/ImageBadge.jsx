@@ -76,6 +76,7 @@ const ImageBadge = ({
   theme,
   className = "",
   elementType = "img",
+  elementId = "",
 }) => {
   const b = mergeImageBadge(badge, { elementType });
   const bodyFontClass =
@@ -166,6 +167,7 @@ const ImageBadge = ({
 
   return (
     <span
+      data-image-badge-id={elementId || undefined}
       className={`pointer-events-none absolute z-20 inline-flex min-w-0 select-none items-center truncate border-0 leading-none ring-0 outline-none ${fontWeightClass} ${bodyFontClass} ${chrome} ${bgClass} ${fgClass} ${positionClass} ${widthClass} ${lightboxSquarePadding} ${pillSoftInnerPadding} ${sizeClassForRender} ${vr} ${alignClass} ${className}`.trim()}
       style={Object.keys(style).length ? style : undefined}
       aria-hidden

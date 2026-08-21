@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 const FIELD_SURFACE =
   "dash-select-line-field box-border flex h-[35px] shrink-0 items-center justify-center rounded-md border bg-white text-slate-600";
 
-const SelectLine = ({ prev, next, value }) => {
+const SelectLine = ({ prev, next, value, valueRef = null }) => {
   return (
     <div className="flex w-full items-center gap-1">
       <button
@@ -16,7 +16,10 @@ const SelectLine = ({ prev, next, value }) => {
       </button>
 
       <div className={`${FIELD_SURFACE} min-w-0 flex-1 px-2`}>
-        <span className="dash-select-line-value min-w-0 truncate text-center text-[11px] font-normal text-slate-800">
+        <span
+          ref={valueRef}
+          className="dash-select-line-value min-w-0 truncate text-center text-[11px] font-normal text-slate-800"
+        >
           {value}
         </span>
       </div>

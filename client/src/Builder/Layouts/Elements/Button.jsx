@@ -1,5 +1,6 @@
 import { setColor, setFont } from "../../../../function";
 import { Button, Box } from "@mui/material";
+import { usePanelPreview } from "../../panelPreviewStore";
 import { resolveImageLinkAttrs } from "./imageAspectConfig";
 import {
   getButtonMuiSx,
@@ -16,30 +17,38 @@ import { normalizeParagraph } from "../../richText/richTextParagraphModel";
 import IconAwsome from "../../IconAwsome";
 
 const ButtonElement = ({ elementData, selected, hover, theme, builderMode }) => {
-  const { id } = elementData;
+  const previewData = usePanelPreview(
+    elementData?.type === "btnG" ? "btnG" : "btn",
+    elementData?.id
+  );
+  const liveElementData = previewData || elementData;
+  const { id } = liveElementData;
   const label =
-    typeof elementData?.label === "string" ? elementData.label : "Button Click";
+    typeof liveElementData?.label === "string"
+      ? liveElementData.label
+      : "Button Click";
   const isLayoutMode = builderMode === "Layout Mode";
-  const variant = getButtonMuiVariant(elementData);
-  const sx = getButtonMuiSx(elementData, theme, variant);
-  const linkAttrs = resolveImageLinkAttrs(elementData);
-  const lic = elementData?.linkIcon;
+  const variant = getButtonMuiVariant(liveElementData);
+  const sx = getButtonMuiSx(liveElementData, theme, variant);
+  const linkAttrs = resolveImageLinkAttrs(liveElementData);
+  const lic = liveElementData?.linkIcon;
   const showLinkFaIcon = isButtonLinkIconDefined(lic);
 
-  const fullW = isButtonFullWidthEnabled(elementData);
-  const specialTextOn = isButtonSpecialTextEnabled(elementData);
+  const fullW = isButtonFullWidthEnabled(liveElementData);
+  const specialTextOn = isButtonSpecialTextEnabled(liveElementData);
   const inButtonRow =
-    typeof elementData?.buttonRowGroupId === "string" &&
-    elementData.buttonRowGroupId.trim() !== "";
+    typeof liveElementData?.buttonRowGroupId === "string" &&
+    liveElementData.buttonRowGroupId.trim() !== "";
   /** fit-content เฉพาะในแถว — โหมดออกแบบตัวเดี่ยวต้องกว้างเต็มคอลัมน์ถึงจะจัดซ้าย/กลาง/ขวาได้เหมือนโหมดแก้ไข */
   const hugOuter = !fullW && inButtonRow && !specialTextOn;
   const useLayoutSelectionFrame = isLayoutMode && selected;
-  const specialTextFs = Number.isFinite(Number(elementData?.buttonFontSize))
-    ? Number(elementData.buttonFontSize)
+  const specialTextFs = Number.isFinite(Number(liveElementData?.buttonFontSize))
+    ? Number(liveElementData.buttonFontSize)
     : 14;
   const specialTextColor = setColor(theme, theme?.textColor?.[0], 255);
-  const specialTextLabel = resolveButtonSpecialTextLabel(elementData);
-  const specialTextParagraphRaw = resolveButtonSpecialTextParagraph(elementData);
+  const specialTextLabel = resolveButtonSpecialTextLabel(liveElementData);
+  const specialTextParagraphRaw =
+    resolveButtonSpecialTextParagraph(liveElementData);
   const specialTextParagraph =
     specialTextParagraphRaw &&
     Array.isArray(specialTextParagraphRaw.segments) &&
@@ -54,8 +63,9 @@ const ButtonElement = ({ elementData, selected, hover, theme, builderMode }) => 
         });
   return (
     <Box
+      data-button-wrap-id={id}
       sx={{
-        ...getButtonOuterContainerSx(elementData),
+        ...getButtonOuterContainerSx(liveElementData),
         ...(hugOuter ? { width: "fit-content", maxWidth: "100%" } : {}),
         p: 0.5,
         lineHeight: specialTextOn ? 1.25 : 0,
@@ -98,6 +108,7 @@ const ButtonElement = ({ elementData, selected, hover, theme, builderMode }) => 
             <Box
               component="span"
               data-button-special-text="true"
+              data-button-special-text-id={id}
               sx={{
                 flex: "1 1 auto",
                 minWidth: 0,
@@ -122,6 +133,8 @@ const ButtonElement = ({ elementData, selected, hover, theme, builderMode }) => 
           ) : null}
           <Button
             component={linkAttrs ? "a" : "button"}
+            data-button-canvas-id={id}
+            data-button-slot="1"
             // href={linkAttrs?.href}
             target={linkAttrs?.target}
             rel={linkAttrs?.rel}

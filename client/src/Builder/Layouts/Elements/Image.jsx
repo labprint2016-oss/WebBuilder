@@ -61,12 +61,21 @@ const Image = ({
   isHoverLocked = false,
   prioritizeLoad = false,
 }) => {
+  const previewType =
+    committedElementData?.type === "imgo"
+      ? "imgo"
+      : committedElementData?.type === "imgh"
+        ? "imgh"
+        : committedElementData?.type === "bnr"
+          ? "bnr"
+          : committedElementData?.type === "vid"
+            ? "vid"
+            : committedElementData?.type === "lbx"
+              ? "lbx"
+              : "img";
   const panelPreview = usePanelPreview(
-    committedElementData?.type === "imgo" ? "imgo" : "imgh",
-    committedElementData?.type === "imgh" ||
-      committedElementData?.type === "imgo"
-      ? committedElementData?.id
-      : null
+    previewType,
+    committedElementData?.id || null
   );
   const elementData = panelPreview || committedElementData;
   const {
@@ -360,8 +369,11 @@ const Image = ({
   }, [imageHoverContentOffsetY, imageHoverMetricsTick, isImageOverlay]);
   const badgeHoverEnabled =
     !isBanner && Boolean(elementData?.badge?.hover);
-  const showImageBadge =
-    !isBanner && (!badgeHoverEnabled || isHover);
+  const badgeLabelRaw =
+    typeof elementData?.badge?.label === "string"
+      ? elementData.badge.label.trim()
+      : "";
+  const showImageBadge = !isBanner && badgeLabelRaw !== "";
   const bannerCaptionRaw =
     typeof elementData?.badge?.label === "string"
       ? elementData.badge.label.trim()
@@ -490,6 +502,8 @@ const Image = ({
 
   const inner = isFixed ? (
     <div
+      data-image-frame-id={id}
+      data-image-radius-id={id}
       className={`relative w-full overflow-hidden ${animationForElement}`}
       style={{ aspectRatio: previewReservedAspectRatio, ...cornerStyle }}
     >
@@ -502,6 +516,7 @@ const Image = ({
           loading={isPreviewMode ? (prioritizeLoad ? "eager" : "lazy") : undefined}
           fetchPriority={isPreviewMode && prioritizeLoad ? "high" : undefined}
           decoding="async"
+          data-image-radius-id={id}
           className={`absolute inset-0 h-full w-full object-cover ${layoutPointerBlock}`}
           style={{ ...brightnessStyle, ...cornerStyle }}
         />
@@ -518,6 +533,8 @@ const Image = ({
       loading={isPreviewMode ? (prioritizeLoad ? "eager" : "lazy") : undefined}
       fetchPriority={isPreviewMode && prioritizeLoad ? "high" : undefined}
       decoding="async"
+      data-image-frame-id={id}
+      data-image-radius-id={id}
       className={`${animationForElement} h-auto w-full ${layoutPointerBlock}`}
       style={{ ...brightnessStyle, ...cornerStyle }}
     />
@@ -527,15 +544,18 @@ const Image = ({
 
   return (
     <div
+      data-image-wrap-id={id}
+      data-image-radius-id={id}
       className={`relative block w-full ${
         bannerHorizontalCaptionOverflowVisible
           ? "overflow-visible"
           : "overflow-hidden"
       }${
-        isImageHover &&
-        imageHoverBackgroundEnabled &&
-        !showImageOverlayAlways &&
-        !disableHoverPreviewInBuilder
+        badgeHoverEnabled ||
+        (isImageHover &&
+          imageHoverBackgroundEnabled &&
+          !showImageOverlayAlways &&
+          !disableHoverPreviewInBuilder)
           ? " group/image-hover"
           : ""
       }`}
@@ -722,8 +742,15 @@ const Image = ({
       />
 
       {showImageBadge && (
-        <div className="pointer-events-none">
+        <div
+          className={`pointer-events-none${
+            badgeHoverEnabled
+              ? " opacity-0 transition-opacity duration-150 group-hover/image-hover:opacity-100"
+              : ""
+          }`}
+        >
           <ImageBadge
+            elementId={id}
             badge={elementData.badge}
             aspectRatio={previewReservedAspectRatio}
             imageBorderRadius={elementData.borderRadius}

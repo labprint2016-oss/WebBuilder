@@ -157,14 +157,14 @@ export function getButtonMuiSx(elementData, theme, variant, slot = 1) {
   const fs = numOr(s.buttonFontSize, BUTTON_STYLE_DEFAULTS.buttonFontSize);
   const bw = numOr(s.buttonBorderWidth, BUTTON_STYLE_DEFAULTS.buttonBorderWidth);
   const fw = s.buttonBold ? 600 : 500;
-  const isDualOutlined =
-    elementData?.type === "btnG" && v === "outlined";
+  const isDual = elementData?.type === "btnG";
+  const isDualOutlined = isDual && v === "outlined";
 
   const base = {
     marginTop: 0,
     marginBottom: 0,
     boxShadow: "none",
-    borderRadius: `${radius}px`,
+    borderRadius: isDual ? 0 : `${radius}px`,
     fontSize: fs,
     fontWeight: fw,
     py: 0,
@@ -284,36 +284,196 @@ export function getButtonOuterContainerSx(elementData) {
 }
 
 /**
- * กรอบนอกรวมสำหรับปุ่มคู่ (btnG) แบบขอบ — ความหนา buttonBorderWidth อยู่รอบนอกพื้นหลังทั้งกลุ่ม
- * ไม่ให้แต่ละปุ่มมีกรอบซ้ำที่รอยต่อ (ดูหนา/ไม่สวยเมื่อขอบ ≥ 2px)
+ * กรอบนอกรวมสำหรับปุ่มคู่ (btnG) — มุมโค้งอยู่ที่ขอบนอกทั้งกลุ่ม
+ * ปุ่มด้านในเป็นเหลี่ยม; แบบขอบมีเส้น buttonBorderWidth รอบนอก (ไม่ซ้ำที่รอยต่อ)
  */
 export function getButtonGroupOutlinedFrameSx(elementData, theme) {
   if (elementData?.type !== "btnG") return null;
   const v = getButtonMuiVariant(elementData);
-  if (v !== "outlined") return null;
   const s = mergeButtonStyle(elementData);
   const { border } = resolveButtonColors(elementData, theme, 1);
   const radius = numOr(s.buttonRadius, BUTTON_STYLE_DEFAULTS.buttonRadius);
   const bw = numOr(s.buttonBorderWidth, BUTTON_STYLE_DEFAULTS.buttonBorderWidth);
+  const isOutlined = v === "outlined";
   return {
     boxSizing: "border-box",
-    border: `${bw}px solid ${border}`,
+    ...(isOutlined
+      ? { border: `${bw}px solid ${border}` }
+      : { border: "none" }),
     borderRadius: `${radius}px`,
     overflow: "hidden",
     boxShadow: "none",
     /* ยกเลิก margin ทับซ้อนของ MuiButtonGroup ที่ใช้กับ outlined */
     "& .MuiButtonGroup-grouped": {
       marginLeft: "0 !important",
+      borderRadius: "0 !important",
     },
     /*
      * MUI outlined + horizontal: ปุ่มแรกได้ borderRightColor: transparent
      * ต้องทับให้เห็นเส้นแบ่งกลาง (ความหนาเท่า buttonBorderWidth)
      */
-    "& .MuiButtonGroup-firstButton": {
-      borderRight: `${bw}px solid ${border} !important`,
-    },
-    "& .MuiButtonGroup-firstButton:hover": {
-      borderRight: `${bw}px solid ${border} !important`,
-    },
+    ...(isOutlined
+      ? {
+          "& .MuiButtonGroup-firstButton": {
+            borderRight: `${bw}px solid ${border} !important`,
+          },
+          "& .MuiButtonGroup-firstButton:hover": {
+            borderRight: `${bw}px solid ${border} !important`,
+          },
+        }
+      : {}),
   };
+}
+
+function escapeAttrSelector(id) {
+  const raw = String(id ?? "");
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(raw);
+  }
+  return raw.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function queryButtonPreviewNodes(elementId, attr) {
+  const id = String(elementId ?? "");
+  if (!id) return [];
+  return Array.from(
+    document.querySelectorAll(`[${attr}="${escapeAttrSelector(id)}"]`)
+  );
+}
+
+const BUTTON_PREVIEW_BUTTON_PROPS = [
+  "font-size",
+  "padding-left",
+  "padding-right",
+  "padding-top",
+  "padding-bottom",
+  "min-height",
+  "border-radius",
+  "font-weight",
+  "background-color",
+  "color",
+  "border",
+  "border-width",
+  "border-style",
+  "border-color",
+  "border-right",
+];
+
+/** Live-drag preview on canvas DOM — avoids React/MUI re-render every tick. */
+export function applyButtonCanvasPreview(elementId, nextData, theme) {
+  const id = String(elementId ?? "");
+  if (!id || typeof document === "undefined") return;
+  const s = mergeButtonStyle(nextData);
+  const variant = getButtonMuiVariant(nextData);
+  const fs = numOr(s.buttonFontSize, BUTTON_STYLE_DEFAULTS.buttonFontSize);
+  const py = numOr(s.buttonPaddingY, BUTTON_STYLE_DEFAULTS.buttonPaddingY);
+  const px = numOr(s.buttonPaddingX, BUTTON_STYLE_DEFAULTS.buttonPaddingX);
+  const radius = numOr(s.buttonRadius, BUTTON_STYLE_DEFAULTS.buttonRadius);
+  const bw = numOr(s.buttonBorderWidth, BUTTON_STYLE_DEFAULTS.buttonBorderWidth);
+  const mt = numOr(s.buttonMarginTop, BUTTON_STYLE_DEFAULTS.buttonMarginTop);
+  const mb = numOr(
+    s.buttonMarginBottom,
+    BUTTON_STYLE_DEFAULTS.buttonMarginBottom
+  );
+  const isDual = nextData?.type === "btnG";
+  const isDualOutlined = isDual && variant === "outlined";
+
+  const align = normalizeButtonLayoutAlign(s.buttonLayoutAlign);
+  const justifyContent =
+    s.buttonSpecialTextEnabled === true
+      ? "space-between"
+      : align === "start"
+        ? "flex-start"
+        : align === "end"
+          ? "flex-end"
+          : "center";
+
+  queryButtonPreviewNodes(id, "data-button-wrap-id").forEach((wrap) => {
+    wrap.style.marginTop = `${mt}px`;
+    wrap.style.marginBottom = `${mb}px`;
+    wrap.style.justifyContent = justifyContent;
+  });
+
+  queryButtonPreviewNodes(id, "data-button-canvas-id").forEach((btn) => {
+    const slot = Number(btn.getAttribute("data-button-slot") || 1) === 2 ? 2 : 1;
+    const { fill, label, border } = resolveButtonColors(nextData, theme, slot);
+    btn.style.fontSize = `${fs}px`;
+    btn.style.paddingLeft = `${px}px`;
+    btn.style.paddingRight = `${px}px`;
+    btn.style.paddingTop = "0px";
+    btn.style.paddingBottom = "0px";
+    btn.style.minHeight = `${py * 2 + fs}px`;
+    btn.style.fontWeight = s.buttonBold ? "600" : "500";
+    if (isDual) {
+      btn.style.borderRadius = "0px";
+    } else {
+      btn.style.borderRadius = `${radius}px`;
+    }
+    if (variant === "text") {
+      btn.style.backgroundColor = "transparent";
+      btn.style.color = label;
+      btn.style.border = "none";
+    } else {
+      btn.style.backgroundColor = fill;
+      btn.style.color = label;
+      if (variant === "outlined" && !isDualOutlined) {
+        btn.style.borderWidth = `${bw}px`;
+        btn.style.borderStyle = "solid";
+        btn.style.borderColor = border;
+      }
+      if (isDualOutlined && slot === 1) {
+        btn.style.borderRight = `${bw}px solid ${border}`;
+      }
+    }
+  });
+
+  queryButtonPreviewNodes(id, "data-button-group-id").forEach((group) => {
+    if (isDual) {
+      group.style.borderRadius = `${radius}px`;
+      group.style.overflow = "hidden";
+      if (isDualOutlined) {
+        const { border } = resolveButtonColors(nextData, theme, 1);
+        group.style.border = `${bw}px solid ${border}`;
+      } else {
+        group.style.removeProperty("border");
+      }
+    } else {
+      group.style.removeProperty("border");
+      group.style.removeProperty("border-radius");
+      group.style.removeProperty("overflow");
+    }
+  });
+
+  queryButtonPreviewNodes(id, "data-button-special-text-id").forEach((node) => {
+    node.style.fontSize = `${fs}px`;
+    node.querySelectorAll("*").forEach((child) => {
+      child.style.fontSize = `${fs}px`;
+    });
+  });
+}
+
+export function clearButtonCanvasPreview(elementId) {
+  const id = String(elementId ?? "");
+  if (!id || typeof document === "undefined") return;
+  queryButtonPreviewNodes(id, "data-button-wrap-id").forEach((wrap) => {
+    wrap.style.removeProperty("margin-top");
+    wrap.style.removeProperty("margin-bottom");
+    wrap.style.removeProperty("justify-content");
+  });
+  queryButtonPreviewNodes(id, "data-button-canvas-id").forEach((btn) => {
+    BUTTON_PREVIEW_BUTTON_PROPS.forEach((prop) =>
+      btn.style.removeProperty(prop)
+    );
+  });
+  queryButtonPreviewNodes(id, "data-button-group-id").forEach((group) => {
+    group.style.removeProperty("border");
+    group.style.removeProperty("border-radius");
+    group.style.removeProperty("overflow");
+  });
+  queryButtonPreviewNodes(id, "data-button-special-text-id").forEach((node) => {
+    node.style.removeProperty("font-size");
+    node.querySelectorAll("*").forEach((child) => {
+      child.style.removeProperty("font-size");
+    });
+  });
 }

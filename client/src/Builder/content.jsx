@@ -75,7 +75,7 @@ import "swiper/css";
 import "swiper/css/navigation";
 import "swiper/css/pagination";
 import Container from "./Layouts/Container"
-import Column from "./Layouts/Conlumn";
+import Column, { SpanCanvasFill } from "./Layouts/Conlumn";
 import {
   completeObservedPanelLayoutCommitsAfterPaint,
   completeScopedLayoutSnapshot,
@@ -106,6 +106,7 @@ import {
   setBuilderPerformanceTransactionTarget,
 } from "./performance/builderPerformanceStore";
 import { BuilderPerformanceTrigger } from "./performance/BuilderPerformanceMonitor";
+import { useBuilderContextStore } from "./store/builderContextStore";
 import Element from "./Layouts/Element";
 import ServiceLayout from "./Services/ServiceLayout";
 import RichTextEditorModal from "./richText/RichTextEditorModal";
@@ -2803,6 +2804,7 @@ function BuilderConfirmModal({ data, close, layouts }) {
 
           <div className="flex justify-center my-4 pb-5">
             <Button
+              data-perf-control="ลบ"
               sx={{
                 backgroundColor: "#B91C1C",
                 color: "white",
@@ -2836,6 +2838,394 @@ function BuilderConfirmModal({ data, close, layouts }) {
     </Modal>
   );
 }
+
+const clonePresetElement = (item) => {
+  try {
+    if (typeof structuredClone === "function") return structuredClone(item);
+    return JSON.parse(JSON.stringify(item));
+  } catch {
+    return lodash.cloneDeep(item);
+  }
+};
+
+const makePresetElementId = (originalId) => {
+  const prefix = String(originalId || "Ele").split("-")[0] || "Ele";
+  return `${prefix}-${Math.ceil(Math.random() * 1e9).toString(36)}`;
+};
+
+const rewritePresetElementList = (list) =>
+  (Array.isArray(list) ? list : [])
+    .filter(
+      (item) => item && typeof item === "object" && typeof item.type === "string"
+    )
+    .map((item) => ({
+      ...clonePresetElement(item),
+      id: makePresetElementId(item?.id),
+    }));
+
+const formatPresetUpdatedAt = (value) => {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
+};
+
+const formatPresetDisplayName = (value) => {
+  const raw = String(value || "PRESET");
+  const chars = Array.from(raw);
+  if (chars.length <= 28) return raw;
+  return `${chars.slice(0, 28).join("")} .....`;
+};
+
+const ColumnPresetLoadModal = React.memo(function ColumnPresetLoadModal({
+  open,
+  presets,
+  error,
+  onClose,
+  onLoad,
+  onDelete,
+}) {
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [list, setList] = useState(presets || []);
+  const [localError, setLocalError] = useState("");
+  const [visible, setVisible] = useState(Boolean(open));
+  const notifyParentOnExitRef = useRef(false);
+  useEffect(() => {
+    if (open) {
+      notifyParentOnExitRef.current = false;
+      setVisible(true);
+      setDeleteConfirmId(null);
+      setList(presets || []);
+      setLocalError("");
+      return;
+    }
+    setVisible(false);
+  }, [open, presets]);
+  const displayError = localError || error;
+  const requestClose = () => {
+    notifyParentOnExitRef.current = true;
+    setVisible(false);
+  };
+  const handleExited = () => {
+    if (!notifyParentOnExitRef.current) return;
+    notifyParentOnExitRef.current = false;
+    onClose();
+  };
+  const confirmDelete = (presetId) => {
+    const result = onDelete(presetId);
+    if (result?.ok) {
+      setList(Array.isArray(result.presets) ? result.presets : []);
+      setLocalError("");
+    } else {
+      setLocalError(result?.error || "ลบ PRESET ไม่สำเร็จ กรุณาลองใหม่");
+    }
+    setDeleteConfirmId(null);
+  };
+  return (
+    <Modal
+      open={visible}
+      onClose={(_, reason) => {
+        if (reason === "backdropClick") return;
+        requestClose();
+      }}
+      aria-labelledby="column-preset-load-modal-title"
+      slotProps={{ backdrop: { timeout: 180 } }}
+      closeAfterTransition
+      slots={{ backdrop: Backdrop }}
+    >
+      <Fade in={visible} timeout={180} onExited={handleExited}>
+        <Box
+          data-builder-modal="preset-load"
+          role="dialog"
+          sx={{
+            position: "relative",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 475,
+            maxWidth: "calc(100vw - 24px)",
+            maxHeight: "min(70vh, 560px)",
+            overflow: "hidden",
+            backgroundColor: "white",
+            borderRadius: 3,
+            p: 2,
+            outline: "none",
+          }}
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <div
+              id="column-preset-load-modal-title"
+              className="text-[15px] font-bold text-[#333333]"
+            >
+              โหลด PRESET
+            </div>
+            <button
+              type="button"
+              aria-label="ปิด"
+              data-perf-control="ปิด"
+              className="inline-flex items-center justify-center text-[13px] font-semibold text-[#6b7280] transition-colors hover:text-[#374151]"
+              onClick={requestClose}
+            >
+              X
+            </button>
+          </div>
+          {displayError ? (
+            <div className="mb-2 text-[12px] text-red-600">{displayError}</div>
+          ) : null}
+          <div className="max-h-[44vh] overflow-y-auto rounded-md border border-gray-200">
+            {list.length > 0 ? (
+              <div className="divide-y divide-gray-200">
+                {list.map((preset) => (
+                  <div
+                    key={preset?.id || Math.random().toString(36)}
+                    className="flex items-center gap-2 pl-2 pr-3 py-1.5 transition-colors hover:bg-gray-50"
+                  >
+                    <button
+                      type="button"
+                      data-perf-control="โหลด PRESET"
+                      className="flex min-w-0 flex-1 items-center justify-between rounded-md pl-1 pr-2 py-1.5 text-left transition-colors hover:bg-gray-100"
+                      onClick={() => {
+                        setDeleteConfirmId(null);
+                        onLoad(preset);
+                      }}
+                    >
+                      <span className="min-w-0 flex items-center gap-1.5">
+                        <Gem className="size-3.5 shrink-0 text-gray-300" />
+                        <span className="truncate text-[13px] text-[#333333]">
+                          {formatPresetDisplayName(preset?.name)}
+                        </span>
+                      </span>
+                      <span className="shrink-0 pl-2 text-[11px] text-gray-400">
+                        {preset?.updatedAt
+                          ? formatPresetUpdatedAt(preset.updatedAt)
+                          : ""}
+                      </span>
+                    </button>
+                    {deleteConfirmId === preset?.id ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          data-perf-control="ยกเลิก"
+                          className="rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-500 transition-colors hover:bg-gray-50"
+                          onClick={() => {
+                            setDeleteConfirmId(null);
+                          }}
+                        >
+                          ยกเลิก
+                        </button>
+                        <button
+                          type="button"
+                          data-perf-control="ยืนยันลบ PRESET"
+                          className="rounded-md border border-[#b81c1c] bg-[#b81c1c] px-1.5 py-0.5 text-[10px] text-white transition-colors hover:bg-[#a61919]"
+                          onClick={() => {
+                            confirmDelete(preset?.id);
+                          }}
+                        >
+                          ลบ
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        aria-label="ลบ PRESET"
+                        data-perf-control="ลบ PRESET"
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-gray-50 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-500"
+                        onClick={() => {
+                          setDeleteConfirmId(preset?.id || null);
+                        }}
+                      >
+                        <Trash2 className="size-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="px-3 py-5 text-center text-[12px] text-gray-400">
+                ยังไม่มี PRESET ที่บันทึกไว้
+              </div>
+            )}
+          </div>
+          <div className="mt-3 flex justify-end">
+            <Button
+              data-perf-control="ปิด"
+              onClick={requestClose}
+              sx={{
+                textTransform: "none",
+                fontSize: 12,
+                fontWeight: 500,
+                color: "#6b7280",
+                borderColor: "#e6e7eb",
+                bgcolor: "#e6e7eb",
+                "&:hover": { bgcolor: "#e6e7eb", borderColor: "#e6e7eb" },
+              }}
+              variant="outlined"
+            >
+              ปิด
+            </Button>
+          </div>
+        </Box>
+      </Fade>
+    </Modal>
+  );
+});
+
+const ColumnPresetSaveModal = React.memo(function ColumnPresetSaveModal({
+  open,
+  defaultName,
+  error,
+  onClose,
+  onSave,
+}) {
+  const [name, setName] = useState(defaultName || "");
+  const [localError, setLocalError] = useState("");
+  const [visible, setVisible] = useState(Boolean(open));
+  const notifyParentOnExitRef = useRef(false);
+  useEffect(() => {
+    if (open) {
+      notifyParentOnExitRef.current = false;
+      setVisible(true);
+      setName(defaultName || "");
+      setLocalError("");
+      return;
+    }
+    setVisible(false);
+  }, [open, defaultName]);
+  const displayError = localError || error;
+  const requestClose = () => {
+    notifyParentOnExitRef.current = true;
+    setVisible(false);
+  };
+  const handleExited = () => {
+    if (!notifyParentOnExitRef.current) return;
+    notifyParentOnExitRef.current = false;
+    onClose();
+  };
+  const submit = () => {
+    const trimmed = String(name || "").trim();
+    if (!trimmed) {
+      setLocalError("กรุณาตั้งชื่อ PRESET");
+      return;
+    }
+    onSave(trimmed);
+  };
+  return (
+    <Modal
+      open={visible}
+      onClose={(_, reason) => {
+        if (reason === "backdropClick") return;
+        requestClose();
+      }}
+      aria-labelledby="column-preset-modal-title"
+      aria-describedby="column-preset-modal-desc"
+      slotProps={{ backdrop: { timeout: 180 } }}
+      closeAfterTransition
+      slots={{ backdrop: Backdrop }}
+    >
+      <Fade in={visible} timeout={180} onExited={handleExited}>
+        <Box
+          data-builder-modal="preset-save"
+          role="dialog"
+          sx={{
+            position: "relative",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 420,
+            maxWidth: "calc(100vw - 24px)",
+            backgroundColor: "white",
+            borderRadius: 3,
+            p: 2,
+            outline: "none",
+          }}
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <div
+              id="column-preset-modal-title"
+              className="text-[15px] font-bold text-[#333333]"
+            >
+              บันทึก PRESET
+            </div>
+            <button
+              type="button"
+              aria-label="ปิด"
+              data-perf-control="ปิด"
+              className="inline-flex items-center justify-center text-[13px] font-semibold text-[#6b7280] transition-colors hover:text-[#374151]"
+              onClick={requestClose}
+            >
+              X
+            </button>
+          </div>
+          <input
+            type="text"
+            name="ชื่อ PRESET"
+            data-perf-control="ชื่อ PRESET"
+            autoFocus
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (localError) setLocalError("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            placeholder="ชื่อ PRESET"
+            className="mb-2 w-full rounded-md border border-gray-300 px-3 py-2 text-[13px] text-[#333333] placeholder:text-[#333333] outline-none ring-0 focus:border-gray-300 focus:ring-0 focus-visible:ring-0"
+          />
+          {displayError ? (
+            <div className="mb-2 text-[12px] text-red-600">{displayError}</div>
+          ) : null}
+          <div className="mt-3 flex justify-end gap-2">
+            <Button
+              data-perf-control="ยกเลิก"
+              onClick={requestClose}
+              sx={{
+                textTransform: "none",
+                fontSize: 12,
+                fontWeight: 500,
+                color: "#6b7280",
+                borderColor: "#e6e7eb",
+                bgcolor: "#e6e7eb",
+                "&:hover": {
+                  bgcolor: "#e6e7eb",
+                  borderColor: "#e6e7eb",
+                },
+              }}
+              variant="outlined"
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              variant="contained"
+              data-perf-control="บันทึก"
+              onClick={submit}
+              sx={{
+                textTransform: "none",
+                fontSize: 12,
+                fontWeight: 500,
+                bgcolor: "#333333",
+                boxShadow: "none",
+                "&:hover": {
+                  bgcolor: "#333333",
+                  boxShadow: "none",
+                },
+              }}
+            >
+              บันทึก
+            </Button>
+          </div>
+        </Box>
+      </Fade>
+    </Modal>
+  );
+});
 
 function BuilderAlertModal({ open, onClose }) {
   const isOpen = Boolean(open);
@@ -2890,6 +3280,20 @@ function BuilderAlertModal({ open, onClose }) {
   );
 }
 
+function CanvasLayoutModeFlag() {
+  const builderMode = useBuilderContextStore((state) => state.builderMode);
+  const device = useBuilderContextStore((state) => state.device);
+  useLayoutEffect(() => {
+    const canvas = document.querySelector("[data-builder-canvas='true']");
+    if (!canvas) return;
+    canvas.classList.toggle(
+      "is-layout-desktop",
+      device === "Desktop" && builderMode === "Layout Mode"
+    );
+  }, [builderMode, device]);
+  return null;
+}
+
 const Content = ({
   handleDropElement,
   openOffcavanas,
@@ -2900,7 +3304,7 @@ const Content = ({
   page,
   setPage,
   device,
-  builderMode,
+  builderMode: builderModeProp,
   patchElementRef,
   openListBoxTextEditRef,
   isPreview = false,
@@ -2913,7 +3317,16 @@ const Content = ({
     }
     return normalized;
   }, [layoutsProp]);
+  const builderMode =
+    builderModeProp ?? useBuilderContextStore.getState().builderMode;
   const isLayoutMode = builderMode === "Layout Mode";
+  const builderModeRef = useRef(builderMode);
+  builderModeRef.current = builderMode;
+  useEffect(() => {
+    return useBuilderContextStore.subscribe((state) => {
+      builderModeRef.current = state.builderMode;
+    });
+  }, []);
   const isPreviewCleanMode = isPreview;
   const structuralOptionStoreRef = useRef(null);
   if (!structuralOptionStoreRef.current) {
@@ -2940,13 +3353,9 @@ const Content = ({
   const [preview, setPreview] = useState(null); // เก็บ JSON HTML ของ layout ใหม่ที่กำลังนำมาวาง
   const structuralRenderRevision = useMemo(
     () => ({
-      controlsVisible:
-        device === "Desktop" && builderMode === "Layout Mode",
+      controlsVisible: device === "Desktop",
     }),
-    [
-      device,
-      builderMode,
-    ]
+    [device]
   );
   const [columnPresetModal, setColumnPresetModal] = useState({
     open: false,
@@ -2960,7 +3369,18 @@ const Content = ({
     presets: [],
     error: "",
   });
-  const [presetDeleteConfirmId, setPresetDeleteConfirmId] = useState(null);
+  const applyColumnPresetToTargetRef = useRef(null);
+  const closeColumnPresetLoadModalRef = useRef(null);
+  const deleteColumnPresetFromLocalStorageRef = useRef(null);
+  const handleLoadColumnPreset = useCallback((preset) => {
+    applyColumnPresetToTargetRef.current?.(preset);
+  }, []);
+  const handleCloseColumnPresetLoadModal = useCallback(() => {
+    closeColumnPresetLoadModalRef.current?.();
+  }, []);
+  const handleDeleteColumnPreset = useCallback((presetId) => {
+    return deleteColumnPresetFromLocalStorageRef.current?.(presetId);
+  }, []);
   /** เป้าหมายวาง ELEMENT จาก sidebar — ใช้ซ่อน badge Col/Span/Mini ตอนลากเข้าช่อง */
   const [elementDropHighlight, setElementDropHighlight] = useState(null);
   const [dropRenderKey, setDropRenderKey] = useState("");
@@ -3284,6 +3704,7 @@ const Content = ({
   });
   const canvasSectionRenderCacheRef = useRef(new Map());
   const canvasColumnRenderCacheRef = useRef(new Map());
+  const canvasSpanRenderCacheRef = useRef(new Map());
   const canvasSectionCacheLayoutsRef = useRef(layouts);
   const canvasSectionRenderEpochRef = useRef(0);
   const canvasSectionCacheStatsRef = useRef(null);
@@ -3325,6 +3746,7 @@ const Content = ({
   );
   const presetUiCacheRef = useRef({ active: false });
   const confirmModalUiCacheRef = useRef({ active: false });
+  const textEditModalUiCacheRef = useRef({ active: false });
   const spanStructurePerfSessionsRef = useRef(new Map());
   const nextSpanStructurePerfSessionIdRef = useRef(1);
   const startSpanStructurePerfSession = (operation, details = {}) => {
@@ -3534,6 +3956,7 @@ const Content = ({
           elementType,
           elementId,
           scope,
+          skipInitialFrameGap: true,
         });
       }
       selectIDRef.current = next;
@@ -3643,16 +4066,24 @@ const Content = ({
       activeDragType === "ELEMENT" &&
       activeDragRef.current
   );
+  const sidebarIsolatedSectionPreviewActive = Boolean(
+    !activeDragRef.current &&
+      dropTargetRef.current?.type === "SECTION" &&
+      (sidebarPortalPreviewRef.current ||
+        sidebarPreviewHostRef.current ||
+        sidebarNewElementFlipRef.current.targetKey)
+  );
   const sidebarPreviewRenderActive = Boolean(
     dragRenderActive &&
       inlineDragActive &&
       (sidebarPortalPreviewRef.current ||
         sidebarPreviewHostRef.current ||
-        sidebarNewElementFlipRef.current.targetKey)
+        sidebarNewElementFlipRef.current.targetKey) &&
+      !sidebarIsolatedSectionPreviewActive
   );
   const sidebarSectionDropRenderActive = Boolean(
     dragRenderActive &&
-      preview &&
+      (preview || sidebarIsolatedSectionPreviewActive) &&
       dropTargetRef.current?.type === "SECTION" &&
       !activeDragRef.current
   );
@@ -3682,18 +4113,50 @@ const Content = ({
   const confirmModalUiCacheActive =
     (confirmModalUiCacheRef.current.active || Boolean(modal)) &&
     !canvasSectionCacheStatsRef.current.layoutsRootChanged;
+  if (textEditModal) textEditModalUiCacheRef.current.active = true;
+  const textEditModalUiCacheActive =
+    (textEditModalUiCacheRef.current.active || Boolean(textEditModal)) &&
+    !canvasSectionCacheStatsRef.current.layoutsRootChanged;
   const pendingFinalCommitObserved =
     canvasSectionCacheStatsRef.current.layoutsRootChanged &&
     hasPendingPanelLayoutCommit()
     ? observePendingPanelLayoutCommits() > 0
     : false;
+  const modeSwitchCacheRef = useRef({
+    builderMode,
+    device,
+    theme,
+    isPreview,
+    allow: false,
+  });
+  const modeSwitchExtrasUnchanged =
+    modeSwitchCacheRef.current.device === device &&
+    modeSwitchCacheRef.current.theme === theme &&
+    modeSwitchCacheRef.current.isPreview === isPreview &&
+    !canvasSectionCacheStatsRef.current.layoutsRootChanged;
+  if (
+    modeSwitchCacheRef.current.builderMode !== builderMode &&
+    modeSwitchExtrasUnchanged
+  ) {
+    modeSwitchCacheRef.current.allow = true;
+  }
+  if (!modeSwitchExtrasUnchanged) {
+    modeSwitchCacheRef.current.allow = false;
+  }
+  modeSwitchCacheRef.current.builderMode = builderMode;
+  modeSwitchCacheRef.current.device = device;
+  modeSwitchCacheRef.current.theme = theme;
+  modeSwitchCacheRef.current.isPreview = isPreview;
+  const modeSwitchCacheActive = modeSwitchCacheRef.current.allow;
   const canReuseSectionCache =
     dragRenderActive ||
     reusePostElementDropCache ||
     scopedLayoutCacheActive ||
     elementSelectionCacheActive ||
     presetUiCacheActive ||
-    confirmModalUiCacheActive;
+    confirmModalUiCacheActive ||
+    textEditModalUiCacheActive ||
+    modeSwitchCacheActive;
   canvasSectionCacheStatsRef.current.dragRenderActive = dragRenderActive;
   canvasSectionCacheStatsRef.current.activeDragType = activeDragType;
   canvasSectionCacheStatsRef.current.elementCanvasDragRenderActive =
@@ -3872,6 +4335,23 @@ const Content = ({
         canvasColumnRenderCacheRef.current.delete(key);
       }
     }
+    const liveSpanKeys = new Set();
+    layouts.forEach((entry, sectionIndex) => {
+      const sectionId = String(entry?.container?.id ?? sectionIndex);
+      const branch = entry?.splitRowId ? "split" : "normal";
+      (entry?.columns || []).forEach((column) => {
+        (column?.spans || []).forEach((span) => {
+          liveSpanKeys.add(
+            `${branch}:${sectionId}:${String(column?.id ?? "")}:${String(span?.id ?? "")}`
+          );
+        });
+      });
+    });
+    for (const key of canvasSpanRenderCacheRef.current.keys()) {
+      if (!liveSpanKeys.has(key)) {
+        canvasSpanRenderCacheRef.current.delete(key);
+      }
+    }
   }
   inlineSortableRenderersRef.current.dragActive = dragRenderActive;
   canvasSectionPreviousDragRef.current = {
@@ -3908,10 +4388,26 @@ const Content = ({
     const cacheEnabled =
       (!dragRenderActive || sidebarSectionDropRenderActive) &&
       !isDraggingLayout;
+    const canReuseUnchangedColumnDuringSectionDrop =
+      sidebarSectionDropRenderActive ||
+      (dropTargetRef.current?.type === "SECTION" && !activeDragRef.current);
     let missReason = "no-entry";
 
     if (!cacheEnabled) {
       missReason = "drag-or-preview-bypass";
+      if (
+        canReuseUnchangedColumnDuringSectionDrop &&
+        cached &&
+        cached.elementData === column &&
+        cached.device === device &&
+        cached.isPreview === isPreview &&
+        cached.theme === theme &&
+        cached.sectionVisualKey === sectionVisualKey &&
+        React.isValidElement(cached.element)
+      ) {
+        cacheStats.columnRenderCacheHits += 1;
+        return cached.element;
+      }
     } else if (cached) {
       if (cached.elementData !== column) {
         missReason = "column-reference-changed";
@@ -3926,18 +4422,12 @@ const Content = ({
         missReason = "split-position-changed";
       } else if (cached.device !== device) {
         missReason = "device-changed";
-      } else if (cached.builderMode !== builderMode) {
-        missReason = "builder-mode-changed";
       } else if (cached.isPreview !== isPreview) {
         missReason = "preview-mode-changed";
       } else if (cached.theme !== theme) {
         missReason = "theme-changed";
       } else if (cached.sectionVisualKey !== sectionVisualKey) {
         missReason = "section-column-visual-changed";
-      } else if (
-        cached.controlsVisible !== structuralRenderRevision.controlsVisible
-      ) {
-        missReason = "controls-mode-changed";
       } else {
         cacheStats.columnRenderCacheHits += 1;
         return cached.element;
@@ -3979,6 +4469,43 @@ const Content = ({
         isPreview,
         theme,
         sectionVisualKey,
+        controlsVisible: structuralRenderRevision.controlsVisible,
+      });
+    }
+    return element;
+  };
+
+  const renderCachedSpanSubtree = (
+    { branch, sectionId, columnId, span, spanIndex },
+    render
+  ) => {
+    const cacheKey = `${branch}:${String(sectionId)}:${String(columnId)}:${String(span?.id ?? "")}:fill1`;
+    const cached = canvasSpanRenderCacheRef.current.get(cacheKey);
+    const cacheEnabled =
+      (!dragRenderActive || sidebarSectionDropRenderActive) &&
+      !isDraggingLayout;
+    if (
+      cacheEnabled &&
+      cached &&
+      cached.elementData === span &&
+      cached.spanIndex === spanIndex &&
+      cached.device === device &&
+      cached.isPreview === isPreview &&
+      cached.theme === theme &&
+      React.isValidElement(cached.element)
+    ) {
+      return cached.element;
+    }
+    const element = render();
+    if (cacheEnabled) {
+      canvasSpanRenderCacheRef.current.set(cacheKey, {
+        element,
+        elementData: span,
+        spanIndex,
+        device,
+        builderMode,
+        isPreview,
+        theme,
         controlsVisible: structuralRenderRevision.controlsVisible,
       });
     }
@@ -4974,6 +5501,7 @@ const Content = ({
     }
     presetUiCacheRef.current.active = false;
     confirmModalUiCacheRef.current.active = false;
+    textEditModalUiCacheRef.current.active = false;
     canvasSectionCacheStatsRef.current.scopedLayoutSnapshotRoots?.forEach(
       completeScopedLayoutSnapshot
     );
@@ -5624,6 +6152,13 @@ const Content = ({
   layoutsRef.current = layouts;
   const pendingDeleteRefGridOpsRef = useRef([]);
   useLayoutEffect(() => {
+    const canvas = document.querySelector("[data-builder-canvas='true']");
+    if (!canvas) return;
+    canvas.querySelectorAll(":scope > .container-area").forEach((node, index) => {
+      node.classList.toggle("is-first-canvas-section", index === 0);
+    });
+  }, [layouts]);
+  useLayoutEffect(() => {
     const operations = pendingDeleteRefGridOpsRef.current.splice(0);
     const spliceOuterGrid = (gridRef, layoutIndex) => {
       const grid = gridRef?.current;
@@ -5679,7 +6214,7 @@ const Content = ({
   });
 
   const openListBoxItemTextEdit = useCallback((listBoxEl, itemIndex, field) => {
-    if (builderMode !== "Editor Mode") return;
+    if (builderModeRef.current !== "Editor Mode") return;
     if (!listBoxEl || listBoxEl.type !== "lstb") return;
     const merged = mergeListBoxElement(listBoxEl);
     const idx = Number(itemIndex);
@@ -5723,7 +6258,7 @@ const Content = ({
 
   const openListBoxItemIconEdit = useCallback(
     (listBoxEl, itemIndex) => {
-      if (builderMode !== "Editor Mode") return;
+      if (builderModeRef.current !== "Editor Mode") return;
       if (!listBoxEl || listBoxEl.type !== "lstb") return;
       const merged = mergeListBoxElement(listBoxEl);
       if ((merged.listBoxVariant || "icon_text") !== "icon_text") return;
@@ -5744,7 +6279,7 @@ const Content = ({
 
   const openListBoxItemImageEdit = useCallback(
     (listBoxEl, itemIndex) => {
-      if (builderMode !== "Editor Mode") return;
+      if (builderModeRef.current !== "Editor Mode") return;
       if (!listBoxEl || listBoxEl.type !== "lstb") return;
       const merged = mergeListBoxElement(listBoxEl);
       const v = merged.listBoxVariant || "icon_text";
@@ -5858,6 +6393,14 @@ const Content = ({
         if (cleaned.textParagraph && typeof cleaned.textParagraph === "object") {
           list[i].textParagraph = lodash.cloneDeep(cleaned.textParagraph);
         }
+        if (
+          cleaned.buttonSpecialTextParagraph &&
+          typeof cleaned.buttonSpecialTextParagraph === "object"
+        ) {
+          list[i].buttonSpecialTextParagraph = lodash.cloneDeep(
+            cleaned.buttonSpecialTextParagraph
+          );
+        }
         if (cleaned.betweenLeftTextParagraph && typeof cleaned.betweenLeftTextParagraph === "object") {
           list[i].betweenLeftTextParagraph = lodash.cloneDeep(cleaned.betweenLeftTextParagraph);
         }
@@ -5923,6 +6466,9 @@ const Content = ({
         }
         if (cleaned.tableColumns && Array.isArray(cleaned.tableColumns)) {
           list[i].tableColumns = lodash.cloneDeep(cleaned.tableColumns);
+        }
+        if (cleaned.borderRadius !== undefined) {
+          list[i].borderRadius = lodash.cloneDeep(cleaned.borderRadius);
         }
         if (
           list[i].type === "img" ||
@@ -6298,8 +6844,15 @@ const Content = ({
           data?.type === "btw" ||
           data?.type === "imgh" ||
           data?.type === "imgo" ||
+          data?.type === "img" ||
+          data?.type === "bnr" ||
+          data?.type === "vid" ||
+          data?.type === "lbx" ||
           data?.type === "text" ||
-          data?.type === "heading"
+          data?.type === "heading" ||
+          data?.type === "icon" ||
+          data?.type === "btn" ||
+          data?.type === "btnG"
         ) {
           let targetPath = null;
           for (let conI = 0; conI < prev.length && !targetPath; conI += 1) {
@@ -7194,7 +7747,7 @@ const Content = ({
 
       /* Layout Mode: เฉพาะ types ที่มี panel ใน Layout Mode เท่านั้น
          (Counter เปิด panel ได้เฉพาะ Editor Mode — เหมือน text/heading/img ฯลฯ) */
-      if (builderMode === "Layout Mode") {
+      if (builderModeRef.current === "Layout Mode") {
         if (FORM_ELEMENT_TYPES.has(type)) {
           return openOffcavanas("Form", tabElementForPanel, onUpdateNested);
         }
@@ -7547,7 +8100,7 @@ const Content = ({
             className="w-full"
             onDoubleClickCapture={(e) => {
               /* Layout Mode: intercept & open element's config panel */
-              if (builderMode !== "Layout Mode") return;
+              if (builderModeRef.current !== "Layout Mode") return;
               e.preventDefault();
               e.stopPropagation();
               openTabsNestedElementEditor(tabsHostId, tabId, tabElement);
@@ -7575,7 +8128,7 @@ const Content = ({
             richTextEditModal={setTextEditModal}
             isInDnD={isDraggingLayout}
             onListEditIcon={(itemIndex) => {
-              if (builderMode !== "Editor Mode") return;
+              if (builderModeRef.current !== "Editor Mode") return;
               const current = getFresh();
               if (Array.isArray(current?.listItems)) {
                 const merged = mergeListElement(current);
@@ -7615,7 +8168,7 @@ const Content = ({
               );
             }}
             onListEditText={(itemIndex) => {
-              if (builderMode !== "Editor Mode") return;
+              if (builderModeRef.current !== "Editor Mode") return;
               const current = getFresh();
               if (Array.isArray(current?.listItems)) {
                 const merged = mergeListElement(current);
@@ -7701,14 +8254,14 @@ const Content = ({
   speakToastRef.current = speakToast;
 
   useEffect(() => {
-   if(builderMode !== "Layout Mode"){
+   if(builderModeRef.current !== "Layout Mode"){
     setSelectID({status:"",ids:{}});
     setPositionElementSetting({ x: null, y: null });
     // copy/paste element disabled
    }
   }, [builderMode, setSelectID]); // ควบคุมการลบ ele
   useEffect(() => {
-    if (builderMode !== "Editor Mode") return;
+    if (builderModeRef.current !== "Editor Mode") return;
     setLayout((prev) => {
       if (!Array.isArray(prev)) return prev;
       const next = lodash.cloneDeep(prev);
@@ -7718,7 +8271,7 @@ const Content = ({
     });
   }, [builderMode, setLayout]);
   useEffect(() => {
-    if(builderMode !== "Layout Mode"){
+    if(builderModeRef.current !== "Layout Mode"){
       setIsDraggingLayout(false);
       setActiveID(null);
       setActiveItem(null);
@@ -8652,10 +9205,11 @@ const Content = ({
       const commitStartedAt = dropPerf ? performance.now() : 0;
       markScopedLayoutSnapshot(nextLayouts);
       layoutsRef.current = nextLayouts;
-      // Native drop events are batched by React. Avoid forcing the whole
-      // canvas commit to block this pointer event.
+      // Clear the isolated sidebar preview before the layout commit so the
+      // canvas can reuse section/column caches instead of rebuilding the
+      // drop-target section.
+      clearGhost({ deferSidebarPreviewUnmount: true });
       setLayout(nextLayouts);
-      clearGhost();
       if (dropPerf) {
         dropPerf.layoutCommitMs += performance.now() - commitStartedAt;
       }
@@ -9862,10 +10416,11 @@ const Content = ({
   };
   clearSidebarPortalPreviewRef.current = clearSidebarPortalPreview;
 
-  const renderSidebarColumnSectionPreview = (sectionPreview) => (
+  const renderSidebarColumnSectionPreview = (sectionPreview, innerStyle) => (
     <ContainerPreview
       element={sectionPreview}
       id={sectionPreview?.container?.id}
+      innerStyle={innerStyle}
     >
       {sectionPreview?.columns?.map((column) => (
         <ColumnPreview
@@ -9899,6 +10454,37 @@ const Content = ({
     </ContainerPreview>
   );
 
+  const renderSidebarSplitSectionPreview = (splitPreview) => {
+    const SPLIT_MAX = 768;
+    return (
+      <>
+        {(splitPreview?.sections || []).map((sec, si) => {
+          const isLeft = si === 0;
+          const splitInner =
+            sec.container?.isFluid === false
+              ? {
+                  width: `min(100%, ${SPLIT_MAX}px)`,
+                  maxWidth: "none",
+                  boxSizing: "border-box",
+                  marginLeft: isLeft ? "auto" : "0px",
+                  marginRight: isLeft ? "0px" : "auto",
+                  paddingLeft: isLeft ? "0px" : "14px",
+                  paddingRight: isLeft ? "14px" : "0px",
+                }
+              : {
+                  paddingLeft: isLeft ? "0px" : "14px",
+                  paddingRight: isLeft ? "14px" : "0px",
+                };
+          return (
+            <div key={sec.container?.id || si} style={{ flex: 1 }}>
+              {renderSidebarColumnSectionPreview(sec, splitInner)}
+            </div>
+          );
+        })}
+      </>
+    );
+  };
+
   const commitSidebarColumnSectionPreview = (
     nextPreview,
     index,
@@ -9929,7 +10515,10 @@ const Content = ({
 
     const host = ensureSidebarPreviewHost(nextPreview);
     if (!host) return;
-    host.className = "preview opacity-70";
+    const isSplitPreview = Boolean(nextPreview?._isSplitGhost);
+    host.className = isSplitPreview
+      ? "preview opacity-70 flex w-full"
+      : "preview opacity-70";
     host.setAttribute("data-drop", "SECTION");
 
     if (previewChanged) {
@@ -9961,7 +10550,9 @@ const Content = ({
               );
             }}
           >
-            {renderSidebarColumnSectionPreview(nextPreview)}
+            {isSplitPreview
+              ? renderSidebarSplitSectionPreview(nextPreview)
+              : renderSidebarColumnSectionPreview(nextPreview)}
           </React.Profiler>
         );
       });
@@ -11239,12 +11830,12 @@ const Content = ({
     }
 
     if (type === "SECTION") {
-      const useIsolatedColumnPreview =
-        sidebarNativeDragPerfRef.current?.elementType === "column" &&
-        !activeDragRef.current;
-      if (!useIsolatedColumnPreview) setPreview(element);
+      const useIsolatedSectionPreview =
+        !activeDragRef.current &&
+        (Boolean(element?._isSplitGhost) || Boolean(element?.container));
+      if (!useIsolatedSectionPreview) setPreview(element);
       if (!layouts.length) {
-        if (useIsolatedColumnPreview) {
+        if (useIsolatedSectionPreview) {
           commitSidebarColumnSectionPreview(element, 0, true);
         } else {
           setDrop(0, "SECTION", null);
@@ -11268,7 +11859,7 @@ const Content = ({
         }
       }
       if (!section) {
-        if (useIsolatedColumnPreview) {
+        if (useIsolatedSectionPreview) {
           commitSidebarColumnSectionPreview(element, layouts.length, true);
         } else {
           setDrop(layouts.length, "SECTION", true);
@@ -11279,7 +11870,7 @@ const Content = ({
       const conR = section.getBoundingClientRect();
       const id = section?.getAttribute("id");
       const index = computeSectionPhysicalInsertIndex(layouts, id, conR, y);
-      if (useIsolatedColumnPreview) {
+      if (useIsolatedSectionPreview) {
         commitSidebarColumnSectionPreview(
           element,
           index,
@@ -11624,16 +12215,18 @@ const Content = ({
 
   const closeColumnPresetModal = () => {
     markPresetUiInteraction();
-    setColumnPresetModal((prev) => ({
-      ...prev,
-      open: false,
-      error: "",
-      payload: null,
-    }));
-    structuralOptionStoreRef.current.setPinned("column", null);
+    startTransition(() => {
+      setColumnPresetModal((prev) => ({
+        ...prev,
+        open: false,
+        error: "",
+        payload: null,
+      }));
+      structuralOptionStoreRef.current.setPinned("column", null);
+    });
   };
 
-  const saveColumnPresetToLocalStorage = () => {
+  const saveColumnPresetToLocalStorage = (nameOverride) => {
     markPresetUiInteraction();
     const modalPayload = columnPresetModal?.payload;
     const currentColumn = modalPayload?.column;
@@ -11649,7 +12242,9 @@ const Content = ({
       setColumnPresetModal((prev) => ({ ...prev, error: "ไม่พบข้อมูลคอลัมน์" }));
       return;
     }
-    const trimmedName = String(columnPresetModal?.name || "").trim();
+    const trimmedName = String(
+      nameOverride ?? columnPresetModal?.name ?? ""
+    ).trim();
     if (!trimmedName) {
       setColumnPresetModal((prev) => ({ ...prev, error: "กรุณาตั้งชื่อ PRESET" }));
       return;
@@ -11690,8 +12285,10 @@ const Content = ({
       const writeStartedAt = perf ? performance.now() : 0;
       localStorage.setItem(PRESET_STORAGE_KEY, serialized);
       if (perf) perf.storageWriteMs = performance.now() - writeStartedAt;
-      closeColumnPresetModal();
-      setPresetSavedToastOpen(true);
+      startTransition(() => {
+        closeColumnPresetModal();
+        setPresetSavedToastOpen(true);
+      });
     } catch {
       setColumnPresetModal((prev) => ({ ...prev, error: "บันทึกไม่สำเร็จ กรุณาลองใหม่" }));
     }
@@ -11713,23 +12310,6 @@ const Content = ({
       return [];
     }
   };
-  const formatPresetUpdatedAt = (value) => {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "";
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const yyyy = d.getFullYear();
-    const hh = String(d.getHours()).padStart(2, "0");
-    const min = String(d.getMinutes()).padStart(2, "0");
-    return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
-  };
-  const formatPresetDisplayName = (value) => {
-    const raw = String(value || "PRESET");
-    const chars = Array.from(raw);
-    if (chars.length <= 28) return raw;
-    return `${chars.slice(0, 28).join("")} .....`;
-  };
-
   const openColumnPresetLoadModal = (payload) => {
     markPresetUiInteraction();
     const perf = startPresetPerfSession("OPEN_LOAD", {
@@ -11744,7 +12324,6 @@ const Content = ({
         performance.now() - startedAt - perf.storageReadMs
       );
     }
-    setPresetDeleteConfirmId(null);
     setColumnPresetLoadModal({
       open: true,
       source: payload?.source || null,
@@ -11754,8 +12333,9 @@ const Content = ({
   };
   const deleteColumnPresetFromLocalStorage = (presetId) => {
     const targetId = String(presetId || "").trim();
-    if (!targetId) return;
-    markPresetUiInteraction();
+    if (!targetId) {
+      return { ok: false, error: "ไม่พบ PRESET" };
+    }
     const perf = startPresetPerfSession("DELETE_PRESET", {
       presetId: targetId,
       target: columnPresetLoadModal?.source?.spnID ||
@@ -11784,49 +12364,34 @@ const Content = ({
       const writeStartedAt = perf ? performance.now() : 0;
       localStorage.setItem(PRESET_STORAGE_KEY, serialized);
       if (perf) perf.storageWriteMs = performance.now() - writeStartedAt;
-      setColumnPresetLoadModal((prev) => ({
-        ...prev,
-        presets: nextPresets,
-        error: "",
-      }));
-      setPresetDeleteConfirmId(null);
+      return { ok: true, presets: nextPresets };
     } catch {
-      setColumnPresetLoadModal((prev) => ({
-        ...prev,
-        error: "ลบ PRESET ไม่สำเร็จ กรุณาลองใหม่",
-      }));
+      return { ok: false, error: "ลบ PRESET ไม่สำเร็จ กรุณาลองใหม่" };
     }
   };
 
   const closeColumnPresetLoadModal = () => {
     markPresetUiInteraction();
-    setPresetDeleteConfirmId(null);
-    setColumnPresetLoadModal({
-      open: false,
-      source: null,
-      presets: [],
-      error: "",
+    startTransition(() => {
+      setColumnPresetLoadModal({
+        open: false,
+        source: null,
+        presets: [],
+        error: "",
+      });
+      structuralOptionStoreRef.current.setPinned("column", null);
     });
-    structuralOptionStoreRef.current.setPinned("column", null);
   };
+  closeColumnPresetLoadModalRef.current = closeColumnPresetLoadModal;
+  deleteColumnPresetFromLocalStorageRef.current =
+    deleteColumnPresetFromLocalStorage;
 
   const extractPresetElementsForSpanTarget = (presetRecord) => {
     const presetColumn = presetRecord?.payload?.column;
     if (!presetColumn || typeof presetColumn !== "object") return [];
-    const makeElementId = (originalId) => {
-      const prefix = String(originalId || "Ele").split("-")[0] || "Ele";
-      return `${prefix}-${Math.ceil(Math.random() * 1e9).toString(36)}`;
-    };
-    const rewriteElementList = (list) =>
-      (Array.isArray(list) ? list : [])
-        .filter((item) => item && typeof item === "object" && typeof item.type === "string")
-        .map((item) => ({
-          ...lodash.cloneDeep(item),
-          id: makeElementId(item?.id),
-        }));
 
     if (Array.isArray(presetColumn.elements) && presetColumn.elements.length > 0) {
-      return rewriteElementList(presetColumn.elements);
+      return rewritePresetElementList(presetColumn.elements);
     }
     if (presetColumn.isSpan && Array.isArray(presetColumn.spans)) {
       const merged = [];
@@ -11835,7 +12400,7 @@ const Content = ({
           merged.push(...sp.elements);
         }
       });
-      return rewriteElementList(merged);
+      return rewritePresetElementList(merged);
     }
     return [];
   };
@@ -11904,8 +12469,10 @@ const Content = ({
       markScopedLayoutSnapshot(nextLayouts);
       layoutsRef.current = nextLayouts;
       setLayout(nextLayouts);
-      closeColumnPresetLoadModal();
-      setPresetLoadedToastOpen(true);
+      startTransition(() => {
+        closeColumnPresetLoadModal();
+        setPresetLoadedToastOpen(true);
+      });
       return;
     }
     const presetColumn = presetRecord?.payload?.column;
@@ -11913,17 +12480,6 @@ const Content = ({
       setColumnPresetLoadModal((prev) => ({ ...prev, error: "Preset ไม่ถูกต้อง" }));
       return;
     }
-    const makeElementId = (originalId) => {
-      const prefix = String(originalId || "Ele").split("-")[0] || "Ele";
-      return `${prefix}-${Math.ceil(Math.random() * 1e9).toString(36)}`;
-    };
-    const rewriteElementList = (list) =>
-      (Array.isArray(list) ? list : [])
-        .filter((item) => item && typeof item === "object" && typeof item.type === "string")
-        .map((item) => ({
-          ...lodash.cloneDeep(item),
-          id: makeElementId(item?.id),
-        }));
 
     if (!targetColumn || typeof targetColumn !== "object") {
       setColumnPresetLoadModal((prev) => ({ ...prev, error: "ไม่พบ Column เป้าหมาย" }));
@@ -11935,9 +12491,9 @@ const Content = ({
     let loadedElementCount = 0;
     if (targetColumn.isSpan && Array.isArray(targetColumn.spans)) {
       const presetSpans = Array.isArray(presetColumn?.spans) ? presetColumn.spans : [];
-      const fallbackElements = rewriteElementList(presetColumn?.elements);
+      const fallbackElements = rewritePresetElementList(presetColumn?.elements);
       const nextSpans = targetColumn.spans.map((sp, idx) => {
-        const byIndexElements = rewriteElementList(presetSpans?.[idx]?.elements);
+        const byIndexElements = rewritePresetElementList(presetSpans?.[idx]?.elements);
         const nextElements = byIndexElements.length
           ? byIndexElements
           : idx === 0
@@ -11957,7 +12513,7 @@ const Content = ({
         elements: [],
       };
     } else {
-      const mergedElements = rewriteElementList(
+      const mergedElements = rewritePresetElementList(
         Array.isArray(presetColumn?.elements) && presetColumn.elements.length
           ? presetColumn.elements
           : Array.isArray(presetColumn?.spans)
@@ -11988,9 +12544,12 @@ const Content = ({
     markScopedLayoutSnapshot(nextLayouts);
     layoutsRef.current = nextLayouts;
     setLayout(nextLayouts);
-    closeColumnPresetLoadModal();
-    setPresetLoadedToastOpen(true);
+    startTransition(() => {
+      closeColumnPresetLoadModal();
+      setPresetLoadedToastOpen(true);
+    });
   };
+  applyColumnPresetToTargetRef.current = applyColumnPresetToTarget;
 
   const noLayoutAnimWhileSorting = (args) => {
     if (args.isSorting || args.wasDragging) return false;
@@ -12077,9 +12636,23 @@ const Content = ({
           logScheduled: false,
         };
       }
-      canvasSectionRenderCacheRef.current.delete(
-        String(currentLayout?.splitRowId || currentLayout?.container?.id || id)
-      );
+      const visualOnlyDividerFields = new Set([
+        "columnDividerStyle",
+        "columnDividerColor",
+        "columnDividerOpacity",
+        "columnDividerVerticalLengthPercent",
+      ]);
+      const skipSectionCacheInvalidation =
+        Array.isArray(panelChangedFields) &&
+        panelChangedFields.length > 0 &&
+        panelChangedFields.every((field) =>
+          visualOnlyDividerFields.has(field)
+        );
+      if (!skipSectionCacheInvalidation) {
+        canvasSectionRenderCacheRef.current.delete(
+          String(currentLayout?.splitRowId || currentLayout?.container?.id || id)
+        );
+      }
       markScopedLayoutSnapshot(newLayouts);
       return newLayouts;
     });
@@ -12332,8 +12905,7 @@ const Content = ({
       elementType: normalizedType,
       elementId: source,
       scope: String(source),
-      skipInitialFrameGap:
-        normalizedType === "section" || normalizedType === "split",
+      skipInitialFrameGap: true,
     });
     if (!builderSectionPerfEnabled) return;
     const counts = countCanvasLayoutStructureAndElements(removedLayouts);
@@ -13930,6 +14502,26 @@ const Content = ({
 
   const renderScopedColumnDnd = (containerId, columnId, children) => {
     if (!useScopedColumnDnd) return children;
+    const ownerLayout = layouts.find(
+      (layout) => layout?.container?.id === containerId
+    );
+    const ownerColumn = ownerLayout?.columns?.find(
+      (column) => column?.id === columnId
+    );
+    const hasScopedDndItems =
+      (Array.isArray(ownerColumn?.elements) &&
+        ownerColumn.elements.length > 0) ||
+      (Array.isArray(ownerColumn?.spans) &&
+        ownerColumn.spans.some(
+          (span) =>
+            (Array.isArray(span?.elements) && span.elements.length > 0) ||
+            (Array.isArray(span?.nestedSpans) &&
+              span.nestedSpans.some(
+                (nested) =>
+                  Array.isArray(nested?.elements) && nested.elements.length > 0
+              ))
+        ));
+    if (!hasScopedDndItems) return children;
     const ownerKey = `${containerId}/${columnId}`;
     return (
       <DndContext
@@ -13938,7 +14530,7 @@ const Content = ({
         measuring={measuring}
         collisionDetection={scopedColumnCollisionDetection}
         onDragStart={(e) => {
-          if (builderMode !== "Layout Mode") return;
+          if (builderModeRef.current !== "Layout Mode") return;
           const isElementDrag = e.active?.data?.current?.type === "ELEMENT";
           startDndPerf(e.active, isElementDrag ? "COLUMN" : "CANVAS");
           beginDragInteraction(e.active);
@@ -13948,7 +14540,7 @@ const Content = ({
           if (!isElementDrag) setIsDraggingLayout(true);
         }}
         onDragMove={(e) => {
-          if (builderMode !== "Layout Mode") return;
+          if (builderModeRef.current !== "Layout Mode") return;
           markContentDndLifecycle("active-move");
           const moveStartedAt = performance.now();
           const perf = dndPerfRef.current;
@@ -14015,7 +14607,7 @@ const Content = ({
           }
         }}
         onDragEnd={(e) => {
-          if (builderMode !== "Layout Mode") return;
+          if (builderModeRef.current !== "Layout Mode") return;
           markContentDndLifecycle("drop");
           if (dndPerfRef.current?.active) {
             dndPerfRef.current.lastAction = "drop";
@@ -14202,9 +14794,8 @@ const Content = ({
             }}
           >
             
-             {structuralOption?.hovered &&
-              structuralRenderRevision.controlsVisible && (
-              <div className="relative z-20">
+             {structuralOption?.hovered && (
+              <div data-layout-controls="" className="relative z-20">
                 <OptionButtonGroup
                   element={[elementData,heros]}
                   clone={cloneContainer}
@@ -14253,8 +14844,7 @@ const Content = ({
 
 
       const showOption =
-        (structuralOption?.hovered || structuralOption?.pinned) &&
-        structuralRenderRevision.controlsVisible;
+        structuralOption?.hovered || structuralOption?.pinned;
 
 
 
@@ -14453,8 +15043,7 @@ const Content = ({
       const isPinnedThisColumn = Boolean(structuralOption?.pinned);
       const showOption =
         (structuralOption?.hovered || isPinnedThisColumn) &&
-        (!hoverInsideThisColumn || isPinnedThisColumn) &&
-        structuralRenderRevision.controlsVisible;
+        (!hoverInsideThisColumn || isPinnedThisColumn);
       const elevateColumnLayer = showOption || hoverInsideThisColumn;
 
     const cellShellClass = (() => {
@@ -14478,6 +15067,11 @@ const Content = ({
         ref={bridge.nodeRef}
         style={{
           ...columnDividerColorStyle,
+          ...(gridBorder && !useCustomEdgeLines
+            ? {
+                borderStyle: `var(--section-divider-style, ${verticalDividerBorderStyle})`,
+              }
+            : {}),
           ...(elevateColumnLayer ? { zIndex: 200 } : {}),
         }}
         className={cellShellClass}
@@ -14500,11 +15094,12 @@ const Content = ({
                 }}
               >
                 <span
+                  data-section-divider-line=""
                   style={{
                     height: `var(--section-divider-length, ${columnDividerVerticalLengthPct}%)`,
                     width: 0,
                     borderRightWidth: 1,
-                    borderRightStyle: verticalDividerBorderStyle,
+                    borderRightStyle: `var(--section-divider-style, ${verticalDividerBorderStyle})`,
                     borderRightColor: `var(--section-divider-color, ${verticalDividerColor})`,
                     boxSizing: "border-box",
                   }}
@@ -14518,11 +15113,12 @@ const Content = ({
                 style={{ height: 0 }}
               >
                 <span
+                  data-section-divider-line=""
                   style={{
                     width: `var(--section-divider-length, ${columnDividerVerticalLengthPct}%)`,
                     height: 0,
                     borderBottomWidth: 1,
-                    borderBottomStyle: verticalDividerBorderStyle,
+                    borderBottomStyle: `var(--section-divider-style, ${verticalDividerBorderStyle})`,
                     borderBottomColor: `var(--section-divider-color, ${verticalDividerColor})`,
                     boxSizing: "border-box",
                   }}
@@ -14671,23 +15267,6 @@ const Content = ({
 
     const eleLength =
       sidx > -1 ? layouts[IDX].columns[idx].spans[sidx].elements.length : 0;
-    const {
-      paddingX = 18,
-      paddingY = 18,
-      backgroundColor = "#ffffff",
-      backgroundColorGradient = [{ type: "mainColor", index: 0 }, { type: "mainColor", index: 1 }],
-      borderColor = "#000000",
-      borderOpacity = 255,
-      borderRadius = 0,
-      borderWidth = 0,
-      degrees = 90,
-      isGradient = false,
-      opacityColor = 255,
-      opacityColorGradient = [255, 255],
-      colGlassEnabled = false,
-      colGlassLevel = 50,
-    } = elementData || {};
-
     const setHeight = () => {
       if (
         eleLength > 0 ||
@@ -14701,37 +15280,6 @@ const Content = ({
         return "h-[100px]";
       }
     };
-    const glassLevelNum = Number.isFinite(Number(colGlassLevel)) ? Number(colGlassLevel) : 50;
-    const glassRatio = colGlassEnabled === true
-      ? Math.max(0, Math.min(100, glassLevelNum)) / 100
-      : 0;
-    const glassBlurPx = Math.round(glassRatio * 24);
-    const glassSaturatePct = Math.round(100 + glassRatio * 80);
-    const spanGlassStyle = colGlassEnabled === true
-      ? {
-          backdropFilter: `blur(${glassBlurPx}px) saturate(${glassSaturatePct}%)`,
-          WebkitBackdropFilter: `blur(${glassBlurPx}px) saturate(${glassSaturatePct}%)`,
-        }
-      : {};
-    let spanFill = isGradient
-      ? setColor(theme, backgroundColorGradient, opacityColorGradient, degrees)
-      : setColor(theme, backgroundColor, opacityColor);
-    if (colGlassEnabled === true && glassRatio > 0) {
-      const maxOpacity = Math.round(255 - glassRatio * 160);
-      if (isGradient && Array.isArray(backgroundColorGradient) && Array.isArray(opacityColorGradient)) {
-        const effectiveOpacity = opacityColorGradient.map((op) =>
-          Math.min(Number(op) || 255, maxOpacity)
-        );
-        spanFill = setColor(theme, backgroundColorGradient, effectiveOpacity, degrees);
-      } else if (!isGradient && backgroundColor != null) {
-        const effectiveOpacity = Math.min(Number(opacityColor) || 255, maxOpacity);
-        spanFill = setColor(theme, backgroundColor, effectiveOpacity);
-      }
-    }
-    const spanBorderColor = setColor(theme, borderColor, borderOpacity);
-
-
-
           const setRef = (el,n=0)=>{
             setSpnRef(IDX,idx,sidx,el)
             if(n === 1){
@@ -14747,8 +15295,7 @@ const Content = ({
           }
 
           const showOption =
-            (structuralOption?.hovered || structuralOption?.pinned) &&
-            structuralRenderRevision.controlsVisible;
+            structuralOption?.hovered || structuralOption?.pinned;
           const ghostDropIndex =
             preview &&
             dropTargetRef.current?.type === "ELEMENT" &&
@@ -14768,7 +15315,6 @@ const Content = ({
             );
           const showSpanIdBadge =
             device === "Desktop" &&
-            builderMode === "Layout Mode" &&
             eleLength === 0 &&
             !droppingIntoThisSpan;
 
@@ -14806,14 +15352,18 @@ const Content = ({
         }}
       >
         <div
-          className={`relative w-full min-w-0 ${setHeight()} ${device === "Desktop" && builderMode === "Layout Mode" ? `border-[1px] border-dashed border-gray-600${removeSpanTopBorder ? " border-t-0" : ""}` : ""}`}
+          data-layout-outline=""
+          className={`relative w-full min-w-0 ${setHeight()} ${device === "Desktop" ? `border-[1px] border-dashed border-gray-600${removeSpanTopBorder ? " border-t-0" : ""}` : ""}`}
           ref={(el) => setRef(el, 1)}
           onDragOver={(e) => {
             handleDuring(e);
           }}
         >
           {showOption && (
-            <div className="absolute top-0 left-0 z-[1000] pointer-events-none">
+            <div
+              data-layout-controls=""
+              className="absolute top-0 left-0 z-[1000] pointer-events-none"
+            >
               <div className="pointer-events-auto">
                 <ServiceLayout
                   layouts={layouts}
@@ -14843,6 +15393,7 @@ const Content = ({
           )}
           {showSpanIdBadge ? (
             <div
+              data-layout-badge=""
               className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center"
               aria-hidden
             >
@@ -14854,19 +15405,13 @@ const Content = ({
               </span>
             </div>
           ) : null}
-          <div
-            className="flex h-full w-full min-w-0 flex-col"
-            style={{
-              borderRadius,
-              borderWidth,
-              padding: `${paddingY}px ${paddingX}px`,
-              borderColor: spanBorderColor,
-              background: spanFill,
-              ...spanGlassStyle,
-            }}
+          <SpanCanvasFill
+            elementData={elementData}
+            theme={theme}
+            onDragOver={handleDuring}
           >
             {children}
-          </div>
+          </SpanCanvasFill>
         </div>
       </div>
     );
@@ -14936,7 +15481,7 @@ const Content = ({
     return {
       // Keep element DnD active in Layout Mode.
       animateLayoutChanges: noLayoutAnimWhileSorting,
-      disabled: !isLayoutMode,
+      disabled: builderModeRef.current !== "Layout Mode",
       transition: splitTransition,
     };
   };
@@ -15415,7 +15960,7 @@ const Content = ({
 
 
       const click=(e,status)=>{
-        if(builderMode !== "Editor Mode"){
+        if(builderModeRef.current !== "Editor Mode"){
           e.preventDefault();
         }else{
           return;
@@ -15474,7 +16019,7 @@ const Content = ({
           handleDuring(e);
         }}
         onMouseDownCapture={(e) => {
-          if (builderMode !== "Editor Mode") return;
+          if (builderModeRef.current !== "Editor Mode") return;
           if (e.detail < 2) return;
           if (type === "text") return;
           const rawTarget = e.target;
@@ -15502,7 +16047,7 @@ const Content = ({
           }
         }}
         onClick={(e) => {
-          if (builderMode === "Editor Mode" && (type === "tbl" || type === "btw")) return;
+          if (builderModeRef.current === "Editor Mode" && (type === "tbl" || type === "btw")) return;
           if (
             (type === "img" ||
               type === "imgh" ||
@@ -15534,7 +16079,7 @@ const Content = ({
         }}
         onDoubleClickCapture={(e) => {
           if (
-            builderMode === "Layout Mode" &&
+            builderModeRef.current === "Layout Mode" &&
             LAYOUT_MODE_SINGLE_CLICK_ONLY_TYPES.has(type)
           ) {
             // โหมดออกแบบของ element พื้นฐาน: ไม่ให้ double-click ทำงาน
@@ -15557,7 +16102,7 @@ const Content = ({
           const isNativeEditableTarget = Boolean(
             targetEl?.closest?.("input, textarea, [contenteditable='true']")
           );
-          if (builderMode === "Editor Mode" && !isNativeEditableTarget) {
+          if (builderModeRef.current === "Editor Mode" && !isNativeEditableTarget) {
             /* กัน browser selection (ลากคลุมข้อความ/รูป) ตอนดับเบิลคลิกเปิดแผง */
             e.preventDefault();
             const selection =
@@ -15644,7 +16189,7 @@ const Content = ({
               };
             };
 
-            if (builderMode === "Layout Mode") {
+            if (builderModeRef.current === "Layout Mode") {
               const found = getNestedEl();
               if (found?.el && type !== "dts") {
                 e.preventDefault();
@@ -15683,7 +16228,7 @@ const Content = ({
             }
 
             /* Editor Mode: จัดการเฉพาะ types ที่ไม่มี internal double-click handler */
-            if (builderMode === "Editor Mode") {
+            if (builderModeRef.current === "Editor Mode") {
               const found = getNestedEl();
               if (found?.el) {
                 const nt = found.el.type;
@@ -15775,7 +16320,7 @@ const Content = ({
             return;
           }
           /* Design Mode: List Item / List iCons / Button Group → เปิดจัดการ items */
-          if (builderMode === "Layout Mode" && type === "list") {
+          if (builderModeRef.current === "Layout Mode" && type === "list") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15791,7 +16336,7 @@ const Content = ({
             return;
           }
           /* Design Mode: Carousel → เปิด Carousel panel */
-          if (builderMode === "Layout Mode" && type === "crl") {
+          if (builderModeRef.current === "Layout Mode" && type === "crl") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15801,7 +16346,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && type === "dts") {
+          if (builderModeRef.current === "Layout Mode" && type === "dts") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15811,7 +16356,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && type === "ctg") {
+          if (builderModeRef.current === "Layout Mode" && type === "ctg") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15821,7 +16366,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && type === "lstb") {
+          if (builderModeRef.current === "Layout Mode" && type === "lstb") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15831,7 +16376,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && type === "tbl") {
+          if (builderModeRef.current === "Layout Mode" && type === "tbl") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15841,7 +16386,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && type === "btw") {
+          if (builderModeRef.current === "Layout Mode" && type === "btw") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15851,7 +16396,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && type === "acc") {
+          if (builderModeRef.current === "Layout Mode" && type === "acc") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15861,7 +16406,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && type === "post") {
+          if (builderModeRef.current === "Layout Mode" && type === "post") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15871,7 +16416,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && type === "imgh") {
+          if (builderModeRef.current === "Layout Mode" && type === "imgh") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15881,7 +16426,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && type === "imgo") {
+          if (builderModeRef.current === "Layout Mode" && type === "imgo") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15913,7 +16458,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && type === "divider") {
+          if (builderModeRef.current === "Layout Mode" && type === "divider") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15923,7 +16468,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && type === "form") {
+          if (builderModeRef.current === "Layout Mode" && type === "form") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15933,7 +16478,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode === "Layout Mode" && FORM_ELEMENT_TYPES.has(type)) {
+          if (builderModeRef.current === "Layout Mode" && FORM_ELEMENT_TYPES.has(type)) {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
@@ -15943,7 +16488,7 @@ const Content = ({
             );
             return;
           }
-          if (builderMode !== "Editor Mode") return;
+          if (builderModeRef.current !== "Editor Mode") return;
           if (type === "img") {
             e.preventDefault();
             e.stopPropagation();
@@ -16121,6 +16666,7 @@ const Content = ({
                 mode: "button-special-text",
                 elementData: {
                   id: elementData.id,
+                  type: elementData.type === "btnG" ? "btnG" : "btn",
                   label: resolveButtonSpecialTextLabel(elementData),
                   textParagraph: elementData?.buttonSpecialTextParagraph,
                 },
@@ -16236,12 +16782,13 @@ const Content = ({
             );
             return;
           }
-          if (type === "text") {
+          if (type === "text" || type === "frmText") {
             e.preventDefault();
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
             setPositionElementSetting({ x: null, y: null });
             if (
+              type === "text" &&
               new URLSearchParams(window.location.search).get("textPerf") ===
               "1"
             ) {
@@ -16256,14 +16803,22 @@ const Content = ({
                 maxCommitLatencyMs: 0,
               };
             }
-            setTextEditModal({ elementData });
-            return;
-          }
-          if (type === "frmText") {
-            e.preventDefault();
-            e.stopPropagation();
-            setSelectID({ ids: {}, status: "" });
-            setPositionElementSetting({ x: null, y: null });
+            const openTransactionId = isBuilderPerformanceEnabled()
+              ? beginBuilderPerformanceTransaction(
+                  "text-editor-open",
+                  {
+                    label: "เปิด Modal แก้ไขข้อความ",
+                    elementType: type,
+                    elementId: String(elementData?.id || ""),
+                  },
+                  { trackFrames: true, skipInitialFrameGap: true }
+                )
+              : null;
+            if (openTransactionId != null) {
+              pendingCanvasPerformanceTransactionsRef.current.add(
+                openTransactionId
+              );
+            }
             setTextEditModal({ elementData });
             return;
           }
@@ -16334,7 +16889,7 @@ const Content = ({
             e.stopPropagation();
             setSelectID({ ids: {}, status: "" });
             setPositionElementSetting({ x: null, y: null });
-            if (builderMode === "Editor Mode") {
+            if (builderModeRef.current === "Editor Mode") {
               const sideRaw = e.target?.closest?.("[data-between-text-side]")?.dataset?.betweenTextSide;
               const merged = mergeBetweenElement(elementData);
               const side = sideRaw === "right" ? "right" : sideRaw === "left" ? "left" : null;
@@ -16762,7 +17317,7 @@ const Content = ({
           editorHoverMeta={builderMode === "Editor Mode" ? hoverElement : null}
           hover={setHoverElement}
           onListEditIcon={(itemIndex) => {
-            if (builderMode !== "Editor Mode") return;
+            if (builderModeRef.current !== "Editor Mode") return;
             setSelectID({ ids: {}, status: "" });
             setPositionElementSetting({ x: null, y: null });
             /* Compound element (List Item หรือ List iCons) — แก้ไขไอคอนต่อ item */
@@ -16799,7 +17354,7 @@ const Content = ({
             );
           }}
           onListEditText={(itemIndex) => {
-            if (builderMode !== "Editor Mode") return;
+            if (builderModeRef.current !== "Editor Mode") return;
             setSelectID({ ids: {}, status: "" });
             setPositionElementSetting({ x: null, y: null });
             /* Compound element (List Item หรือ List iCons) — แก้ไขข้อความต่อ item */
@@ -17334,7 +17889,15 @@ const Content = ({
     const bw = Number(borderWidth) || 0;
     const r = Number(borderRadius) || 0;
     const innerRadius = Math.max(0, r - bw);
-    const useBorderRing = bw > 0;
+    const opacityByte = (value, fallback = 255) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? Math.max(0, Math.min(255, n)) : fallback;
+    };
+    const fillIsOpaque = isGradient
+      ? opacityByte(opacityColorGradient?.[0]) >= 255 &&
+        opacityByte(opacityColorGradient?.[1]) >= 255
+      : opacityByte(opacityColor) >= 255;
+    const useBorderRing = bw > 0 && fillIsOpaque;
 
     const hasLayoutElements =
       Array.isArray(elements) && elements.length > 0;
@@ -18672,7 +19235,7 @@ const Content = ({
   };
 
   const drag = ({ active,activatorEvent }) => {
-    if(builderMode !== "Layout Mode") return;
+    if(builderModeRef.current !== "Layout Mode") return;
     layoutDragTargetRef.current = { containerId: "", id: "" };
     structureDropIntentRef.current = null;
     const draggingExisting = active?.data?.current?.type === "ELEMENT";
@@ -18844,7 +19407,7 @@ const Content = ({
   }
 
   const during = ({ active, over }) => {
-    if(builderMode !== "Layout Mode") return;
+    if(builderModeRef.current !== "Layout Mode") return;
     if (!over || !active) return;
     if (!active || !active.data?.current) return;
     if (active.id === over.id) return;
@@ -19550,7 +20113,7 @@ const Content = ({
 
   const drop = ({ active, over }) => {
     
-    if(builderMode !== "Layout Mode") return;
+    if(builderModeRef.current !== "Layout Mode") return;
     resetDropElementGeometryCache();
     layoutDragTargetRef.current = { containerId: "", id: "" };
     sidebarPreviewIntentRef.current = { key: "", startedAt: 0, x: 0, y: 0 };
@@ -20166,7 +20729,7 @@ const Content = ({
               }
         }
         onClickCapture={(e) => {
-          if (builderMode !== "Layout Mode") return;
+          if (builderModeRef.current !== "Layout Mode") return;
           const target = e.target;
           const targetEl =
             target && typeof target === "object"
@@ -20204,7 +20767,7 @@ const Content = ({
         <MaybeDndContext
         enabled={!isPreviewCleanMode}
         onDragStart={(e) => {
-          if (builderMode !== "Layout Mode") return;
+          if (builderModeRef.current !== "Layout Mode") return;
           startDndPerf(e.active);
           beginDragInteraction(e.active);
           listImageColWarnedRef.current = false;
@@ -20222,7 +20785,7 @@ const Content = ({
           setIsDraggingLayout(true);
         }}
         onDragMove={(e) => {
-          if (builderMode !== "Layout Mode") return;
+          if (builderModeRef.current !== "Layout Mode") return;
           markContentDndLifecycle("active-move");
           const moveStartedAt = performance.now();
           const perf = dndPerfRef.current;
@@ -20242,7 +20805,7 @@ const Content = ({
           }
         }}
         onDragEnd={(e) => {
-          if (builderMode !== "Layout Mode") return;
+          if (builderModeRef.current !== "Layout Mode") return;
           markContentDndLifecycle("drop");
           drop(e);
           markContentDndLifecycle("drop-handler-complete");
@@ -20269,12 +20832,17 @@ const Content = ({
           data-builder-canvas="true"
           className={`content-area relative min-h-[600px] ${
             isPreview ? "" : "rounded-xl border border-white/10 bg-white/5"
+          }${
+            device === "Desktop" && builderMode === "Layout Mode"
+              ? " is-layout-desktop"
+              : ""
           }`}
           style={{
             ...(isPreview ? { width: "100%" } : canvasSize),
             ...mobileSkeletonStyle,
           }}
         >
+          <CanvasLayoutModeFlag />
             {layouts.length > 0 ? (
               <>
                 {layouts.map((layout, I) => {
@@ -20526,8 +21094,7 @@ const Content = ({
                             const { container: secCon, columns: secCols } = sec;
                             const secID = secCon.id;
                             const splitShowOption =
-                              splitStructuralOption?.hoverId === secID &&
-                              structuralRenderRevision.controlsVisible;
+                              splitStructuralOption?.hoverId === secID;
                             // standard width: แต่ละ half เป็น independent container
                             // ใช้ 100% (= canvas/2) แทน 100vw เพื่อ match กับ container mx-auto ของ normal section
                             // calc(100% - 640px) = (canvas/2 - 640) = (canvas - 1280)/2 = outer margin ของ normal section
@@ -20558,6 +21125,7 @@ const Content = ({
                             return (
                               <div
                                 key={secID}
+                                id={secID}
                                 data-split-secid={secID}
                                 className="split-section-half relative flex flex-col"
                                 style={{
@@ -20638,7 +21206,7 @@ const Content = ({
                                                                     )}
                                                                     <SortableElementItem id={ele.id} containerId={secID} columnId={colId} elementData={ele}>
                                                                       <Element element={ele} openOffcavanas={openOffcavanas} onUpdate={(data) => patchLayoutElement(data, { eleID: ele.id })} onDelete={() => deleteElement({ eleID: ele.id })} layouts={layouts} device={device} theme={theme} builderMode={builderMode} modal={openModal} dragRef={dragRef} ids={{ conI: secI, colI: ci, eleI }} colSize={col.size} richTextEditModal={setTextEditModal} isInDnD={isDraggingLayout} onTabElementEdit={(tabElement, tabId) => openTabsNestedElementEditor(ele.id, tabId, tabElement)} renderTabElement={(tabElement, tabElementIndex, tabId) => renderTabsNestedElement(ele.id, tabElement, tabElementIndex, tabId)} tabGhostData={getTabGhostData(ele)} onDataSliderDoubleClick={() => {
-                                                                        if (builderMode !== "Layout Mode") return;
+                                                                        if (builderModeRef.current !== "Layout Mode") return;
                                                                         setSelectID({ ids: {}, status: "" });
                                                                         setPositionElementSetting({ x: null, y: null });
                                                                         openOffcavanas("Data Slider", ele, (next) =>
@@ -20699,7 +21267,7 @@ const Content = ({
                                                             )}
                                                             <SortableElementItem id={singleEle.id} containerId={secID} columnId={colId} elementData={singleEle}>
                                                               <Element element={singleEle} openOffcavanas={openOffcavanas} onUpdate={(data) => patchLayoutElement(data, { eleID: singleEle.id })} onDelete={() => deleteElement({ eleID: singleEle.id })} layouts={layouts} device={device} theme={theme} builderMode={builderMode} modal={openModal} dragRef={dragRef} ids={{ conI: secI, colI: ci, eleI }} colSize={col.size} richTextEditModal={setTextEditModal} isInDnD={isDraggingLayout} onTabElementEdit={(tabElement, tabId) => openTabsNestedElementEditor(singleEle.id, tabId, tabElement)} renderTabElement={(tabElement, tabElementIndex, tabId) => renderTabsNestedElement(singleEle.id, tabElement, tabElementIndex, tabId)} tabGhostData={getTabGhostData(singleEle)} onDataSliderDoubleClick={() => {
-                                                                if (builderMode !== "Layout Mode") return;
+                                                                if (builderModeRef.current !== "Layout Mode") return;
                                                                 setSelectID({ ids: {}, status: "" });
                                                                 setPositionElementSetting({ x: null, y: null });
                                                                 openOffcavanas("Data Slider", singleEle, (next) =>
@@ -20731,7 +21299,15 @@ const Content = ({
                                                     const sid = s?.id;
                                                     if (!sid) return null;
                                                     const eleSpnID = eleSpn.map((e) => e.id);
-                                                    return (
+                                                    return renderCachedSpanSubtree(
+                                                      {
+                                                        branch: "split",
+                                                        sectionId: secID,
+                                                        columnId: colId,
+                                                        span: s,
+                                                        spanIndex: o,
+                                                      },
+                                                      () => (
                                                       <StructuralSpanItem
                                                         key={sid}
                                                         id={sid}
@@ -20803,7 +21379,7 @@ const Content = ({
                                                                       }
                                                                       tabGhostData={getTabGhostData(singleEle)}
                                                                       onDataSliderDoubleClick={() => {
-                                                                        if (builderMode !== "Layout Mode") return;
+                                                                        if (builderModeRef.current !== "Layout Mode") return;
                                                                         setSelectID({ ids: {}, status: "" });
                                                                         setPositionElementSetting({ x: null, y: null });
                                                                         openOffcavanas("Data Slider", singleEle, (next) =>
@@ -20878,6 +21454,7 @@ const Content = ({
                                                           )}
                                                         </SortableContext>
                                                       </StructuralSpanItem>
+                                                      )
                                                     );
                                                   })}
                                                 </>
@@ -21041,7 +21618,15 @@ const Content = ({
                                       const eleSpnID = eleSpn.map(
                                         (e) => e.id
                                       ) || ["ele-spn-null"];
-                                      return (
+                                      return renderCachedSpanSubtree(
+                                        {
+                                          branch: "normal",
+                                          sectionId: ID,
+                                          columnId: id,
+                                          span: s,
+                                          spanIndex: o,
+                                        },
+                                        () => (
                                         <StructuralSpanItem
                                           key={sid}
                                           id={sid}
@@ -21489,6 +22074,7 @@ const Content = ({
                                               )}
                                             </SortableContext>
                                         </StructuralSpanItem>
+                                        )
                                       );
                                     })}
                                   </>
@@ -22289,6 +22875,25 @@ const Content = ({
         onSave={(nextParagraph) => {
           const id = textEditModal?.elementData?.id;
           if (id == null) return;
+          const saveTransactionId = isBuilderPerformanceEnabled()
+            ? beginBuilderPerformanceTransaction(
+                "text-editor-save",
+                {
+                  label: "บันทึกลงหน้า / แก้ไขข้อความ",
+                  elementType: textEditModal?.elementData?.type || "text",
+                  elementId: String(id),
+                },
+                { trackFrames: true, skipInitialFrameGap: true }
+              )
+            : null;
+          if (saveTransactionId != null) {
+            pendingCanvasPerformanceTransactionsRef.current.add(
+              saveTransactionId
+            );
+          }
+          const closeTextEditor = () => {
+            startTransition(() => setTextEditModal(null));
+          };
           const plain = nextParagraph.segments.map((s) => s.text).join("");
           if (textEditModal?.mode === "list-text") {
             const content = plain.replace(/\r\n/g, "\n");
@@ -22299,7 +22904,7 @@ const Content = ({
               },
               { eleID: id }
             );
-            setTextEditModal(null);
+            closeTextEditor();
             return;
           }
           if (textEditModal?.mode === "list-item-text") {
@@ -22307,18 +22912,18 @@ const Content = ({
             const lid = ex?.listElementId;
             const idx = Number(ex?.itemIndex);
             if (lid == null || !Number.isFinite(idx) || idx < 0) {
-              setTextEditModal(null);
+              closeTextEditor();
               return;
             }
             const base = findLayoutElementById(layoutsRef.current, String(lid));
             if (!base || base.type !== "list") {
-              setTextEditModal(null);
+              closeTextEditor();
               return;
             }
             const merged = mergeListElement(base);
             const items = lodash.cloneDeep(merged.listItems || []);
             if (idx >= items.length) {
-              setTextEditModal(null);
+              closeTextEditor();
               return;
             }
             const content = plain.replace(/\r\n/g, "\n");
@@ -22331,7 +22936,7 @@ const Content = ({
               mergeListElement({ ...merged, listItems: items }),
               { eleID: String(lid) }
             );
-            setTextEditModal(null);
+            closeTextEditor();
             return;
           }
           if (textEditModal?.mode === "list-box-item-text") {
@@ -22340,18 +22945,18 @@ const Content = ({
             const idx = Number(ex?.itemIndex);
             const field = ex?.field === "body" ? "body" : "title";
             if (bid == null || !Number.isFinite(idx) || idx < 0) {
-              setTextEditModal(null);
+              closeTextEditor();
               return;
             }
             const base = findLayoutElementById(layoutsRef.current, String(bid));
             if (!base || base.type !== "lstb") {
-              setTextEditModal(null);
+              closeTextEditor();
               return;
             }
             const merged = mergeListBoxElement(base);
             const items = lodash.cloneDeep(merged.listBoxItems || []);
             if (idx >= items.length) {
-              setTextEditModal(null);
+              closeTextEditor();
               return;
             }
             const content = plain.replace(/\r\n/g, "\n");
@@ -22373,7 +22978,7 @@ const Content = ({
               mergeListBoxElement({ ...merged, listBoxItems: items }),
               { eleID: String(bid) }
             );
-            setTextEditModal(null);
+            closeTextEditor();
             return;
           }
           if (textEditModal?.mode === "carousel-slide-caption") {
@@ -22381,19 +22986,19 @@ const Content = ({
             const cid = ex?.carouselElementId;
             const idx = Number(ex?.slideIndex);
             if (cid == null || !Number.isFinite(idx) || idx < 0) {
-              setTextEditModal(null);
+              closeTextEditor();
               return;
             }
             const idStr = String(cid);
             const base = findLayoutElementById(layoutsRef.current, idStr);
             if (!base || base.type !== "crl") {
-              setTextEditModal(null);
+              closeTextEditor();
               return;
             }
             const merged = mergeCarouselElement(base);
             const slides = lodash.cloneDeep(merged.carouselSlides || []);
             if (idx >= slides.length) {
-              setTextEditModal(null);
+              closeTextEditor();
               return;
             }
             slides[idx] = {
@@ -22404,7 +23009,7 @@ const Content = ({
               mergeCarouselElement({ ...merged, carouselSlides: slides }),
               { eleID: idStr }
             );
-            setTextEditModal(null);
+            closeTextEditor();
             return;
           }
           if (textEditModal?.mode === "image-hover-text") {
@@ -22415,7 +23020,7 @@ const Content = ({
               },
               { eleID: id }
             );
-            setTextEditModal(null);
+            closeTextEditor();
             return;
           }
           if (textEditModal?.mode === "between-text") {
@@ -22423,12 +23028,12 @@ const Content = ({
             const bid = ex?.betweenElementId;
             const side = ex?.side === "right" ? "right" : "left";
             if (bid == null) {
-              setTextEditModal(null);
+              closeTextEditor();
               return;
             }
             const base = findLayoutElementById(layoutsRef.current, String(bid));
             if (!base || base.type !== "btw") {
-              setTextEditModal(null);
+              closeTextEditor();
               return;
             }
             const merged = mergeBetweenElement(base);
@@ -22451,18 +23056,26 @@ const Content = ({
               }),
               { eleID: String(bid) }
             );
-            setTextEditModal(null);
+            closeTextEditor();
             return;
           }
           if (textEditModal?.mode === "button-special-text") {
+            const base = findLayoutElementById(layoutsRef.current, String(id));
+            const buttonType =
+              base?.type === "btnG" ||
+              textEditModal?.elementData?.type === "btnG"
+                ? "btnG"
+                : "btn";
             patchLayoutElement(
               {
+                type: buttonType,
                 buttonSpecialText: plain.replace(/\r\n/g, "\n"),
-                buttonSpecialTextParagraph: serializeParagraphForSave(nextParagraph),
+                buttonSpecialTextParagraph:
+                  serializeParagraphForSave(nextParagraph),
               },
               { eleID: id }
             );
-            setTextEditModal(null);
+            closeTextEditor();
             return;
           }
           const saveStartedAt = performance.now();
@@ -22504,254 +23117,25 @@ const Content = ({
             });
             window.__textEditorRenderPerf = null;
           }
-          setTextEditModal(null);
+          closeTextEditor();
         }}
         />
       </React.Profiler>
-      <Modal
+      <ColumnPresetSaveModal
         open={Boolean(columnPresetModal?.open)}
-        onClose={(_, reason) => {
-          if (reason === "backdropClick") return;
-          closeColumnPresetModal();
-        }}
-        aria-labelledby="column-preset-modal-title"
-        aria-describedby="column-preset-modal-desc"
-        slotProps={{ backdrop: { timeout: 180 } }}
-        closeAfterTransition
-        slots={{ backdrop: Backdrop }}
-      >
-        <Fade in={Boolean(columnPresetModal?.open)} timeout={180}>
-          <Box
-            sx={{
-              position: "relative",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              width: 420,
-              maxWidth: "calc(100vw - 24px)",
-              backgroundColor: "white",
-              borderRadius: 3,
-              p: 2,
-              outline: "none",
-            }}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <div id="column-preset-modal-title" className="text-[15px] font-bold text-[#333333]">
-                บันทึก PRESET
-              </div>
-              <button
-                type="button"
-                aria-label="ปิด"
-                className="inline-flex items-center justify-center text-[13px] font-semibold text-[#6b7280] transition-colors hover:text-[#374151]"
-                onClick={closeColumnPresetModal}
-              >
-                X
-              </button>
-            </div>
-            <input
-              autoFocus
-              value={columnPresetModal?.name || ""}
-              onChange={(e) => {
-                markPresetUiInteraction();
-                setColumnPresetModal((prev) => ({
-                  ...prev,
-                  name: e.target.value,
-                  error: "",
-                }));
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  saveColumnPresetToLocalStorage();
-                }
-              }}
-              placeholder="ชื่อ PRESET"
-              className="mb-2 w-full rounded-md border border-gray-300 px-3 py-2 text-[13px] text-[#333333] placeholder:text-[#333333] outline-none ring-0 focus:border-gray-300 focus:ring-0 focus-visible:ring-0"
-            />
-            {columnPresetModal?.error ? (
-              <div className="mb-2 text-[12px] text-red-600">{columnPresetModal.error}</div>
-            ) : null}
-            <div className="mt-3 flex justify-end gap-2">
-              <Button
-                onClick={closeColumnPresetModal}
-                sx={{
-                  textTransform: "none",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: "#6b7280",
-                  borderColor: "#e6e7eb",
-                  bgcolor: "#e6e7eb",
-                  "&:hover": {
-                    bgcolor: "#e6e7eb",
-                    borderColor: "#e6e7eb",
-                  },
-                }}
-                variant="outlined"
-              >
-                ยกเลิก
-              </Button>
-              <Button
-                variant="contained"
-                onClick={saveColumnPresetToLocalStorage}
-                sx={{
-                  textTransform: "none",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  bgcolor: "#333333",
-                  boxShadow: "none",
-                  "&:hover": {
-                    bgcolor: "#333333",
-                    boxShadow: "none",
-                  },
-                }}
-              >
-                บันทึก
-              </Button>
-            </div>
-          </Box>
-        </Fade>
-      </Modal>
-      <Modal
+        defaultName={columnPresetModal?.name || ""}
+        error={columnPresetModal?.error || ""}
+        onClose={closeColumnPresetModal}
+        onSave={saveColumnPresetToLocalStorage}
+      />
+      <ColumnPresetLoadModal
         open={Boolean(columnPresetLoadModal?.open)}
-        onClose={(_, reason) => {
-          if (reason === "backdropClick") return;
-          closeColumnPresetLoadModal();
-        }}
-        aria-labelledby="column-preset-load-modal-title"
-        slotProps={{ backdrop: { timeout: 180 } }}
-        closeAfterTransition
-        slots={{ backdrop: Backdrop }}
-      >
-        <Fade in={Boolean(columnPresetLoadModal?.open)} timeout={180}>
-          <Box
-            sx={{
-              position: "relative",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              width: 475,
-              maxWidth: "calc(100vw - 24px)",
-              maxHeight: "min(70vh, 560px)",
-              overflow: "hidden",
-              backgroundColor: "white",
-              borderRadius: 3,
-              p: 2,
-              outline: "none",
-            }}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <div id="column-preset-load-modal-title" className="text-[15px] font-bold text-[#333333]">
-                โหลด PRESET
-              </div>
-              <button
-                type="button"
-                aria-label="ปิด"
-                className="inline-flex items-center justify-center text-[13px] font-semibold text-[#6b7280] transition-colors hover:text-[#374151]"
-                onClick={closeColumnPresetLoadModal}
-              >
-                X
-              </button>
-            </div>
-            {columnPresetLoadModal?.error ? (
-              <div className="mb-2 text-[12px] text-red-600">{columnPresetLoadModal.error}</div>
-            ) : null}
-            <div className="max-h-[44vh] overflow-y-auto rounded-md border border-gray-200">
-              {(columnPresetLoadModal?.presets || []).length > 0 ? (
-                <div className="divide-y divide-gray-200">
-                  {(columnPresetLoadModal?.presets || []).map((preset) => (
-                    <div
-                      key={preset?.id || Math.random().toString(36)}
-                      className="flex items-center gap-2 pl-2 pr-3 py-1.5 transition-colors hover:bg-gray-50"
-                    >
-                      <button
-                        type="button"
-                        className="flex min-w-0 flex-1 items-center justify-between rounded-md pl-1 pr-2 py-1.5 text-left transition-colors hover:bg-gray-100"
-                        onClick={() => {
-                          markPresetUiInteraction();
-                          setPresetDeleteConfirmId(null);
-                          applyColumnPresetToTarget(preset);
-                        }}
-                      >
-                        <span className="min-w-0 flex items-center gap-1.5">
-                          <Gem className="size-3.5 shrink-0 text-gray-300" />
-                          <span className="truncate text-[13px] text-[#333333]">
-                            {formatPresetDisplayName(preset?.name)}
-                          </span>
-                        </span>
-                        <span className="shrink-0 pl-2 text-[11px] text-gray-400">
-                          {preset?.updatedAt ? formatPresetUpdatedAt(preset.updatedAt) : ""}
-                        </span>
-                      </button>
-                      {presetDeleteConfirmId === preset?.id ? (
-                        <div className="flex shrink-0 items-center gap-1">
-                          <button
-                            type="button"
-                            className="rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-500 transition-colors hover:bg-gray-50"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              markPresetUiInteraction();
-                              setPresetDeleteConfirmId(null);
-                            }}
-                          >
-                            ยกเลิก
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-md border border-[#b81c1c] bg-[#b81c1c] px-1.5 py-0.5 text-[10px] text-white transition-colors hover:bg-[#a61919]"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              deleteColumnPresetFromLocalStorage(preset?.id);
-                            }}
-                          >
-                            ลบ
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          aria-label="ลบ PRESET"
-                          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-gray-50 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-500"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            markPresetUiInteraction();
-                            setPresetDeleteConfirmId(preset?.id || null);
-                          }}
-                        >
-                          <Trash2 className="size-3" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="px-3 py-5 text-center text-[12px] text-gray-400">
-                  ยังไม่มี PRESET ที่บันทึกไว้
-                </div>
-              )}
-            </div>
-            <div className="mt-3 flex justify-end">
-              <Button
-                onClick={closeColumnPresetLoadModal}
-                sx={{
-                  textTransform: "none",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: "#6b7280",
-                  borderColor: "#e6e7eb",
-                  bgcolor: "#e6e7eb",
-                  "&:hover": { bgcolor: "#e6e7eb", borderColor: "#e6e7eb" },
-                }}
-                variant="outlined"
-              >
-                ปิด
-              </Button>
-            </div>
-          </Box>
-        </Fade>
-      </Modal>
+        presets={columnPresetLoadModal?.presets || []}
+        error={columnPresetLoadModal?.error || ""}
+        onClose={handleCloseColumnPresetLoadModal}
+        onLoad={handleLoadColumnPreset}
+        onDelete={handleDeleteColumnPreset}
+      />
       <Snackbar
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         open={presetSavedToastOpen}

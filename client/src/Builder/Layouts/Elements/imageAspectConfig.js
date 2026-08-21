@@ -284,6 +284,44 @@ export const IMAGE_BADGE_POSITIONS = [
   { value: "cc", label: "ตรงกลาง" },
 ];
 
+export const IMAGE_BADGE_POSITION_STYLE = {
+  tl: { left: "20px", top: "20px", right: "auto", bottom: "auto", transform: "none" },
+  tr: { right: "20px", top: "20px", left: "auto", bottom: "auto", transform: "none" },
+  bl: { left: "20px", bottom: "20px", right: "auto", top: "auto", transform: "none" },
+  br: { right: "20px", bottom: "20px", left: "auto", top: "auto", transform: "none" },
+  tc: { left: "50%", top: "20px", right: "auto", bottom: "auto", transform: "translateX(-50%)" },
+  bc: { left: "50%", bottom: "20px", right: "auto", top: "auto", transform: "translateX(-50%)" },
+  cc: { left: "50%", top: "50%", right: "auto", bottom: "auto", transform: "translate(-50%, -50%)" },
+};
+
+export function applyImageBadgePreview(elementId, badge, theme) {
+  const id = String(elementId ?? "");
+  if (!id) return;
+  const b = mergeImageBadge(badge);
+  const position = String(b.position || "tl");
+  const pos = IMAGE_BADGE_POSITION_STYLE[position] || IMAGE_BADGE_POSITION_STYLE.tl;
+  const customBg = resolveThemeOrHexColor(b.backgroundColor, theme);
+  const customFg = resolveThemeOrHexColor(b.textColor, theme);
+  const bgOp = Number(b.backgroundOpacity);
+  const txOp = Number(b.textOpacity);
+  queryImagePreviewNodes(id, "data-image-badge-id").forEach((node) => {
+    node.style.left = pos.left;
+    node.style.top = pos.top;
+    node.style.right = pos.right;
+    node.style.bottom = pos.bottom;
+    node.style.transform = pos.transform;
+    node.style.fontWeight = b.bold ? "700" : "400";
+    if (customBg) {
+      node.style.backgroundColor = applyOpacityToCssColor(customBg, bgOp);
+    }
+    if (customFg) {
+      node.style.color = applyOpacityToCssColor(customFg, txOp);
+    }
+    const text = typeof b.label === "string" ? b.label : "";
+    if (node.textContent !== text) node.textContent = text;
+  });
+}
+
 const BADGE_CORNER_VALUES = new Set(["tl", "tr", "bl", "br"]);
 
 const LIGHTBOX_BADGE_POSITIONS_MID = [
@@ -370,3 +408,91 @@ export const aspectPreviewDims = (value) => {
       return { w: 28, h: 18 };
   }
 };
+
+function escapeAttrSelector(id) {
+  const raw = String(id ?? "");
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(raw);
+  }
+  return raw.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function queryImagePreviewNodes(elementId, attr) {
+  const id = String(elementId ?? "");
+  if (!id || typeof document === "undefined") return [];
+  return Array.from(
+    document.querySelectorAll(`[${attr}="${escapeAttrSelector(id)}"]`)
+  );
+}
+
+function applyStyleObject(node, styles) {
+  if (!node || !styles) return;
+  Object.entries(styles).forEach(([key, value]) => {
+    if (value == null || value === "") return;
+    node.style[key] = typeof value === "number" ? `${value}px` : String(value);
+  });
+}
+
+function applyImageCornerRadiusToNode(node, pxValue, aspectRatio) {
+  if (!node) return;
+  node.style.removeProperty("border-radius");
+  node.style.removeProperty("border-top-left-radius");
+  node.style.removeProperty("border-top-right-radius");
+  node.style.removeProperty("border-bottom-left-radius");
+  node.style.removeProperty("border-bottom-right-radius");
+  applyStyleObject(node, imageCornerRadiusStyle(pxValue, aspectRatio));
+}
+
+/** Live preview on canvas — หลีกเลี่ยงการ re-render แผง Image ตอนลากสไลเดอร์ / คลิกสัดส่วน */
+export function applyImageCanvasPreview(elementId, nextData) {
+  const id = String(elementId ?? "");
+  if (!id) return;
+  const aspect = String(nextData?.aspectRatio || IMAGE_ASPECT_DEFAULT)
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(":", "/");
+  const mt = Number(nextData?.imageMarginTop);
+  const mb = Number(nextData?.imageMarginBottom);
+  const marginTop = Number.isFinite(mt) ? mt : IMAGE_MARGIN_TOP_DEFAULT;
+  const marginBottom = Number.isFinite(mb) ? mb : IMAGE_MARGIN_BOTTOM_DEFAULT;
+  const brightness = imageBrightnessFilterStyle(
+    nextData?.brightness ?? IMAGE_BRIGHTNESS_DEFAULT
+  );
+
+  queryImagePreviewNodes(id, "data-image-wrap-id").forEach((wrap) => {
+    wrap.style.marginTop = `${marginTop}px`;
+    wrap.style.marginBottom = `${marginBottom}px`;
+    applyImageCornerRadiusToNode(wrap, nextData?.borderRadius, aspect);
+  });
+  queryImagePreviewNodes(id, "data-image-frame-id").forEach((node) => {
+    const isImg = String(node.tagName || "").toLowerCase() === "img";
+    applyImageCornerRadiusToNode(node, nextData?.borderRadius, aspect);
+    applyStyleObject(node, brightness);
+    if (!aspect || aspect === "auto") {
+      if (isImg) {
+        node.style.removeProperty("aspect-ratio");
+        node.style.removeProperty("object-fit");
+      }
+      return;
+    }
+    node.style.aspectRatio = aspect;
+    if (isImg) {
+      node.style.width = "100%";
+      node.style.height = "auto";
+      node.style.objectFit = "cover";
+    }
+  });
+  queryImagePreviewNodes(id, "data-image-radius-id").forEach((node) => {
+    applyImageCornerRadiusToNode(node, nextData?.borderRadius, aspect);
+  });
+}
+
+export function clearImageCanvasPreview(elementId) {
+  const id = String(elementId ?? "");
+  if (!id) return;
+  queryImagePreviewNodes(id, "data-image-frame-id").forEach((node) => {
+    if (String(node.tagName || "").toLowerCase() !== "img") return;
+    node.style.removeProperty("aspect-ratio");
+    node.style.removeProperty("object-fit");
+  });
+}

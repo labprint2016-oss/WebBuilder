@@ -341,6 +341,7 @@ function ServiceLayout({
         <Tooltip title="ลบ" {...SMALL_TOOLTIP_PROPS}>
           <button
             className=" bg-gray-900  text-white px-[3px] py-1"
+            data-perf-control="ลบ"
             onClick={() => modal({ id: getID(), funct: removeCon })}
           >
             <Trash2 className="size-4 m-[5px]" />
@@ -425,6 +426,7 @@ function ServiceLayout({
                   <Tooltip title="ลบ" {...SMALL_TOOLTIP_PROPS}>
                     <button
                       className=" bg-gray-900  text-white px-[3px] py-1"
+                      data-perf-control="ลบ"
                       onClick={() => modal({ id: getID(), funct: removeCol })}
                     >
                       <Trash2 className="size-4 m-[5px]" />
@@ -590,6 +592,7 @@ function ServiceLayout({
                     className=" bg-gray-900  text-white px-[3px] py-1"
                     type="button"
                     draggable={false}
+                    data-perf-control="ลบ"
                     onClick={() => {
                       modal({ id: getID(), funct: removeCol });
                     }}
@@ -712,6 +715,7 @@ function ServiceLayout({
                         className=" bg-gray-900  text-white  px-[3px] py-1"
                         type="button"
                         draggable={false}
+                        data-perf-control="ลบ"
                         onClick={() => {
                           modal({ id: getID("S"), funct: removeSpn });
                         }}
@@ -800,6 +804,7 @@ function ServiceLayout({
                   className=" bg-gray-900  text-white  px-[3px] py-1"
                   type="button"
                   draggable={false}
+                  data-perf-control="ลบ"
                   onClick={() => { modal({ id: getID(), funct: removeSpn }); }}
                 >
                   <Grid2X2X className="size-[17px] m-[4.5px]" />

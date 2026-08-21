@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
     Dialog,
@@ -45,11 +45,56 @@ import Stack from '@mui/material/Stack';
 
 
 
+const AntSwitch = styled(Switch)({
+        width: 28,
+        height: 16,
+        padding: 0,
+        display: 'flex',
+        '&:active': {
+          '& .MuiSwitch-thumb': {
+            width: 15,
+          },
+          '& .MuiSwitch-switchBase.Mui-checked': {
+            transform: 'translateX(9px)',
+          },
+        },
+        '& .MuiSwitch-switchBase': {
+          padding: 2,
+          '&.Mui-checked': {
+            transform: 'translateX(12px)',
+            color: '#fff',
+            '& + .MuiSwitch-track': {
+              opacity: 1,
+              backgroundColor: 'var(--icon-switch-on, #000000)',
+            },
+          },
+        },
+        '& .MuiSwitch-thumb': {
+          boxShadow: '0 2px 4px 0 rgb(0 35 11 / 20%)',
+          width: 12,
+          height: 12,
+          borderRadius: 6,
+        },
+        '& .MuiSwitch-track': {
+          borderRadius: 8,
+          opacity: 1,
+          backgroundColor: 'rgba(0,0,0,.25)',
+          boxSizing: 'border-box',
+          '.dark &': { backgroundColor: 'rgba(255,255,255,.25)' },
+        },
+      });
+
 const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMode})=>{
     const modalContentRef = useRef(null);
+    const gridRef = useRef(null);
+    const switchWrapRef = useRef(null);
     const icons = ICON_LIST;
     const [searchKeyword, setSearchKeyword] = useState("");
+    const [visibleCount, setVisibleCount] = useState(0);
     const lastSelectedIconRef = useRef(null);
+    const selectedRef = useRef(undefined);
+    const themeRef = useRef({ darkMode, darkColor });
+    themeRef.current = { darkMode, darkColor };
 
     const iconValue =
       icn && typeof icn === "object"
@@ -58,6 +103,13 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
             type: icn?.type ?? null,
           }
         : { name: null, type: null };
+
+    if (selectedRef.current === undefined) {
+      selectedRef.current = {
+        name: iconValue.name ?? null,
+        type: iconValue.type ?? null,
+      };
+    }
 
     useEffect(() => {
       if (!isNull(iconValue.name) && !isNull(iconValue.type)) {
@@ -68,53 +120,67 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
       }
     }, [iconValue.name, iconValue.type]);
 
-    const AntSwitch = styled(Switch)(({ theme }) => ({
-        width: 28,
-        height: 16,
-        padding: 0,
-        display: 'flex',
-        '&:active': {
-          '& .MuiSwitch-thumb': {
-            width: 15,
-            
-          },
-          '& .MuiSwitch-switchBase.Mui-checked': {
-            transform: 'translateX(9px)',
-            
-          },
-        },
-        '& .MuiSwitch-switchBase': {
-          padding: 2,
-          '&.Mui-checked': {
-            transform: 'translateX(12px)',
-            
-            color: '#fff',
-            '& + .MuiSwitch-track': {
-              opacity: 1,
-              backgroundColor: darkMode === "dark"?darkColor:"#000000",
-             
-            },
-          },
-        },
-        '& .MuiSwitch-thumb': {
-          boxShadow: '0 2px 4px 0 rgb(0 35 11 / 20%)',
-          width: 12,
-          height: 12,
-          borderRadius: 6,
-          transition: theme.transitions.create(['width'], {
-            duration: 200,
-          }),
-          
-        },
-        '& .MuiSwitch-track': {
-          borderRadius: 16 / 2,
-          opacity: 1,
-          backgroundColor: 'rgba(0,0,0,.25)',
-          boxSizing: 'border-box',
-          ".dark &":{backgroundColor: 'rgba(255,255,255,.25)'},
-          
-        },
-      }));
+    const paintIconSelection = (name, type) => {
+      const grid = gridRef.current;
+      if (!grid) return;
+      const { darkMode: mode, darkColor: accent } = themeRef.current;
+      const onBg = mode === "dark" ? "rgba(255,255,255,0.12)" : "#e5e7eb";
+      const onColor = mode === "dark" ? accent : "#111827";
+      const offColor = mode === "dark" ? "#ffffff" : "#374151";
+      const nameKey = String(name || "");
+      const typeKey = String(type || "");
+      grid.querySelectorAll("[data-icon-cell]").forEach((cell) => {
+        const same =
+          cell.getAttribute("data-icon-name") === nameKey &&
+          cell.getAttribute("data-icon-type") === typeKey;
+        cell.style.backgroundColor = same ? onBg : "transparent";
+        const mark = cell.querySelector("[data-icon-mark]");
+        if (mark) mark.style.color = same ? onColor : offColor;
+      });
+      const wrap = switchWrapRef.current;
+      if (wrap) {
+        const hidden = !name && !type;
+        const input = wrap.querySelector("input");
+        if (input) input.checked = hidden;
+        const base = wrap.querySelector(".MuiSwitch-switchBase");
+        if (base) {
+          base.classList.toggle("Mui-checked", hidden);
+        }
+      }
+    };
+
+    const commitIcon = (next) => {
+      selectedRef.current = {
+        name: next?.name ?? null,
+        type: next?.type ?? null,
+      };
+      if (next?.name && next?.type) {
+        lastSelectedIconRef.current = {
+          name: next.name,
+          type: next.type,
+        };
+      }
+      paintIconSelection(next?.name, next?.type);
+      handleChange?.(next);
+    };
+
+    useLayoutEffect(() => {
+      if (!open) {
+        setVisibleCount(0);
+        setSearchKeyword("");
+        return undefined;
+      }
+      let frame2 = 0;
+      const frame1 = requestAnimationFrame(() => {
+        frame2 = requestAnimationFrame(() => {
+          setVisibleCount(Number.POSITIVE_INFINITY);
+        });
+      });
+      return () => {
+        cancelAnimationFrame(frame1);
+        cancelAnimationFrame(frame2);
+      };
+    }, [open]);
 
 
       const textColor = darkMode === "dark"?"text-white":"text-[#333]"
@@ -125,6 +191,12 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
         const type = String(item?.type || "").toLowerCase();
         return name.includes(keyword) || type.includes(keyword);
       });
+      const visibleIcons =
+        visibleCount >= filteredIcons.length
+          ? filteredIcons
+          : filteredIcons.slice(0, visibleCount);
+      const colCount = 10;
+      const rowCount = Math.ceil(visibleIcons.length / colCount);
 
     return(  
       <Modal
@@ -184,27 +256,36 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
               <div className="text-[15px] font-bold flex items-center gap-6">
                 <span className={`${textColor}`}>{header}</span>
                 <div className="flex items-center gap-2">
+                  <span ref={switchWrapRef} className="inline-flex">
                   <AntSwitch
-                    checked={isNull(iconValue.name) && isNull(iconValue.type)}
+                    style={{
+                      ["--icon-switch-on"]:
+                        darkMode === "dark" ? darkColor : "#000000",
+                    }}
+                    defaultChecked={
+                      isNull(iconValue.name) && isNull(iconValue.type)
+                    }
                     onChange={() => {
                       const isHidden =
-                        isNull(iconValue.name) && isNull(iconValue.type);
+                        isNull(selectedRef.current.name) &&
+                        isNull(selectedRef.current.type);
 
                       if (isHidden) {
                         const fallbackIcon =
                           lastSelectedIconRef.current ||
                           icons.find((item) => item?.name && item?.type) ||
                           { name: "faHouse", type: "fas" };
-                        handleChange({
+                        commitIcon({
                           name: fallbackIcon.name,
                           type: fallbackIcon.type,
                         });
                         return;
                       }
 
-                      handleChange({ name: null, type: null });
+                      commitIcon({ name: null, type: null });
                     }}
                   />
+                  </span>
                   <span className={`${textColor} font-normal text-[12px]`}>
                     ไม่แสดงไอคอน
                   </span>
@@ -255,14 +336,16 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
               }}
             >
               <div className="w-full rounded-md POPPER px-[8px] pt-[12px] pb-[12px] flex flex-col gap-3">
-                <div className="grid grid-cols-[repeat(10,minmax(56px,1fr))]">
-                  {filteredIcons.map((icon, i) => {
+                <div
+                  ref={gridRef}
+                  className="grid grid-cols-[repeat(10,minmax(56px,1fr))]"
+                >
+                  {visibleIcons.map((icon, i) => {
                     const name = icon?.name;
                     const type = icon?.type;
                     const isSame =
-                      iconValue.name === name && iconValue.type === type;
-                    const colCount = 10;
-                    const rowCount = Math.ceil(filteredIcons.length / colCount);
+                      selectedRef.current.name === name &&
+                      selectedRef.current.type === type;
                     const row = Math.floor(i / colCount);
                     const col = i % colCount;
                     const isLastCol = col === colCount - 1;
@@ -284,6 +367,9 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
                       <div
                         className="col-span-1 flex items-center justify-center py-[10px]"
                         key={i}
+                        data-icon-cell=""
+                        data-icon-name={name}
+                        data-icon-type={type}
                         style={{
                           backgroundColor: isSame ? dividerColor : "transparent",
                           borderRight: isLastCol ? "none" : `1px solid ${dividerColor}`,
@@ -291,25 +377,33 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
                         }}
                       >
                         <button
+                          type="button"
                           className="size-[52px] flex items-center justify-center"
+                          aria-label={`เลือกไอคอน ${name}`}
                           onClick={() => {
-                            handleChange({ name, type });
-                            // onClose();
+                            commitIcon({ name, type });
                           }}
                         >
+                          <span data-icon-mark="" style={{ color: iconColor }}>
                           <IconAwsome
                             iconName={name}
                             iconType={type}
                             style={{
-                              color: iconColor,
+                              color: "inherit",
                               fontSize: 28,
                             }}
                           />
+                          </span>
                         </button>
                       </div>
                     );
                   })}
                 </div>
+                {visibleCount === 0 && filteredIcons.length > 0 && (
+                  <div className={`${textColor} text-center text-[12px] py-6`}>
+                    กำลังโหลดไอคอน...
+                  </div>
+                )}
                 {filteredIcons.length === 0 && (
                   <div className={`${textColor} text-center text-[12px] py-3`}>
                     ไม่พบไอคอนที่ค้นหา

@@ -2,7 +2,9 @@ import { PANEL_BTN_GROUP, panelGroupButtonSx } from "../panelControlSx";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   Fragment,
+  memo,
   useMemo,
   useRef,
   useState,
@@ -22,8 +24,10 @@ import lodash from "lodash";
 import ServiceIcon from "../ServiceIcon";
 import IconAwsome from "../IconAwsome";
 import {
+  applyButtonCanvasPreview,
   BUTTON_STYLE_DEFAULTS,
   BUTTON_VARIANT_OPTIONS,
+  clearButtonCanvasPreview,
   getButtonMuiVariant,
   normalizeButtonLayoutAlign,
 } from "../Layouts/Elements/buttonElementConfig";
@@ -31,11 +35,14 @@ import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckCla
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import  NormalBtn from "../HTML/NormalBtn"
 import  MainLabel from "../HTML/MainLabel"
-import  Range from "../HTML/Range"
+import  Range, { applyRangeFillPos } from "../HTML/Range"
 import  SelectLine from "../HTML/SelectLine"
 import  MuiBtn from "../HTML/MuiBtn"
 import  Field from "../HTML/Field"
-import  ServiceColor from "../Services/ServiceColor"
+import {
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
 
 /** โหมดแก้สีปุ่ม — เลื่อนซ้าย/ขวาเหมือน badge รูปภาพ (โหมด border เติมเมื่อรูปแบบ = ขอบ) */
 const BUTTON_COLOR_MODES_BASE = [
@@ -131,6 +138,327 @@ const THEME_RANGE_INPUT_CLASS = `
                     [&::-moz-range-thumb]:border-0
                   `;
 
+function colorSwatchKey(value) {
+  if (typeof value === "string") return value.toLowerCase();
+  if (value && typeof value === "object") {
+    return `${value.type}:${value.index}`;
+  }
+  return String(value ?? "");
+}
+
+function ColorSwatchGrid({
+  colors,
+  theme,
+  selectedValue,
+  onPick,
+  ariaPrefix = "เลือกสี",
+  idPrefix = "sw",
+  selectionApiRef = null,
+}) {
+  const rootRef = useRef(null);
+  const selectedKeyRef = useRef(colorSwatchKey(selectedValue));
+
+  const applySelectedKey = (nextKey) => {
+    selectedKeyRef.current = nextKey;
+    const root = rootRef.current;
+    if (!root) return;
+    root.querySelectorAll("[data-swatch-key]").forEach((btn) => {
+      const check = btn.querySelector("[data-swatch-check]");
+      if (check) check.hidden = btn.getAttribute("data-swatch-key") !== nextKey;
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!selectionApiRef) return undefined;
+    selectionApiRef.current = {
+      setSelectedValue: (value) => applySelectedKey(colorSwatchKey(value)),
+    };
+    return () => {
+      if (selectionApiRef.current?.setSelectedValue) {
+        selectionApiRef.current = null;
+      }
+    };
+  }, [selectionApiRef]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]"
+    >
+      {colors.map((color, i) => {
+        const bgColor =
+          typeof color === "string"
+            ? color
+            : theme?.[color.type]?.[color.index];
+        if (bgColor == null) return null;
+        const key = colorSwatchKey(color);
+        let margin = "";
+        if (i % 8 !== 0 && (i + 1) % 8 !== 0) {
+          margin += "mx-[65.75px] ";
+        }
+        return (
+          <div className={`${margin}`} key={`${idPrefix}-${i}`}>
+            <button
+              type="button"
+              data-swatch-key={key}
+              className="flex size-[25px] items-center justify-center rounded-full border"
+              style={{ backgroundColor: bgColor }}
+              onClick={() => {
+                applySelectedKey(key);
+                onPick(color);
+              }}
+              aria-label={`${ariaPrefix} ${bgColor}`}
+            >
+              <Check
+                data-swatch-check=""
+                hidden={selectedKeyRef.current !== key}
+                className={swatchSelectedCheckClassName(bgColor)}
+                strokeWidth={4}
+              />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function opacity255(raw, fallback = 255) {
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.min(255, n)) : fallback;
+}
+
+function ButtonColorModePicker({
+  getData,
+  getModes,
+  fillColorField,
+  textColorField,
+  borderColorField,
+  opacityFieldFill,
+  opacityFieldText,
+  opacityFieldBorder,
+  allColors,
+  theme,
+  textColor,
+  rangeClass,
+  opacityAriaLabel,
+  patchStyle,
+  patchSlider,
+  patch,
+  sliderCommitProps,
+  iconSlot,
+}) {
+  const modeRef = useRef(BUTTON_COLOR_MODES_BASE[0].value);
+  const labelRef = useRef(null);
+  const sliderRef = useRef(null);
+  const rootRef = useRef(null);
+  const selectionApiRef = useRef(null);
+
+  const resolveMode = (mode) => {
+    const d = getData?.() || {};
+    if (mode === "text") {
+      return {
+        color: d[textColorField] ?? BUTTON_STYLE_DEFAULTS.buttonLabelColor,
+        opacity: opacity255(
+          d[opacityFieldText],
+          BUTTON_STYLE_DEFAULTS.buttonLabelOpacity
+        ),
+        colorPartial: (value) => ({ [textColorField]: value }),
+        opacityPartial: (value) => ({ [opacityFieldText]: value }),
+      };
+    }
+    if (mode === "border" && borderColorField && opacityFieldBorder) {
+      return {
+        color: d[borderColorField] ?? BUTTON_STYLE_DEFAULTS.buttonBorderColor,
+        opacity: opacity255(
+          d[opacityFieldBorder],
+          BUTTON_STYLE_DEFAULTS.buttonBorderOpacity
+        ),
+        colorPartial: (value) => ({ [borderColorField]: value }),
+        opacityPartial: (value) => ({ [opacityFieldBorder]: value }),
+      };
+    }
+    return {
+      color: d[fillColorField] ?? BUTTON_STYLE_DEFAULTS.buttonFill,
+      opacity: opacity255(
+        d[opacityFieldFill],
+        BUTTON_STYLE_DEFAULTS.buttonFillOpacity
+      ),
+      colorPartial: (value) => ({ [fillColorField]: value }),
+      opacityPartial: (value) => ({ [opacityFieldFill]: value }),
+    };
+  };
+
+  const paintMode = (mode) => {
+    modeRef.current = mode;
+    const modes = getModes?.() || BUTTON_COLOR_MODES_BASE;
+    const label = modes.find((item) => item.value === mode)?.label ?? "";
+    if (labelRef.current) labelRef.current.textContent = label;
+    const resolved = resolveMode(mode);
+    if (sliderRef.current) {
+      sliderRef.current.value = String(resolved.opacity);
+      applyRangeFillPos(sliderRef.current, 0, 255);
+    }
+    selectionApiRef.current?.setSelectedValue(resolved.color);
+  };
+
+  const cycle = (delta) => {
+    const modes = getModes?.() || BUTTON_COLOR_MODES_BASE;
+    const idx = modes.findIndex((item) => item.value === modeRef.current);
+    const base = idx === -1 ? 0 : idx;
+    paintMode(modes[(base + delta + modes.length) % modes.length].value);
+  };
+
+  useLayoutEffect(() => {
+    const node = rootRef.current;
+    if (!node) return undefined;
+    node.__leaveBorderMode = () => {
+      if (modeRef.current !== "border") return;
+      paintMode(BUTTON_COLOR_MODES_BASE[0].value);
+    };
+    return () => {
+      delete node.__leaveBorderMode;
+    };
+  });
+
+  const initial = resolveMode(modeRef.current);
+  const initialLabel =
+    (getModes?.() || BUTTON_COLOR_MODES_BASE).find(
+      (item) => item.value === modeRef.current
+    )?.label ?? "";
+
+  return (
+    <div ref={rootRef} data-button-color-picker={iconSlot || "1"}>
+      <SelectLine
+        prev={() => cycle(-1)}
+        next={() => cycle(1)}
+        value={initialLabel}
+        valueRef={labelRef}
+      />
+      <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+        <div className="px-[5px] pb-2">
+          <input
+            ref={sliderRef}
+            type="range"
+            min={0}
+            max={255}
+            step={1}
+            defaultValue={initial.opacity}
+            onChange={(e) => {
+              applyRangeFillPos(e.currentTarget, 0, 255);
+              const next = resolveMode(modeRef.current).opacityPartial(
+                Number(e.target.value)
+              );
+              (patchSlider || patch)(next);
+            }}
+            {...(sliderCommitProps || {})}
+            className={rangeClass}
+            style={{
+              ["--pos"]: `${(initial.opacity / 255) * 100}%`,
+              ["--fill"]: textColor || "#0d9488",
+            }}
+            aria-label={opacityAriaLabel}
+          />
+        </div>
+        <ColorSwatchGrid
+          colors={allColors}
+          theme={theme}
+          selectedValue={initial.color}
+          idPrefix={`${iconSlot || "1"}-color`}
+          ariaPrefix="เลือกสี"
+          selectionApiRef={selectionApiRef}
+          onPick={(value) => {
+            (patchStyle || patch)(resolveMode(modeRef.current).colorPartial(value));
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ButtonVariantChips({ value, onChange }) {
+  const [current, setCurrent] = useState(value);
+  return (
+    <div className="grid w-full grid-cols-3 gap-1" role="group">
+      {BUTTON_VARIANT_OPTIONS.map((opt) => {
+        const selected = current === opt.value;
+        return (
+          <NormalBtn
+            key={opt.value}
+            handleClick={() => {
+              setCurrent(opt.value);
+              onChange(opt.value);
+            }}
+            btnClass={optionChipClass}
+            style={optionChipStyle(selected)}
+            label={opt.label}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+const ButtonIconTrigger = memo(function ButtonIconTrigger({
+  iconAriaLabel,
+  linkIconForModal,
+  iconField,
+  iconModalHeader,
+  patchIcon,
+  getData,
+  textColor,
+  darkMode,
+}) {
+  const [open, setOpen] = useState(false);
+  const latestIcon =
+    (typeof getData === "function" ? getData()?.[iconField] : null) ||
+    linkIconForModal;
+  return (
+    <>
+      <button
+        type="button"
+        className="flex shrink-0 items-center justify-center border-r border-slate-200 bg-transparent px-2.5 py-2 text-slate-600 transition hover:opacity-80 dark:border-white/10 dark:text-slate-300"
+        aria-label={iconAriaLabel}
+        onClick={() => setOpen(true)}
+      >
+        {latestIcon?.name && latestIcon?.type ? (
+          <IconAwsome
+            iconName={latestIcon.name}
+            iconType={latestIcon.type}
+            style={{ fontSize: 16 }}
+          />
+        ) : (
+          <Link2 className="size-4 shrink-0" strokeWidth={2} />
+        )}
+      </button>
+      {open ? (
+        <ServiceIcon
+          header={iconModalHeader}
+          icon={latestIcon}
+          open
+          onClose={() => setOpen(false)}
+          handleChange={(ic) => patchIcon?.({ [iconField]: ic })}
+          darkColor={textColor || "#0d9488"}
+          darkMode={darkMode}
+        />
+      ) : null}
+    </>
+  );
+});
+
+function syncButtonPanelVariantUi(root, variant) {
+  if (!root) return;
+  root.setAttribute("data-button-panel-variant", variant);
+  root.querySelectorAll("[data-button-outlined-only]").forEach((node) => {
+    node.hidden = variant !== "outlined";
+  });
+  if (variant !== "outlined") {
+    root.querySelectorAll("[data-button-color-picker]").forEach((node) => {
+      node.__leaveBorderMode?.();
+    });
+  }
+}
+
 
                   const BtnForm = ({
                     title,
@@ -153,20 +481,18 @@ const THEME_RANGE_INPUT_CLASS = `
                   
                     linkIconForModal,
                     iconSlot,
-                    setLinkIconModalSlot,
+                    iconField,
+                    iconModalHeader,
+                    darkMode,
                   
                     patch,
                     textColor,
                   
-                    buttonColorMode,
-                    buttonColorModeLabel,
-                    cycleColorMode,
-                  
-                    opacitySliderValue,
+                    getData,
+                    getColorModes,
                     opacityFieldText,
                     opacityFieldFill,
                   
-                    activeButtonColor,
                     fillColorField,
                     textColorField,
                     /** เมื่อรูปแบบปุ่ม = ขอบ — โหมดสีกรอบ */
@@ -181,6 +507,10 @@ const THEME_RANGE_INPUT_CLASS = `
                     rangeClass,
                     linkTargetOptions,
                     swatchSelectedCheckClassName,
+                    patchSlider,
+                    sliderCommitProps,
+                    patchStyle,
+                    patchIcon,
                   }) => {
                     return (
                       <li>
@@ -189,22 +519,16 @@ const THEME_RANGE_INPUT_CLASS = `
                         </div>
                   
                         <div className="flex dash-input h-10 w-full overflow-hidden rounded-md border border-slate-200 bg-white dark:border-white/10 dark:bg-[#27272a]">
-                          <button
-                            type="button"
-                            className="flex shrink-0 items-center justify-center border-r border-slate-200 bg-transparent px-2.5 py-2 text-slate-600 transition hover:opacity-80 dark:border-white/10 dark:text-slate-300"
-                            aria-label={iconAriaLabel}
-                            onClick={() => setLinkIconModalSlot(iconSlot)}
-                          >
-                            {linkIconForModal?.name && linkIconForModal?.type ? (
-                              <IconAwsome
-                                iconName={linkIconForModal.name}
-                                iconType={linkIconForModal.type}
-                                style={{ fontSize: 16 }}
-                              />
-                            ) : (
-                              <Link2 className="size-4 shrink-0" strokeWidth={2} />
-                            )}
-                          </button>
+                          <ButtonIconTrigger
+                            iconAriaLabel={iconAriaLabel}
+                            linkIconForModal={linkIconForModal}
+                            iconField={iconField}
+                            iconModalHeader={iconModalHeader}
+                            patchIcon={patchIcon}
+                            getData={getData}
+                            textColor={textColor}
+                            darkMode={darkMode}
+                          />
                   
                           <input
                             type="text"
@@ -261,86 +585,26 @@ const THEME_RANGE_INPUT_CLASS = `
                           <div className="mb-3 flex items-center gap-2">
                           <MainLabel label={colorGroupAriaLabel} mb={0} color={textColor}/>
                           </div>
-                          <SelectLine prev={() => cycleColorMode(-1)} next={() => cycleColorMode(1)} value={buttonColorModeLabel}/>
-                       
-                  
-                          <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
-                            <div className="px-[5px] pb-2">
-                              <input
-                                type="range"
-                                min={0}
-                                max={255}
-                                step={1}
-                                value={opacitySliderValue}
-                                onChange={(e) => {
-                                  const v = Number(e.target.value);
-                                  patch(
-                                    buttonColorMode === "text"
-                                      ? { [opacityFieldText]: v }
-                                      : buttonColorMode === "border" &&
-                                          opacityFieldBorder
-                                        ? { [opacityFieldBorder]: v }
-                                        : { [opacityFieldFill]: v }
-                                  );
-                                }}
-                                className={rangeClass}
-                                style={{
-                                  ["--pos"]: `${(opacitySliderValue / 255) * 100}%`,
-                                  ["--fill"]: textColor || "#0d9488",
-                                }}
-                                aria-label={opacityAriaLabel}
-                              />
-                            </div>
-                  
-                            <div className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]">
-                              {allColors.map((color, i) => {
-                                const bgColor =
-                                  typeof color === "string"
-                                    ? color
-                                    : theme?.[color.type]?.[color.index];
-                  
-                                if (bgColor == null) return null;
-                  
-                                const value = color;
-                                const selected =
-                                  chipSelected(activeButtonColor, value) ||
-                                  activeButtonColor === value;
-                  
-                                let margin = "";
-                                if (i % 8 !== 0 && (i + 1) % 8 !== 0) {
-                                  margin += "mx-[65.75px] ";
-                                }
-                  
-                                return (
-                                  <div className={margin} key={`${iconSlot}-${i}`}>
-                                    <button
-                                      type="button"
-                                      className="flex size-[25px] items-center justify-center rounded-full border"
-                                      style={{ backgroundColor: bgColor }}
-                                      onClick={() =>
-                                        patch(
-                                          buttonColorMode === "text"
-                                            ? { [textColorField]: value }
-                                            : buttonColorMode === "border" &&
-                                                borderColorField
-                                              ? { [borderColorField]: value }
-                                              : { [fillColorField]: value }
-                                        )
-                                      }
-                                      aria-label={`เลือกสี ${bgColor}`}
-                                    >
-                                      {selected && (
-                                        <Check
-                                          className={swatchSelectedCheckClassName(bgColor)}
-                                          strokeWidth={4}
-                                        />
-                                      )}
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
+                          <ButtonColorModePicker
+                            getData={getData}
+                            getModes={getColorModes}
+                            fillColorField={fillColorField}
+                            textColorField={textColorField}
+                            borderColorField={borderColorField}
+                            opacityFieldFill={opacityFieldFill}
+                            opacityFieldText={opacityFieldText}
+                            opacityFieldBorder={opacityFieldBorder}
+                            allColors={allColors}
+                            theme={theme}
+                            textColor={textColor}
+                            rangeClass={rangeClass}
+                            opacityAriaLabel={opacityAriaLabel}
+                            patchStyle={patchStyle}
+                            patchSlider={patchSlider}
+                            patch={patch}
+                            sliderCommitProps={sliderCommitProps}
+                            iconSlot={iconSlot}
+                          />
                         </div>
                       </li>
                     );
@@ -382,40 +646,106 @@ const ButtonElementOffcanvas = ({
     [onUpdate]
   );
 
-  const [data, setData] = useState(element);
-  /** null | 1 | 2 — ปุ่มเดี่ยวใช้ช่อง 1 เท่านั้น */
-  const [linkIconModalSlot, setLinkIconModalSlot] = useState(null);
-  const [buttonColorMode, setButtonColorMode] = useState(
-    BUTTON_COLOR_MODES_BASE[0].value
-  );
-  const [buttonColorMode1, setButtonColorMode1] = useState(
-    BUTTON_COLOR_MODES_BASE[0].value
-  );
-  const [buttonColorMode2, setButtonColorMode2] = useState(
-    BUTTON_COLOR_MODES_BASE[0].value
-  );
+  useLayoutEffect(() => {
+    if (!element?.id) return;
+    markBuilderPanelMounted("Button", element.id);
+  }, [element?.id]);
 
+  const [data, setData] = useState(element);
+  const dataRef = useRef(element);
+  const panelRootRef = useRef(null);
   useEffect(() => {
     if (!element?.id) return;
     setData((prev) => {
-      if (!prev || prev.id !== element.id) return element;
+      if (!prev || prev.id !== element.id) {
+        dataRef.current = element;
+        return element;
+      }
       return prev;
     });
   }, [element]);
 
-  useEffect(() => {
-    setButtonColorMode(BUTTON_COLOR_MODES_BASE[0].value);
-    setButtonColorMode1(BUTTON_COLOR_MODES_BASE[0].value);
-    setButtonColorMode2(BUTTON_COLOR_MODES_BASE[0].value);
-    setLinkIconModalSlot(null);
-  }, [element?.id]);
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+
+  const { updateSlider, commitSlider, sliderCommitProps } =
+    usePanelSliderPreview({
+      type: element?.type === "btnG" ? "btnG" : "btn",
+      targetIds: [element?.id],
+      data,
+      setData,
+      onCommit: (latest) => {
+        const id = elementRef.current?.id ?? latest?.id;
+        dataRef.current = latest;
+        applyButtonCanvasPreview(id, latest, themeRef.current);
+        setData(latest);
+        scheduleLayoutSync(latest);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            clearButtonCanvasPreview(id);
+          });
+        });
+      },
+    });
+
+  const rememberLatest = (next) => {
+    dataRef.current = next;
+    return next;
+  };
 
   const patch = (partial) => {
-    setData((prev) => {
-      const next = { ...prev, ...partial };
-      scheduleLayoutSync(next);
-      return next;
+    const next = rememberLatest(
+      updateSlider((prev) => ({ ...prev, ...partial }), {
+        publish: false,
+        trackPerf: false,
+      })
+    );
+    scheduleLayoutSync(next);
+  };
+
+  const patchIcon = (partial) => {
+    const next = rememberLatest(
+      updateSlider((prev) => ({ ...prev, ...partial }), {
+        setData: false,
+        publish: false,
+        trackPerf: false,
+      })
+    );
+    scheduleLayoutSync(next);
+    return next;
+  };
+
+  const patchStyle = (partial) => {
+    const next = rememberLatest(
+      updateSlider((prev) => ({ ...prev, ...partial }), {
+        setData: false,
+        publish: false,
+        trackPerf: false,
+      })
+    );
+    const id = elementRef.current?.id ?? data?.id;
+    applyButtonCanvasPreview(id, next, themeRef.current);
+    scheduleLayoutSync(next);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        clearButtonCanvasPreview(id);
+      });
     });
+    return next;
+  };
+
+  const patchSlider = (partial) => {
+    const next = rememberLatest(
+      updateSlider((prev) => ({ ...prev, ...partial }), {
+        setData: false,
+        publish: false,
+      })
+    );
+    applyButtonCanvasPreview(
+      elementRef.current?.id ?? data?.id,
+      next,
+      themeRef.current
+    );
   };
 
   const allColors = useMemo(() => {
@@ -471,18 +801,14 @@ const ButtonElementOffcanvas = ({
     data?.buttonLayoutAlign ?? BUTTON_STYLE_DEFAULTS.buttonLayoutAlign
   );
 
-  const buttonColorModesEffective = useMemo(() => {
-    if (muiVariant === "outlined") {
-      return [...BUTTON_COLOR_MODES_BASE, BUTTON_COLOR_MODE_BORDER];
-    }
-    return BUTTON_COLOR_MODES_BASE;
-  }, [muiVariant]);
-
-  useEffect(() => {
-    if (muiVariant !== "outlined" && buttonColorMode === "border") {
-      setButtonColorMode(BUTTON_COLOR_MODES_BASE[0].value);
-    }
-  }, [muiVariant, buttonColorMode]);
+  const getData = useCallback(() => dataRef.current, []);
+  const getSingleColorModes = useCallback(() => {
+    const variant = getButtonMuiVariant(dataRef.current);
+    return variant === "outlined"
+      ? [...BUTTON_COLOR_MODES_BASE, BUTTON_COLOR_MODE_BORDER]
+      : BUTTON_COLOR_MODES_BASE;
+  }, []);
+  const getDualColorModes = useCallback(() => BUTTON_COLOR_MODES_BASE, []);
 
   const fontSize = Number(data?.buttonFontSize);
   const fontSizeVal = Number.isFinite(fontSize)
@@ -513,84 +839,14 @@ const ButtonElementOffcanvas = ({
   const borderWVal = Number.isFinite(borderW)
     ? borderW
     : BUTTON_STYLE_DEFAULTS.buttonBorderWidth;
-  const fillOp = Number(data?.buttonFillOpacity);
-  const fillOpVal = Number.isFinite(fillOp)
-    ? Math.max(0, Math.min(255, fillOp))
-    : BUTTON_STYLE_DEFAULTS.buttonFillOpacity;
-  const labelOp = Number(data?.buttonLabelOpacity);
-  const labelOpVal = Number.isFinite(labelOp)
-    ? Math.max(0, Math.min(255, labelOp))
-    : BUTTON_STYLE_DEFAULTS.buttonLabelOpacity;
   const borderOp = Number(data?.buttonBorderOpacity);
   const borderOpVal = Number.isFinite(borderOp)
     ? Math.max(0, Math.min(255, borderOp))
     : BUTTON_STYLE_DEFAULTS.buttonBorderOpacity;
-  const fill2Op = Number(data?.button2FillOpacity);
-  const fill2OpVal = Number.isFinite(fill2Op)
-    ? Math.max(0, Math.min(255, fill2Op))
-    : BUTTON_STYLE_DEFAULTS.button2FillOpacity;
-  const label2Op = Number(data?.button2LabelOpacity);
-  const label2OpVal = Number.isFinite(label2Op)
-    ? Math.max(0, Math.min(255, label2Op))
-    : BUTTON_STYLE_DEFAULTS.button2LabelOpacity;
 
-  const buttonColorModeLabel =
-    buttonColorModesEffective.find((o) => o.value === buttonColorMode)?.label ??
-    "";
-
-  const cycleButtonColorMode = (delta) => {
-    const list = buttonColorModesEffective;
-    const idx = list.findIndex((o) => o.value === buttonColorMode);
-    const base = idx === -1 ? 0 : idx;
-    const next = (base + delta + list.length) % list.length;
-    setButtonColorMode(list[next].value);
-  };
-
-  const activeButtonColor =
-    buttonColorMode === "text"
-      ? data?.buttonLabelColor ?? BUTTON_STYLE_DEFAULTS.buttonLabelColor
-      : buttonColorMode === "border"
-        ? data?.buttonBorderColor ?? BUTTON_STYLE_DEFAULTS.buttonBorderColor
-        : data?.buttonFill ?? BUTTON_STYLE_DEFAULTS.buttonFill;
-
-  const opacitySliderValue =
-    buttonColorMode === "text"
-      ? labelOpVal
-      : buttonColorMode === "border"
-        ? borderOpVal
-        : fillOpVal;
-
-  const dualModesList = BUTTON_COLOR_MODES_BASE;
-  const buttonColorModeLabel1 =
-    dualModesList.find((o) => o.value === buttonColorMode1)?.label ?? "";
-  const buttonColorModeLabel2 =
-    dualModesList.find((o) => o.value === buttonColorMode2)?.label ?? "";
-
-  const cycleDualColorMode = (slot, delta) => {
-    const list = dualModesList;
-    const cur = slot === 1 ? buttonColorMode1 : buttonColorMode2;
-    const setFn = slot === 1 ? setButtonColorMode1 : setButtonColorMode2;
-    const idx = list.findIndex((o) => o.value === cur);
-    const base = idx === -1 ? 0 : idx;
-    const next = (base + delta + list.length) % list.length;
-    setFn(list[next].value);
-  };
-
-  const activeButtonColor1 =
-    buttonColorMode1 === "text"
-      ? data?.buttonLabelColor ?? BUTTON_STYLE_DEFAULTS.buttonLabelColor
-      : data?.buttonFill ?? BUTTON_STYLE_DEFAULTS.buttonFill;
-  const activeButtonColor2 =
-    buttonColorMode2 === "text"
-      ? data?.button2LabelColor ?? BUTTON_STYLE_DEFAULTS.button2LabelColor
-      : data?.button2Fill ?? BUTTON_STYLE_DEFAULTS.button2Fill;
+  const latestColors = dataRef.current;
   const activeBorderColorSwatch =
-    data?.buttonBorderColor ?? BUTTON_STYLE_DEFAULTS.buttonBorderColor;
-
-  const opacitySliderDual1 =
-    buttonColorMode1 === "text" ? labelOpVal : fillOpVal;
-  const opacitySliderDual2 =
-    buttonColorMode2 === "text" ? label2OpVal : fill2OpVal;
+    latestColors?.buttonBorderColor ?? BUTTON_STYLE_DEFAULTS.buttonBorderColor;
 
   const chipSelected = (active, chip) => {
     if (typeof active === "string" && typeof chip === "string") {
@@ -662,13 +918,12 @@ const ButtonElementOffcanvas = ({
       linkTargetField: "linkTarget",
       linkIconForModal,
       iconSlot: 1,
-      buttonColorMode: buttonColorMode1,
-      buttonColorModeLabel: buttonColorModeLabel1,
-      cycleColorMode: (delta) => cycleDualColorMode(1, delta),
-      opacitySliderValue: opacitySliderDual1,
+      iconField: "linkIcon",
+      iconModalHeader: "ไอคอนหน้าข้อความ",
+      getData,
+      getColorModes: getDualColorModes,
       opacityFieldText: "buttonLabelOpacity",
       opacityFieldFill: "buttonFillOpacity",
-      activeButtonColor: activeButtonColor1,
       fillColorField: "buttonFill",
       textColorField: "buttonLabelColor",
     },
@@ -688,13 +943,12 @@ const ButtonElementOffcanvas = ({
       linkTargetField: "linkTarget2",
       linkIconForModal: linkIconForModal2,
       iconSlot: 2,
-      buttonColorMode: buttonColorMode2,
-      buttonColorModeLabel: buttonColorModeLabel2,
-      cycleColorMode: (delta) => cycleDualColorMode(2, delta),
-      opacitySliderValue: opacitySliderDual2,
+      iconField: "linkIcon2",
+      iconModalHeader: "ไอคอนหน้าข้อความ (ปุ่มที่ 2)",
+      getData,
+      getColorModes: getDualColorModes,
       opacityFieldText: "button2LabelOpacity",
       opacityFieldFill: "button2FillOpacity",
-      activeButtonColor: activeButtonColor2,
       fillColorField: "button2Fill",
       textColorField: "button2LabelColor",
     },
@@ -702,6 +956,8 @@ const ButtonElementOffcanvas = ({
 
   return (
     <aside
+      ref={panelRootRef}
+      data-button-panel-variant={muiVariant}
       className={`
      dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10 `}
     >
@@ -753,23 +1009,14 @@ const ButtonElementOffcanvas = ({
             <div className="mb-3 flex items-center gap-2">
               <MainLabel label="รูปแบบปุ่ม" mb={0} color={textColor}/>
             </div>
-            <div className="grid w-full grid-cols-3 gap-1" role="group">
-              {BUTTON_VARIANT_OPTIONS.map((opt) => {
-                const {value,label} = opt
-                const selected = muiVariant === value;
-                const handleClick = () => patch({ buttonVariant: value })
-                return (
-                  <Fragment key={value}>
-                    <NormalBtn
-                      handleClick={handleClick}
-                      btnClass={optionChipClass}
-                      style={optionChipStyle(selected)}
-                      label={label}
-                    />
-                  </Fragment>
-                );
-              })}
-            </div>
+            <ButtonVariantChips
+              key={element?.id}
+              value={muiVariant}
+              onChange={(value) => {
+                patchStyle({ buttonVariant: value });
+                syncButtonPanelVariantUi(panelRootRef.current, value);
+              }}
+            />
           </li>
 
           {isDual ? (
@@ -778,7 +1025,6 @@ const ButtonElementOffcanvas = ({
       <BtnForm
         key={btn.iconSlot}
         {...btn}
-        setLinkIconModalSlot={setLinkIconModalSlot}
         patch={patch}
         textColor={textColor}
         allColors={allColors}
@@ -786,9 +1032,14 @@ const ButtonElementOffcanvas = ({
         groupRootSx={groupRootSx}
         groupButtonSx={groupButtonSx}
         theme={theme}
+        darkMode={darkMode}
         rangeClass={THEME_RANGE_INPUT_CLASS}
         linkTargetOptions={LINK_TARGET_OPTIONS}
         swatchSelectedCheckClassName={swatchSelectedCheckClassName}
+        patchSlider={patchSlider}
+        sliderCommitProps={sliderCommitProps}
+        patchStyle={patchStyle}
+        patchIcon={patchIcon}
       />
     ))}
   </Fragment>
@@ -813,16 +1064,14 @@ const ButtonElementOffcanvas = ({
     linkTargetField="linkTarget"
     linkIconForModal={linkIconForModal}
     iconSlot={1}
-    setLinkIconModalSlot={setLinkIconModalSlot}
+    iconField="linkIcon"
+    iconModalHeader="ไอคอนหน้าข้อความ"
     patch={patch}
     textColor={textColor}
-    buttonColorMode={buttonColorMode}
-    buttonColorModeLabel={buttonColorModeLabel}
-    cycleColorMode={cycleButtonColorMode}
-    opacitySliderValue={opacitySliderValue}
+    getData={getData}
+    getColorModes={getSingleColorModes}
     opacityFieldText="buttonLabelOpacity"
     opacityFieldFill="buttonFillOpacity"
-    activeButtonColor={activeButtonColor}
     fillColorField="buttonFill"
     textColorField="buttonLabelColor"
     opacityFieldBorder="buttonBorderOpacity"
@@ -832,14 +1081,19 @@ const ButtonElementOffcanvas = ({
     groupRootSx={groupRootSx}
     groupButtonSx={groupButtonSx}
     theme={theme}
+    darkMode={darkMode}
     rangeClass={THEME_RANGE_INPUT_CLASS}
     linkTargetOptions={LINK_TARGET_OPTIONS}
     swatchSelectedCheckClassName={swatchSelectedCheckClassName}
+    patchSlider={patchSlider}
+    sliderCommitProps={sliderCommitProps}
+    patchStyle={patchStyle}
+    patchIcon={patchIcon}
   />
 )}
 
-           {isDual && muiVariant === "outlined" ? (
-            <li>
+           {isDual ? (
+            <li data-button-outlined-only hidden={muiVariant !== "outlined"}>
               <div className="mb-3 flex items-center gap-2">
                 <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                   สีกรอบ <span className="font-normal text-gray-400">  ใช้ร่วมกันทั้งสองปุ่ม </span>
@@ -854,12 +1108,14 @@ const ButtonElementOffcanvas = ({
                     min={0}
                     max={255}
                     step={1}
-                    value={borderOpVal}
-                    onChange={(e) =>
-                      patch({
+                    defaultValue={borderOpVal}
+                    onChange={(e) => {
+                      applyRangeFillPos(e.currentTarget, 0, 255);
+                      patchSlider({
                         buttonBorderOpacity: Number(e.target.value),
-                      })
-                    }
+                      });
+                    }}
+                    {...sliderCommitProps}
                     className={THEME_RANGE_INPUT_CLASS}
                     style={{
                       ["--pos"]: `${(borderOpVal / 255) * 100}%`,
@@ -868,47 +1124,22 @@ const ButtonElementOffcanvas = ({
                     aria-label="ความโปร่งแสงสีกรอบ"
                   />
                 </div>
-                <div className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]">
-                  {allColors.map((color, i) => {
-                    const bgColor =
-                      typeof color === "string"
-                        ? color
-                        : theme?.[color.type]?.[color.index];
-                    if (bgColor == null) return null;
-                    const value = color;
-                    const selected =
-                      chipSelected(activeBorderColorSwatch, value) ||
-                      activeBorderColorSwatch === value;
-                    let margin = "";
-                    if (i % 8 !== 0 && (i + 1) % 8 !== 0) {
-                      margin += "mx-[65.75px] ";
-                    }
-                    return (
-                      <div className={`${margin}`} key={`bd-${i}`}>
-                        <button
-                          type="button"
-                          className="flex size-[25px] items-center justify-center rounded-full border"
-                          style={{ backgroundColor: bgColor }}
-                          onClick={() => patch({ buttonBorderColor: value })}
-                          aria-label={`เลือกสีกรอบ ${bgColor}`}
-                        >
-                          {selected && (
-                            <Check
-                              className={swatchSelectedCheckClassName(bgColor)}
-                              strokeWidth={4}
-                            />
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <ColorSwatchGrid
+                  key={`border-${element?.id}`}
+                  colors={allColors}
+                  theme={theme}
+                  selectedValue={
+                    latestColors?.buttonBorderColor ?? activeBorderColorSwatch
+                  }
+                  idPrefix="bd"
+                  ariaPrefix="เลือกสีกรอบ"
+                  onPick={(value) => patchStyle({ buttonBorderColor: value })}
+                />
               </div>
             </li>
           ) : null}
 
-          {muiVariant === "outlined" && (
-            <li>
+          <li data-button-outlined-only hidden={muiVariant !== "outlined"}>
               <Typography
                 sx={{
                   fontSize: 13,
@@ -925,10 +1156,12 @@ const ButtonElementOffcanvas = ({
                 min={1}
                 max={6}
                 step={1}
-                value={borderWVal}
-                onChange={(e) =>
-                  patch({ buttonBorderWidth: Number(e.target.value) })
-                }
+                defaultValue={borderWVal}
+                onChange={(e) => {
+                  applyRangeFillPos(e.currentTarget, 1, 6);
+                  patchSlider({ buttonBorderWidth: Number(e.target.value) });
+                }}
+                {...sliderCommitProps}
                 className={THEME_RANGE_INPUT_CLASS}
                 style={{
                   ["--pos"]: `${((borderWVal - 1) / 5) * 100}%`,
@@ -936,7 +1169,6 @@ const ButtonElementOffcanvas = ({
                 }}
               />
             </li>
-          )}
            
           <li>
             <div className="grid grid-cols-2 gap-3">
@@ -952,8 +1184,8 @@ const ButtonElementOffcanvas = ({
             color={textColor}
           />
   
-        <Range min={min} max={max} step={1} value={value} pos={pos} color={textColor} handleChange={(e) =>
-              patch({ [field]: Number(e.target.value) })} className={THEME_RANGE_INPUT_CLASS}/>
+        <Range min={min} max={max} step={1} value={value} pos={pos} color={textColor} uncontrolled handleChange={(e) =>
+              patchSlider({ [field]: Number(e.target.value) })} onCommit={(_, reason) => commitSlider(reason)} className={THEME_RANGE_INPUT_CLASS}/>
         </div>
       )
     })}
@@ -1062,9 +1294,13 @@ const ButtonElementOffcanvas = ({
                     value={buttonMarginTop}
                     pos={(buttonMarginTop / 80) * 100}
                     color={textColor}
+                    uncontrolled
                     handleChange={(e) =>
-                      patch({ buttonMarginTop: Number(e.target.value) || 0 })
+                      patchSlider({
+                        buttonMarginTop: Number(e.target.value) || 0,
+                      })
                     }
+                    onCommit={(_, reason) => commitSlider(reason)}
                     className={THEME_RANGE_INPUT_CLASS}
                   />
                 </div>
@@ -1090,11 +1326,13 @@ const ButtonElementOffcanvas = ({
                     value={buttonMarginBottom}
                     pos={(buttonMarginBottom / 80) * 100}
                     color={textColor}
+                    uncontrolled
                     handleChange={(e) =>
-                      patch({
+                      patchSlider({
                         buttonMarginBottom: Number(e.target.value) || 0,
                       })
                     }
+                    onCommit={(_, reason) => commitSlider(reason)}
                     className={THEME_RANGE_INPUT_CLASS}
                   />
                 </div>
@@ -1105,25 +1343,6 @@ const ButtonElementOffcanvas = ({
 
         </ul>
       </nav>
-      <ServiceIcon
-        header={
-          linkIconModalSlot === 2
-            ? "ไอคอนหน้าข้อความ (ปุ่มที่ 2)"
-            : "ไอคอนหน้าข้อความ"
-        }
-        icon={
-          linkIconModalSlot === 2 ? linkIconForModal2 : linkIconForModal
-        }
-        open={linkIconModalSlot != null}
-        onClose={() => setLinkIconModalSlot(null)}
-        handleChange={(ic) =>
-          patch(
-            linkIconModalSlot === 2 ? { linkIcon2: ic } : { linkIcon: ic }
-          )
-        }
-        darkColor={textColor || "#0d9488"}
-        darkMode={darkMode}
-      />
     </aside>
   );
 };

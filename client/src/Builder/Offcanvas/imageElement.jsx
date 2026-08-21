@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,Fragment } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,Fragment, memo } from "react";
 import { Box, Button, ButtonGroup, Stack, Typography } from "@mui/material";
 import Switch from "@mui/material/Switch";
 import { styled } from "@mui/material/styles";
@@ -37,12 +37,16 @@ import {
   IMAGE_MARGIN_BOTTOM_DEFAULT,
   IMAGE_CORNER_RADIUS_MAX_PX,
   getImageCornerRadiusValue,
+  imageCornerRadiusStyle,
   mergeImageBadge,
   patchImageCornerRadius,
+  applyImageCanvasPreview,
+  applyImageBadgePreview,
 } from "../Layouts/Elements/imageAspectConfig";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import ImageBadge from "../Layouts/Elements/ImageBadge";
+import PanelRange, { applyRangeFillPos } from "../HTML/Range";
 import {
   getBuilderPanelOpenStartedAt,
   markBuilderPanelMounted,
@@ -74,6 +78,14 @@ const IMAGE_OVERLAY_EXTRA_OPTIONS = [
   { value: "icon", label: "ไอคอน" },
   { value: "button", label: "ปุ่มกด" },
 ];
+
+function colorSwatchKey(value) {
+  if (typeof value === "string") return value.toLowerCase();
+  if (value && typeof value === "object") {
+    return `${value.type}:${value.index}`;
+  }
+  return String(value ?? "");
+}
 
 const OPTION_CHIP_RADIUS = "0.375rem";
 
@@ -171,17 +183,30 @@ const THEME_RANGE_INPUT_CLASS = `
 
 
 
-const BTN = ({handleClick,btnClass,style,label=null,icon=null,})=>{
+const applyOptionChipDom = (btn, selected) => {
+  if (!btn) return;
+  const next = optionChipStyle(selected);
+  btn.style.backgroundColor = next.backgroundColor;
+  btn.style.color = next.color;
+  btn.style.borderColor = next.borderColor;
+  if (next.boxShadow) btn.style.boxShadow = next.boxShadow;
+  else btn.style.removeProperty("box-shadow");
+};
+
+const BTN = ({handleClick,btnClass,style,label=null,icon=null, ariaLabel, buttonRef=null, ...rest})=>{
 
   const Icon = icon?.Icon
   const className = icon?.className
   const strokeWidth = icon?.strokeWidth
 
   return( <button
+    ref={buttonRef}
     type="button"
     onClick={handleClick}
     className={btnClass}
     style={style}
+    aria-label={ariaLabel || (typeof label === "string" ? label : undefined)}
+    {...rest}
   >
      {icon && (
       <Icon className={className} strokeWidth={strokeWidth}/>
@@ -205,7 +230,7 @@ const PANEL_ACTIVE_BTN_SX = {
   },
 };
 
-const BTN2 = ({handleClick,sx,label=null,icon=null, variant, className: buttonClassName})=>{
+const BTN2 = ({handleClick,sx,label=null,icon=null, variant, className: buttonClassName, ariaLabel=null})=>{
 
   const Icon = icon?.Icon
   const className = icon?.className
@@ -217,6 +242,7 @@ const BTN2 = ({handleClick,sx,label=null,icon=null, variant, className: buttonCl
     variant={variant}
     className={buttonClassName}
     sx={sx}
+    aria-label={ariaLabel || (typeof label === "string" ? label : undefined)}
   >
     <Box
       component="span"
@@ -239,6 +265,49 @@ const BTN2 = ({handleClick,sx,label=null,icon=null, variant, className: buttonCl
     </Box>
   </Button>)
 }
+
+const ImageUploadTrigger = memo(function ImageUploadTrigger({
+  onPick,
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  return (
+    <>
+      <BTN2
+        variant="contained"
+        className="dash-panel-button"
+        ariaLabel="อัปโหลดรูปภาพ"
+        handleClick={(e) => {
+          e.currentTarget.blur();
+          requestAnimationFrame(() => setPickerOpen(true));
+        }}
+        icon={{
+          Icon: Image,
+          strokeWidth: 2.5,
+          className: "h-4 w-4",
+        }}
+        label="อัปโหลดรูปภาพ"
+        sx={{
+          "& .MuiButton-startIcon > *:nth-of-type(1)": {
+            fontSize: 18,
+          },
+          ...PANEL_ACTIVE_BTN_SX,
+          fontSize: 12,
+          height: 28,
+          width: "100%",
+          py: 2,
+        }}
+      />
+      <ImageModal
+        openModal={pickerOpen}
+        setOpenModal={setPickerOpen}
+        handleChange={(url) => {
+          onPick?.(url);
+          setPickerOpen(false);
+        }}
+      />
+    </>
+  );
+});
 
 
 /** Switch แบบเดียวกับ Section «เส้นคั่นคอลัมน์» — Offcanvas/container.jsx AntSwitch */
@@ -286,6 +355,35 @@ const ImagePanelAntSwitch = styled(Switch, {
   },
 }));
 
+const BadgeHoverSwitch = memo(function BadgeHoverSwitch({
+  resetKey,
+  defaultChecked = false,
+  onToggle,
+  accent,
+  switchLabel = "เมาส์สัมผัส",
+}) {
+  const [on, setOn] = useState(Boolean(defaultChecked));
+  useEffect(() => {
+    setOn(Boolean(defaultChecked));
+  }, [resetKey]);
+
+  return (
+    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+      <ImagePanelAntSwitch
+        accentColor={accent}
+        inputProps={{ "aria-label": switchLabel }}
+        checked={on}
+        onChange={() => {
+          const next = !on;
+          setOn(next);
+          onToggle?.(next);
+        }}
+      />
+      <Typography sx={{ fontSize: 13 }}>{switchLabel}</Typography>
+    </Stack>
+  );
+});
+
 const MainLabel = ({
   label,
   value = NaN,
@@ -296,6 +394,8 @@ const MainLabel = ({
   switchLabel = null,
   /** ถ้ากำหนด (เช่น 2) แสดงทศนิยมแทน Math.round */
   valueDecimals = null,
+  valueRef = null,
+  endAdornment = null,
 }) => {
   const accent = textColor || "#0d9488";
   const valueDisplay =
@@ -322,12 +422,16 @@ const MainLabel = ({
     >
       {label}{" "}
       {valueDisplay != null && (
-        <span className="text-slate-400 dark:text-slate-400">
+        <span
+          ref={valueRef}
+          className="text-slate-400 dark:text-slate-400"
+        >
           {valueDisplay}
         </span>
       )}
       <div className="dash-heading-rule min-w-0 flex-1 border-b" />
-      {checked !== "-" && (
+      {endAdornment}
+      {!endAdornment && checked !== "-" && (
         <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
           <ImagePanelAntSwitch
             accentColor={accent}
@@ -346,19 +450,30 @@ const MainLabel = ({
   );
 };
 
-const Field = ({value,handleChange,placeholder,id,type,className})=>{
+const Field = ({
+  value,
+  defaultValue,
+  handleChange,
+  placeholder,
+  id,
+  type,
+  className,
+  uncontrolled = false,
+})=>{
   return(                  <input
     id={id}
     type={type}
     className={className}
     placeholder={placeholder}
-    value={value}
+    {...(uncontrolled
+      ? { defaultValue: defaultValue ?? value ?? "" }
+      : { value: value ?? "" })}
     onChange={handleChange}
     autoComplete="off"
   />)
 }
 
-const SelectLine = ({prev,next,value,prevAria,nextAria,groupAria})=>{
+const SelectLine = ({prev,next,value,valueRef=null,prevAria,nextAria,groupAria})=>{
 
   return(     
     <div
@@ -375,7 +490,10 @@ const SelectLine = ({prev,next,value,prevAria,nextAria,groupAria})=>{
       <ChevronLeft className="size-4" strokeWidth={2} aria-hidden />
     </button>
 
-    <span className="min-w-0 flex-1 truncate text-center text-[11px] font-normal text-slate-800 dark:text-white/90">
+    <span
+      ref={valueRef}
+      className="min-w-0 flex-1 truncate text-center text-[11px] font-normal text-slate-800 dark:text-white/90"
+    >
       {value}
     </span>
 
@@ -500,23 +618,42 @@ const ImageElementOffcanvas = ({
   );
 
   const [data, setData] = useState(element);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const dataRef = useRef(element);
+  const aspectRootRef = useRef(null);
+  const cornerRootRef = useRef(null);
   const [badgeColorMode, setBadgeColorMode] = useState(
     BADGE_COLOR_MODES[0].value
   );
-  const [cornerTarget, setCornerTarget] = useState("all");
+  const badgeColorModeRef = useRef(BADGE_COLOR_MODES[0].value);
+  const badgeSwatchRootRef = useRef(null);
+  const badgeOpacityRangeRef = useRef(null);
+  const badgeBoldBtnRef = useRef(null);
+  const cornerTargetRef = useRef("all");
 
-  const { updateSlider, commitSlider } = usePanelSliderPreview({
-    type: layoutElementType === "imgo" ? "imgo" : "imgh",
+  const { updateSlider, commitSlider, hasActiveSlider } = usePanelSliderPreview({
+    type: layoutElementType || "img",
     targetIds: [panelTargetId],
     data,
     setData,
     onCommit: (latest) => {
       const changedFields = sliderChangedFieldsRef.current;
       sliderChangedFieldsRef.current = [];
+      dataRef.current = latest;
+      setData(latest);
       scheduleLayoutSync(latest, changedFields);
     },
   });
+
+  const patchSlider = (partial, fields = Object.keys(partial || {})) => {
+    const next = { ...dataRef.current, ...partial };
+    dataRef.current = next;
+    sliderChangedFieldsRef.current = Array.from(
+      new Set([...sliderChangedFieldsRef.current, ...fields])
+    );
+    updateSlider(() => next, { setData: false, publish: false });
+    applyImageCanvasPreview(next?.id ?? elementRef.current?.id, next);
+    return next;
+  };
 
   useLayoutEffect(() => {
     if (!measuredPanelType) return;
@@ -541,7 +678,10 @@ const ImageElementOffcanvas = ({
   const currentAspect = data?.aspectRatio ?? IMAGE_ASPECT_DEFAULT;
   const brightness =
     data?.brightness ?? IMAGE_BRIGHTNESS_DEFAULT;
-  const cornerRadius = getImageCornerRadiusValue(data?.borderRadius, cornerTarget);
+  const cornerRadius = getImageCornerRadiusValue(
+    dataRef.current?.borderRadius ?? data?.borderRadius,
+    cornerTargetRef.current
+  );
   const badgeMergeOpts = useMemo(
     () => ({ elementType: layoutElementType }),
     [layoutElementType]
@@ -556,18 +696,36 @@ const ImageElementOffcanvas = ({
     [layoutElementType, badgeMerged.variant]
   );
 
+  const cornerRadiusLabelRef = useRef(null);
+  const radiusRangeRef = useRef(null);
+  const panelPreviewImgRef = useRef(null);
+
   /* sync จาก parent เมื่อเปลี่ยน element คนละตัว — object เดียวกัน (id เดิม) ไม่ทับ state หลังเลือกรูปจากคลัง */
   useEffect(() => {
     if (!element?.id) return;
+    if (hasActiveSlider()) return;
+    if (lodash.isEqual(dataRef.current, element)) {
+      dataRef.current = element;
+      return;
+    }
     // Always sync latest element payload from parent so toggle-off state
     // (e.g. imageHoverExtras: []) is not kept stale in local offcanvas state.
+    dataRef.current = element;
     setData(element);
   }, [element]);
 
   useEffect(() => {
     setBadgeColorMode(BADGE_COLOR_MODES[0].value);
-    setCornerTarget("all");
+    badgeColorModeRef.current = BADGE_COLOR_MODES[0].value;
+    cornerTargetRef.current = "all";
+    paintChipGroup(cornerRootRef.current, "data-corner-target", "all");
   }, [element?.id]);
+
+  const paintChipGroup = (root, attr, value) => {
+    root?.querySelectorAll(`[${attr}]`).forEach((btn) => {
+      applyOptionChipDom(btn, btn.getAttribute(attr) === String(value));
+    });
+  };
 
   const handleSrcChange = (src) => {
     setData((prev) => {
@@ -578,24 +736,16 @@ const ImageElementOffcanvas = ({
   };
 
   const handleAspectRatioChange = (aspectRatio) => {
-    setData((prev) => {
-      const next = { ...prev, aspectRatio };
-      scheduleLayoutSync(next, ["aspectRatio"]);
-      return next;
-    });
+    paintChipGroup(aspectRootRef.current, "data-aspect-value", aspectRatio);
+    const next = { ...dataRef.current, aspectRatio };
+    dataRef.current = next;
+    const id = next?.id ?? elementRef.current?.id;
+    applyImageCanvasPreview(id, next);
+    scheduleLayoutSync(next, ["aspectRatio"]);
   };
 
   const handleBrightnessChange = (value) => {
-    const next = { ...data, brightness: value };
-    setData(next);
-    if (measuredPanelType && rangeGestureActiveRef.current) {
-      sliderChangedFieldsRef.current = Array.from(
-        new Set([...sliderChangedFieldsRef.current, "brightness"])
-      );
-      updateSlider(() => next);
-      return;
-    }
-    scheduleLayoutSync(next, ["brightness"]);
+    patchSlider({ brightness: value }, ["brightness"]);
   };
 
   const BANNER_CAPTION_FONT_MIN = 12;
@@ -736,68 +886,164 @@ const ImageElementOffcanvas = ({
     });
   };
 
-  const handleCornerRadiusChange = (value) => {
-    const next = {
-      ...data,
-      borderRadius: patchImageCornerRadius(
-        data?.borderRadius,
-        cornerTarget,
-        value
-      ),
-    };
-    setData(next);
-    if (measuredPanelType && rangeGestureActiveRef.current) {
-      sliderChangedFieldsRef.current = Array.from(
-        new Set([...sliderChangedFieldsRef.current, "borderRadius"])
-      );
-      updateSlider(() => next);
-      return;
+  const paintCornerRadiusUi = (sliderValue, nextData) => {
+    const n = Number(sliderValue);
+    if (cornerRadiusLabelRef.current && Number.isFinite(n)) {
+      cornerRadiusLabelRef.current.textContent = String(Math.round(n));
     }
-    scheduleLayoutSync(next, ["borderRadius"]);
-  };
-
-  const handleBadgePatch = (patch) => {
-    console.log(patch);
-    setData((prev) => {
-      const next = {
-        ...prev,
-        badge: mergeImageBadge(
-          { ...(prev.badge || {}), ...patch },
-          badgeMergeOpts
-        ),
-      };
-      scheduleLayoutSync(next);
-      return next;
+    const preview = panelPreviewImgRef.current;
+    if (!preview) return;
+    const aspect = String(nextData?.aspectRatio || IMAGE_ASPECT_DEFAULT)
+      .trim()
+      .replace(/\s+/g, "")
+      .replace(":", "/");
+    const style = imageCornerRadiusStyle(nextData?.borderRadius, aspect);
+    preview.style.removeProperty("border-radius");
+    preview.style.removeProperty("border-top-left-radius");
+    preview.style.removeProperty("border-top-right-radius");
+    preview.style.removeProperty("border-bottom-left-radius");
+    preview.style.removeProperty("border-bottom-right-radius");
+    Object.entries(style).forEach(([key, val]) => {
+      if (val == null || val === "") return;
+      preview.style[key] = typeof val === "number" ? `${val}px` : String(val);
     });
   };
 
+  const handleCornerRadiusChange = (value) => {
+    const prev = dataRef.current;
+    const next = {
+      ...prev,
+      borderRadius: patchImageCornerRadius(
+        prev?.borderRadius,
+        cornerTargetRef.current,
+        value
+      ),
+    };
+    dataRef.current = next;
+    sliderChangedFieldsRef.current = Array.from(
+      new Set([...sliderChangedFieldsRef.current, "borderRadius"])
+    );
+    updateSlider(() => next, { setData: false, publish: false });
+    applyImageCanvasPreview(next?.id ?? elementRef.current?.id, next);
+    paintCornerRadiusUi(value, next);
+  };
+
+  const handleCornerTargetClick = (value) => {
+    cornerTargetRef.current = value;
+    paintChipGroup(cornerRootRef.current, "data-corner-target", value);
+    const live = getImageCornerRadiusValue(dataRef.current?.borderRadius, value);
+    const el = radiusRangeRef.current;
+    if (el) {
+      el.value = String(live);
+      applyRangeFillPos(el, 0, IMAGE_CORNER_RADIUS_MAX_PX);
+    }
+    paintCornerRadiusUi(live, dataRef.current);
+  };
+
+  const handleBadgePatch = (patch, { render = false } = {}) => {
+    const next = {
+      ...dataRef.current,
+      badge: mergeImageBadge(
+        { ...(dataRef.current?.badge || {}), ...patch },
+        badgeMergeOpts
+      ),
+    };
+    dataRef.current = next;
+    if (render) setData(next);
+    applyImageBadgePreview(
+      next?.id ?? elementRef.current?.id,
+      next.badge,
+      theme
+    );
+    scheduleLayoutSync(next);
+    return next;
+  };
+
   const handleLinkPatch = (patch) => {
-    const next = { ...data, ...patch };
     const changedFields = Object.keys(patch || {});
-    setData(next);
-    if (measuredPanelType && rangeGestureActiveRef.current) {
-      sliderChangedFieldsRef.current = Array.from(
-        new Set([...sliderChangedFieldsRef.current, ...changedFields])
+    const sliderOnly =
+      changedFields.length > 0 &&
+      changedFields.every(
+        (key) =>
+          key === "imageMarginTop" ||
+          key === "imageMarginBottom" ||
+          key === "imageHoverContentOffsetY"
       );
-      updateSlider(() => next);
+    if (sliderOnly) {
+      patchSlider(patch, changedFields);
       return;
     }
+    const next = { ...dataRef.current, ...patch };
+    dataRef.current = next;
+    setData(next);
     scheduleLayoutSync(next, changedFields);
   };
 
+  const badgeLabelRefs = useRef({});
+
   const cycleBadgeOption = (key, list, delta) => {
-    const idx = list.findIndex((o) => o.value === badgeMerged[key]);
+    const current = mergeImageBadge(dataRef.current?.badge, badgeMergeOpts);
+    const idx = list.findIndex((o) => o.value === current[key]);
     const base = idx === -1 ? 0 : idx;
-    const next = (base + delta + list.length) % list.length;
-    handleBadgePatch({ [key]: list[next].value });
+    const nextValue = list[(base + delta + list.length) % list.length].value;
+    const nextBadge = mergeImageBadge(
+      { ...current, [key]: nextValue },
+      badgeMergeOpts
+    );
+    const next = { ...dataRef.current, badge: nextBadge };
+    dataRef.current = next;
+    const label = list.find((o) => o.value === nextValue)?.label ?? "";
+    const labelNode = badgeLabelRefs.current[key];
+    if (labelNode) labelNode.textContent = label;
+    applyImageBadgePreview(
+      next?.id ?? elementRef.current?.id,
+      nextBadge,
+      theme
+    );
+    scheduleLayoutSync(next);
+  };
+
+  const applyBadgeSwatchSelection = (value) => {
+    const nextKey = colorSwatchKey(value);
+    badgeSwatchRootRef.current
+      ?.querySelectorAll("[data-swatch-key]")
+      .forEach((btn) => {
+        const check = btn.querySelector("[data-swatch-check]");
+        if (check) check.hidden = btn.getAttribute("data-swatch-key") !== nextKey;
+      });
+  };
+
+  const paintBadgeColorMode = (mode) => {
+    badgeColorModeRef.current = mode;
+    const label = BADGE_COLOR_MODES.find((o) => o.value === mode)?.label ?? "";
+    const labelNode = badgeLabelRefs.current.colorMode;
+    if (labelNode) labelNode.textContent = label;
+    const current = mergeImageBadge(dataRef.current?.badge, badgeMergeOpts);
+    const raw =
+      mode === "text" ? Number(current.textOpacity) : Number(current.backgroundOpacity);
+    const opacity = Number.isFinite(raw)
+      ? Math.max(0, Math.min(255, raw))
+      : IMAGE_BADGE_OPACITY_DEFAULT;
+    const el = badgeOpacityRangeRef.current;
+    if (el) {
+      el.value = String(opacity);
+      applyRangeFillPos(el, 0, 255);
+    }
+    applyBadgeSwatchSelection(
+      mode === "text" ? current.textColor : current.backgroundColor
+    );
   };
 
   const cycleBadgeColorMode = (delta) => {
-    const idx = BADGE_COLOR_MODES.findIndex((o) => o.value === badgeColorMode);
+    const idx = BADGE_COLOR_MODES.findIndex(
+      (o) => o.value === badgeColorModeRef.current
+    );
     const base = idx === -1 ? 0 : idx;
-    const next =
-      (base + delta + BADGE_COLOR_MODES.length) % BADGE_COLOR_MODES.length;
-    setBadgeColorMode(BADGE_COLOR_MODES[next].value);
+    paintBadgeColorMode(
+      BADGE_COLOR_MODES[
+        (base + delta + BADGE_COLOR_MODES.length) % BADGE_COLOR_MODES.length
+      ].value
+    );
   };
 
   const badgeColorModeLabel =
@@ -811,14 +1057,15 @@ const ImageElementOffcanvas = ({
     ? Math.max(0, Math.min(255, badgeOpacitySliderRaw))
     : IMAGE_BADGE_OPACITY_DEFAULT;
 
+  const liveBadge = mergeImageBadge(dataRef.current?.badge, badgeMergeOpts);
   const badgePosLabel =
-    badgePositionOptions.find((o) => o.value === badgeMerged.position)
+    badgePositionOptions.find((o) => o.value === liveBadge.position)
       ?.label ?? "";
   const badgeVariantLabel =
-    IMAGE_BADGE_VARIANTS.find((o) => o.value === badgeMerged.variant)
+    IMAGE_BADGE_VARIANTS.find((o) => o.value === liveBadge.variant)
       ?.label ?? "";
   const badgeSizeLabel =
-    IMAGE_BADGE_SIZES.find((o) => o.value === badgeMerged.size)?.label ?? "";
+    IMAGE_BADGE_SIZES.find((o) => o.value === liveBadge.size)?.label ?? "";
 
   const allColors = useMemo(() => {
     if (!theme?.mainColor?.length) return [];
@@ -1019,7 +1266,6 @@ const ImageElementOffcanvas = ({
      dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10 `}
       onPointerDownCapture={(event) => {
         if (
-          Boolean(measuredPanelType) &&
           event.target instanceof HTMLInputElement &&
           event.target.type === "range"
         ) {
@@ -1063,6 +1309,7 @@ const ImageElementOffcanvas = ({
         <button
           type="button"
           className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
+          aria-label="ปิด"
           onClick={() => close(null, null, null)}
         >
           <svg
@@ -1085,6 +1332,7 @@ const ImageElementOffcanvas = ({
             <Box sx={{ pr: 0.5 }}>
               {!isCompoundListImageEdit && (
               <div
+                ref={aspectRootRef}
                 className="mb-2 grid w-full grid-cols-4 gap-1"
                 role="group"
                 aria-label="อัตราส่วนภาพ"
@@ -1097,7 +1345,9 @@ const ImageElementOffcanvas = ({
                   return (
                     <Fragment key={value}>
                       <BTN
+                        data-aspect-value={value}
                         label={chipLabel}
+                        ariaLabel={`อัตราส่วน ${chipLabel}`}
                         handleClick={() => handleAspectRatioChange(value)}
                         btnClass={btnClass1}
                         style={optionChipStyle(selected)}
@@ -1123,6 +1373,7 @@ const ImageElementOffcanvas = ({
               >
                 {data?.src ? (
                   <Box
+                    ref={panelPreviewImgRef}
                     component="img"
                     src={data.src}
                     alt=""
@@ -1133,6 +1384,10 @@ const ImageElementOffcanvas = ({
                       height: "100%",
                       objectFit: "cover",
                       display: "block",
+                      ...imageCornerRadiusStyle(
+                        data?.borderRadius,
+                        currentAspect
+                      ),
                     }}
                     draggable={false}
                   />
@@ -1169,30 +1424,7 @@ const ImageElementOffcanvas = ({
                 mt: 1,
               }}
             >
-              <BTN2
-                variant="contained"
-                className="dash-panel-button"
-                handleClick={(e) => {
-                  e.currentTarget.blur();
-                  requestAnimationFrame(() => setPickerOpen(true));
-                }}
-                icon={{
-                  Icon: Image,
-                  strokeWidth: 2.5,
-                  className: "h-4 w-4",
-                }}
-                label="อัปโหลดรูปภาพ"
-                sx={{
-                  "& .MuiButton-startIcon > *:nth-of-type(1)": {
-                    fontSize: 18,
-                  },
-                  ...PANEL_ACTIVE_BTN_SX,
-                  fontSize: 12,
-                  height: 28,
-                  width: "100%",
-                  py: 2,
-                }}
-              />
+              <ImageUploadTrigger onPick={handleSrcChange} />
             </Box>
             
 
@@ -1221,16 +1453,17 @@ const ImageElementOffcanvas = ({
                 />
                 {/* ดีไซน์เดียวกับปรับ Opacity สีธีม — Offcanvas/container.jsx */}
                 <div className="min-w-0 flex-1 pt-[2px] pb-[2px] px-[5px]">
-                  <Range
+                  <PanelRange
                     min={-100}
                     max={100}
                     value={brightness}
                     step={1}
+                    uncontrolled
                     handleChange={(e) =>
                       handleBrightnessChange(Number(e.target.value))
                     }
-                    pos={((brightness + 100) / 200) * 100}
-                    textColor={textColor}
+                    onCommit={(_, reason) => commitSlider(reason)}
+                    color={textColor}
                   />
                 </div>
                 <Sun
@@ -1242,16 +1475,24 @@ const ImageElementOffcanvas = ({
             </Box>
 
             <Box sx={{ width: "100%", px: 0.25, mt: 2 }}>
-            <MainLabel label="ความโค้งมนรูปภาพ" value={cornerRadius}/>
-              <div className="mb-2 grid grid-cols-5 gap-1 mt-3">
+            <MainLabel
+              label="ความโค้งมนรูปภาพ"
+              value={cornerRadius}
+              valueRef={cornerRadiusLabelRef}
+            />
+              <div ref={cornerRootRef} className="mb-2 grid grid-cols-5 gap-1 mt-3">
                 {CORNER_TARGETS.map((opt) => {
                   const {value,label} = opt
-                  const active = cornerTarget === value;
-                  const handleClick = () => setCornerTarget(value)
+                  const active = cornerTargetRef.current === value;
+                  const handleClick = () => {
+                    handleCornerTargetClick(value);
+                  }
                   return (
                     <Fragment key={value}>
                       <BTN
+                        data-corner-target={value}
                         label={label}
+                        ariaLabel={`มุมโค้ง ${label}`}
                         active={active}
                         handleClick={handleClick}
                         btnClass={btnClass1}
@@ -1268,27 +1509,23 @@ const ImageElementOffcanvas = ({
                   px: 0.25,
                 }}
                 aria-label={`ความโค้งมนรูปภาพ ${
-                  CORNER_TARGETS.find((o) => o.value === cornerTarget)?.label ||
-                  "รอบด้าน"
+                  CORNER_TARGETS.find((o) => o.value === cornerTargetRef.current)
+                    ?.label || "รอบด้าน"
                 } ${Math.round(cornerRadius)} พิกเซล`}
               >
                 <div className="w-full pt-[2px] pb-[2px] px-[5px]">
-                  <input
-                    type="range"
+                  <PanelRange
                     min={0}
                     max={IMAGE_CORNER_RADIUS_MAX_PX}
                     value={cornerRadius}
                     step={1}
-                    onChange={(e) =>
+                    uncontrolled
+                    inputRef={radiusRangeRef}
+                    handleChange={(e) =>
                       handleCornerRadiusChange(Number(e.target.value))
                     }
-                    className={THEME_RANGE_INPUT_CLASS}
-                    style={{
-                      ["--pos"]: `${
-                        (cornerRadius / IMAGE_CORNER_RADIUS_MAX_PX) * 100
-                      }%`,
-                      ["--fill"]: textColor || "#0d9488",
-                    }}
+                    onCommit={(_, reason) => commitSlider(reason)}
+                    color={textColor}
                   />
                 </div>
               </Box>
@@ -1318,7 +1555,9 @@ const ImageElementOffcanvas = ({
                 
               
                   <Field
-                    value={badgeMerged.label}
+                    key={`badge-label-${element?.id || "new"}`}
+                    uncontrolled
+                    defaultValue={liveBadge.label}
                     handleChange={(e) =>
                       handleBadgePatch({ label: e.target.value })
                     }
@@ -1332,16 +1571,24 @@ const ImageElementOffcanvas = ({
                     className="dash-input h-10 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:border-white/10 dark:bg-[#27272a] dark:text-white/90 dark:placeholder:text-slate-500 "
                   />
                   <BTN
-                    handleClick={() =>
-                      handleBadgePatch({ bold: !badgeMerged.bold })
-                    }
+                    buttonRef={badgeBoldBtnRef}
+                    ariaLabel="ตัวหนา"
+                    handleClick={() => {
+                      const current = mergeImageBadge(
+                        dataRef.current?.badge,
+                        badgeMergeOpts
+                      );
+                      const nextBold = !current.bold;
+                      handleBadgePatch({ bold: nextBold });
+                      applyOptionChipDom(badgeBoldBtnRef.current, nextBold);
+                    }}
                     icon={{
                       Icon: Bold,
                       className: "size-4",
                       strokeWidth: 2.5,
                     }}
                     btnClass={btnClass2}
-                    style={optionChipStyle(Boolean(badgeMerged.bold))}
+                    style={optionChipStyle(Boolean(liveBadge.bold))}
                   />
                 </div>
                 {showCarouselBadgeWarn && (
@@ -1613,19 +1860,23 @@ const ImageElementOffcanvas = ({
                 label="เพิ่มข้อความ"
                 mb={1.25}
                 textColor={textColor}
-                handleSwitch={() =>
-                  handleBadgePatch({
-                    hover: !badgeMerged.hover,
-                  })
+                endAdornment={
+                  <BadgeHoverSwitch
+                    resetKey={element?.id}
+                    defaultChecked={Boolean(liveBadge.hover)}
+                    accent={textColor}
+                    switchLabel="เมาส์สัมผัส"
+                    onToggle={(next) => handleBadgePatch({ hover: next })}
+                  />
                 }
-                checked={badgeMerged.hover}
-                switchLabel="เมาส์สัมผัส"
               />
                 <div className="flex items-center gap-2">
                 
               
                   <Field
-                    value={badgeMerged.label}
+                    key={`badge-label-${element?.id || "new"}`}
+                    uncontrolled
+                    defaultValue={liveBadge.label}
                     handleChange={(e) =>
                       handleBadgePatch({ label: e.target.value })
                     }
@@ -1635,16 +1886,24 @@ const ImageElementOffcanvas = ({
                     className="dash-input h-10 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] leading-snug text-slate-800 outline-none transition placeholder:text-slate-400 dark:border-white/10 dark:bg-[#27272a] dark:text-white/90 dark:placeholder:text-slate-500 "
                   />
                   <BTN
-                    handleClick={() =>
-                      handleBadgePatch({ bold: !badgeMerged.bold })
-                    }
+                    buttonRef={badgeBoldBtnRef}
+                    ariaLabel="ตัวหนา"
+                    handleClick={() => {
+                      const current = mergeImageBadge(
+                        dataRef.current?.badge,
+                        badgeMergeOpts
+                      );
+                      const nextBold = !current.bold;
+                      handleBadgePatch({ bold: nextBold });
+                      applyOptionChipDom(badgeBoldBtnRef.current, nextBold);
+                    }}
                     icon={{
                       Icon: Bold,
                       className: "size-4",
                       strokeWidth: 2.5,
                     }}
                     btnClass={btnClass2}
-                    style={optionChipStyle(Boolean(badgeMerged.bold))}
+                    style={optionChipStyle(Boolean(liveBadge.bold))}
                   />
                 </div>
                 {showCarouselBadgeWarn && (
@@ -1666,29 +1925,64 @@ const ImageElementOffcanvas = ({
         <div className="mb-3 flex items-center gap-2">
           <MainLabel label={label} mb={0} />
         </div>
-      <SelectLine prev={onPrev} next={onNext} prevAria={prevAria} nextAria={nextAria} groupAria={groupAria} value={value}/>
+      <SelectLine
+        prev={onPrev}
+        next={onNext}
+        prevAria={prevAria}
+        nextAria={nextAria}
+        groupAria={groupAria}
+        value={value}
+        valueRef={(node) => {
+          if (title) badgeLabelRefs.current[title] = node;
+        }}
+      />
         
       </div>
     )
   })}
 </div>
-              <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
+              <div
+                ref={badgeSwatchRootRef}
+                className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800"
+              >
                 <div className="px-[5px] pb-2">
-                  <Range
+                  <PanelRange
                     min={0}
                     max={255}
                     value={badgeOpacitySliderValue}
                     step={1}
+                    uncontrolled
+                    inputRef={badgeOpacityRangeRef}
                     handleChange={(e) => {
                       const v = Number(e.target.value);
-                      handleBadgePatch(
-                        badgeColorMode === "text"
-                          ? { textOpacity: v }
-                          : { backgroundOpacity: v }
+                      const next = {
+                        ...dataRef.current,
+                        badge: mergeImageBadge(
+                          {
+                            ...(dataRef.current?.badge || {}),
+                            ...(badgeColorModeRef.current === "text"
+                              ? { textOpacity: v }
+                              : { backgroundOpacity: v }),
+                          },
+                          badgeMergeOpts
+                        ),
+                      };
+                      dataRef.current = next;
+                      sliderChangedFieldsRef.current = Array.from(
+                        new Set([
+                          ...sliderChangedFieldsRef.current,
+                          "badge",
+                        ])
+                      );
+                      updateSlider(() => next, { setData: false, publish: false });
+                      applyImageBadgePreview(
+                        next?.id ?? elementRef.current?.id,
+                        next.badge,
+                        theme
                       );
                     }}
-                    pos={(badgeOpacitySliderValue / 255) * 100}
-                    textColor={textColor}
+                    onCommit={(_, reason) => commitSlider(reason)}
+                    color={textColor}
                   />
                 </div>
                 <div className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]">
@@ -1700,9 +1994,9 @@ const ImageElementOffcanvas = ({
                     if (bgColor == null) return null;
                     const value = color;
                     const activeValue =
-                      badgeColorMode === "text"
-                        ? badgeMerged.textColor
-                        : badgeMerged.backgroundColor;
+                      badgeColorModeRef.current === "text"
+                        ? liveBadge.textColor
+                        : liveBadge.backgroundColor;
                     const selected =
                       lodash.isEqual(activeValue, value) ||
                       activeValue === value;
@@ -1714,23 +2008,25 @@ const ImageElementOffcanvas = ({
                       <div className={`${margin}`} key={i}>
                         <button
                           type="button"
+                          data-swatch-key={colorSwatchKey(value)}
                           className="flex size-[25px] items-center justify-center rounded-full border"
                           style={{ backgroundColor: bgColor }}
-                          onClick={() =>
+                          onClick={() => {
                             handleBadgePatch(
-                              badgeColorMode === "text"
+                              badgeColorModeRef.current === "text"
                                 ? { textColor: value }
                                 : { backgroundColor: value }
-                            )
-                          }
+                            );
+                            applyBadgeSwatchSelection(value);
+                          }}
                           aria-label={`เลือกสี ${bgColor}`}
                         >
-                          {selected && (
-                            <Check
-                              className={swatchSelectedCheckClassName(bgColor)}
-                              strokeWidth={4}
-                            />
-                          )}
+                          <Check
+                            data-swatch-check
+                            hidden={!selected}
+                            className={swatchSelectedCheckClassName(bgColor)}
+                            strokeWidth={4}
+                          />
                         </button>
                       </div>
                     );
@@ -1844,6 +2140,7 @@ const ImageElementOffcanvas = ({
                       return (
                         <BTN2
                           key={opt.value}
+                          ariaLabel={opt.label}
                           handleClick={() => handleImageHoverExtraToggle(opt.value)}
                           icon={
                             selected
@@ -2028,18 +2325,19 @@ const ImageElementOffcanvas = ({
                 <Box sx={{ minWidth: 0 }}>
                   <MainLabel label="ระยะด้านบน" value={imageMarginTop} mb={0.35} />
                   <div className="min-w-0 px-[2px] pb-[2px] pt-[2px]">
-                    <Range
+                    <PanelRange
                       min={0}
                       max={80}
                       step={1}
                       value={imageMarginTop}
+                      uncontrolled
                       handleChange={(e) =>
                         handleLinkPatch({
                           imageMarginTop: Number(e.target.value) || 0,
                         })
                       }
-                      pos={(imageMarginTop / 80) * 100}
-                      textColor={textColor}
+                      onCommit={(_, reason) => commitSlider(reason)}
+                      color={textColor}
                     />
                   </div>
                 </Box>
@@ -2050,18 +2348,19 @@ const ImageElementOffcanvas = ({
                     mb={0.35}
                   />
                   <div className="min-w-0 px-[2px] pb-[2px] pt-[2px]">
-                    <Range
+                    <PanelRange
                       min={0}
                       max={80}
                       step={1}
                       value={imageMarginBottom}
+                      uncontrolled
                       handleChange={(e) =>
                         handleLinkPatch({
                           imageMarginBottom: Number(e.target.value) || 0,
                         })
                       }
-                      pos={(imageMarginBottom / 80) * 100}
-                      textColor={textColor}
+                      onCommit={(_, reason) => commitSlider(reason)}
+                      color={textColor}
                     />
                   </div>
                 </Box>
@@ -2071,14 +2370,6 @@ const ImageElementOffcanvas = ({
           </li>
         </ul>
       </nav>
-      <ImageModal
-        openModal={pickerOpen}
-        setOpenModal={setPickerOpen}
-        handleChange={(url) => {
-          handleSrcChange(url);
-          setPickerOpen(false);
-        }}
-      />
     </aside>
   );
 };

@@ -3,6 +3,131 @@ import ServiceLayout from "../Services/ServiceLayout"
 import { useMemo } from "react";
 import { usePanelPreview } from "../panelPreviewStore";
 
+const opacityByte = (value, fallback = 255) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.min(255, n)) : fallback;
+};
+
+export function SpanCanvasFill({ elementData, theme, children, onDragOver }) {
+  const previewData = usePanelPreview("column", elementData?.id);
+  const visual = useMemo(
+    () => (previewData ? { ...elementData, ...previewData } : elementData),
+    [elementData, previewData]
+  );
+  const {
+    paddingX = 18,
+    paddingY = 18,
+    backgroundColor = "#ffffff",
+    backgroundColorGradient = [
+      { type: "mainColor", index: 0 },
+      { type: "mainColor", index: 1 },
+    ],
+    borderColor = "#000000",
+    borderOpacity = 255,
+    borderRadius = 0,
+    borderWidth = 0,
+    degrees = 90,
+    isGradient = false,
+    opacityColor = 255,
+    opacityColorGradient = [255, 255],
+    colGlassEnabled = false,
+    colGlassLevel = 50,
+  } = visual || {};
+
+  const glassLevelNum = Number.isFinite(Number(colGlassLevel))
+    ? Number(colGlassLevel)
+    : 50;
+  const glassRatio =
+    colGlassEnabled === true
+      ? Math.max(0, Math.min(100, glassLevelNum)) / 100
+      : 0;
+  const glassBlurPx = Math.round(glassRatio * 24);
+  const glassSaturatePct = Math.round(100 + glassRatio * 80);
+  const glassStyle =
+    colGlassEnabled === true
+      ? {
+          backdropFilter: `blur(${glassBlurPx}px) saturate(${glassSaturatePct}%)`,
+          WebkitBackdropFilter: `blur(${glassBlurPx}px) saturate(${glassSaturatePct}%)`,
+        }
+      : {};
+
+  let fill = isGradient
+    ? setColor(theme, backgroundColorGradient, opacityColorGradient, degrees)
+    : setColor(theme, backgroundColor, opacityColor);
+  if (colGlassEnabled === true && glassRatio > 0) {
+    const maxOpacity = Math.round(255 - glassRatio * 160);
+    if (
+      isGradient &&
+      Array.isArray(backgroundColorGradient) &&
+      Array.isArray(opacityColorGradient)
+    ) {
+      fill = setColor(
+        theme,
+        backgroundColorGradient,
+        opacityColorGradient.map((op) => Math.min(opacityByte(op), maxOpacity)),
+        degrees
+      );
+    } else if (!isGradient && backgroundColor != null) {
+      fill = setColor(
+        theme,
+        backgroundColor,
+        Math.min(opacityByte(opacityColor), maxOpacity)
+      );
+    }
+  }
+  const brColor = setColor(theme, borderColor, borderOpacity);
+  const bw = Number(borderWidth) || 0;
+  const r = Number(borderRadius) || 0;
+  const fillIsOpaque =
+    !(colGlassEnabled === true && glassRatio > 0) &&
+    (isGradient
+      ? opacityByte(opacityColorGradient?.[0]) >= 255 &&
+        opacityByte(opacityColorGradient?.[1]) >= 255
+      : opacityByte(opacityColor) >= 255);
+  const useBorderRing = bw > 0 && fillIsOpaque;
+  const innerRadius = Math.max(0, r - bw);
+
+  if (useBorderRing) {
+    return (
+      <div
+        className="box-border flex h-full min-h-0 w-full min-w-0 flex-col"
+        style={{ borderRadius: r, padding: bw, background: brColor }}
+        onDragOver={onDragOver}
+      >
+        <div
+          className="box-border flex min-h-0 w-full min-w-0 flex-1 flex-col"
+          style={{
+            borderRadius: innerRadius,
+            padding: `${paddingY}px ${paddingX}px`,
+            background: fill,
+            ...glassStyle,
+          }}
+          onDragOver={onDragOver}
+        >
+          {children}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex h-full w-full min-w-0 flex-col"
+      style={{
+        borderRadius: r,
+        borderWidth: bw,
+        padding: `${paddingY}px ${paddingX}px`,
+        borderColor: brColor,
+        background: fill,
+        ...glassStyle,
+      }}
+      onDragOver={onDragOver}
+    >
+      {children}
+    </div>
+  );
+}
+
 function Column({
   elementData,
   ids,
@@ -103,12 +228,16 @@ function Column({
   if (colGlassEnabled === true && glassRatio > 0) {
     const maxOpacity = Math.round(255 - glassRatio * 160);
     if (isGradient && Array.isArray(backgroundColorGradient) && Array.isArray(opacityColorGradient)) {
-      const effectiveOpacity = opacityColorGradient.map((op) =>
-        Math.min(Number(op) || 255, maxOpacity)
-      );
+      const effectiveOpacity = opacityColorGradient.map((op) => {
+        const n = Number(op);
+        const byte = Number.isFinite(n) ? Math.max(0, Math.min(255, n)) : 255;
+        return Math.min(byte, maxOpacity);
+      });
       color = setColor(theme, backgroundColorGradient, effectiveOpacity, degrees);
     } else if (!isGradient && backgroundColor != null) {
-      const effectiveOpacity = Math.min(Number(opacityColor) || 255, maxOpacity);
+      const n = Number(opacityColor);
+      const byte = Number.isFinite(n) ? Math.max(0, Math.min(255, n)) : 255;
+      const effectiveOpacity = Math.min(byte, maxOpacity);
       color = setColor(theme, backgroundColor, effectiveOpacity);
     }
   }
@@ -121,7 +250,13 @@ function Column({
   const bw = Number(borderWidth) || 0;
   const r = Number(borderRadius) || 0;
   const innerRadius = Math.max(0, r - bw);
-  const useBorderRing = bw > 0;
+  const fillIsOpaque =
+    !(colGlassEnabled === true && glassRatio > 0) &&
+    (isGradient
+      ? opacityByte(opacityColorGradient?.[0]) >= 255 &&
+        opacityByte(opacityColorGradient?.[1]) >= 255
+      : opacityByte(opacityColor) >= 255);
+  const useBorderRing = bw > 0 && fillIsOpaque;
 
   const IDS = {colID:id,conID}
 
@@ -138,8 +273,9 @@ function Column({
 
   return (
     <div
+      data-layout-outline=""
       className={`column-area ${
-        device === "Desktop" && builderMode === "Layout Mode"
+        device === "Desktop"
           ? `border-[1px] border-dashed border-gray-600${removeTopBorder ? " border-t-0" : ""}${removeLeftBorder ? " border-l-0" : ""}${removeRightBorder ? " border-r-0" : ""}`
           : ""
       } flex ${height} justify-center items-center text-center relative `}
@@ -163,6 +299,7 @@ function Column({
       }}
     >
       <div
+        data-layout-controls=""
         className={`absolute top-0 left-0 z-[1000] transition-opacity ${
           showOption || isColumnPresetModalPinned
             ? "opacity-100 pointer-events-auto"
@@ -225,10 +362,10 @@ function Column({
         </div>
       )}
       {device === "Desktop" &&
-      builderMode === "Layout Mode" &&
       !hideIdBadge &&
       !hasLayoutElements ? (
         <div
+          data-layout-badge=""
           className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center"
           aria-hidden
         >

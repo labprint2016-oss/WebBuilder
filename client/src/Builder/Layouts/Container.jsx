@@ -65,6 +65,12 @@ function Container({
 
   const overlapPx = resolveSectionOverlapPx(visualElementData, device);
   const hasOverlap = overlapPx > 0;
+  const dividerStyle =
+    visualElementData?.columnDividerStyle === "dotted"
+      ? "dotted"
+      : visualElementData?.columnDividerStyle === "solid"
+        ? "solid"
+        : "dashed";
 
   const sectionRootRef = useRef(null);
   const bgParallaxRef = useRef(null);
@@ -149,6 +155,7 @@ function Container({
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
           <div
             ref={bgParallaxRef}
+            data-section-bg=""
             className="absolute bg-cover bg-center bg-no-repeat"
             style={{
               top: -pad,
@@ -177,20 +184,22 @@ function Container({
 
   return (
     <div
+      data-section-visual=""
       className={`${
-        device === "Desktop" && builderMode === "Layout Mode"
+        device === "Desktop"
           ? `border-[1px] ${borderT} border-dashed border-gray-600`
           : ""
       } relative${extraClassName ? ` ${extraClassName}` : ""}`}
       style={{
         background: color,
         contain: "layout style",
+        ["--section-divider-style"]: dividerStyle,
         ...(hasOverlap ? { overflow: "visible", marginBottom: `-${overlapPx}px` } : {}),
       }}
       ref={mergedSectionRef}
     >
       {showOption && (
- <div className="absolute top-0 left-0 z-[1000] pointer-events-none">
+ <div data-layout-controls="" className="absolute top-0 left-0 z-[1000] pointer-events-none">
  <div className="pointer-events-auto">
     <ServiceLayout
           layouts={layouts}
@@ -213,14 +222,16 @@ function Container({
       <BgImage />
 
       {/* เส้นประแสดงจุดที่ Section ถัดไปเริ่มต้น — แสดงเฉพาะ Layout Mode เมื่อมี overlap */}
-      {hasOverlap && device === "Desktop" && builderMode === "Layout Mode" && (
+      {hasOverlap && device === "Desktop" && (
         <div
+          data-section-overlap-guide=""
           className="pointer-events-none absolute left-0 right-0 z-[1] border-t border-dashed border-gray-600"
           style={{ bottom: overlapPx }}
         />
       )}
 
       <div
+        data-section-pad=""
         className={`${fluid} mx-auto relative`}
         style={{
           paddingTop: paddingTop,

@@ -83,6 +83,7 @@ const ButtonGroupElement = ({
 
   return (
     <Box
+      data-button-wrap-id={id}
       sx={{
         ...getButtonOuterContainerSx(elementData),
         ...(isLayoutMode && hugOuter
@@ -121,6 +122,7 @@ const ButtonGroupElement = ({
             <Box
               component="span"
               data-button-special-text="true"
+              data-button-special-text-id={id}
               sx={{
                 flex: "0 1 auto",
                 minWidth: 0,
@@ -145,6 +147,7 @@ const ButtonGroupElement = ({
           ) : null}
           <ButtonGroup
             aria-label="ปุ่มคู่"
+            data-button-group-id={id}
             disableElevation
             sx={{
               width: full ? "100%" : "auto",
@@ -155,6 +158,8 @@ const ButtonGroupElement = ({
           >
             <Button
               component={link1 ? "a" : "button"}
+              data-button-canvas-id={id}
+              data-button-slot="1"
               // href={link1?.href}
               target={link1?.target}
               rel={link1?.rel}
@@ -184,6 +189,8 @@ const ButtonGroupElement = ({
             </Button>
             <Button
               component={link2 ? "a" : "button"}
+              data-button-canvas-id={id}
+              data-button-slot="2"
               // href={link2?.href}
               target={link2?.target}
               rel={link2?.rel}

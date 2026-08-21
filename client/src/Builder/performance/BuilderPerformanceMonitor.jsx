@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  getDisplayedDurationMs,
+  getUnrelatedMetricStatus,
   resetBuilderPerformanceSession,
   setBuilderPerformanceEnabled,
   setBuilderPerformancePaused,
@@ -156,7 +158,10 @@ const metricStatus = (value, yellow, red) => {
 const TransactionRow = ({ transaction }) => {
   const metrics = transaction.metrics || {};
   const renderMs = metrics.renderMaxMs || metrics.panelMaxMs;
-  const frameMs = metrics.frameGapP95Ms;
+  const frameMs =
+    transaction.kind === "panel-open"
+      ? null
+      : metrics.frameGapP95Ms || metrics.frameGapMaxMs;
   const rerenders = metrics.targetRenderCount || 0;
   const unrelatedPercent = Math.round((metrics.unrelatedRenderRatio || 0) * 100);
   const isLifecycle = [
@@ -167,15 +172,7 @@ const TransactionRow = ({ transaction }) => {
     "resource-save",
   ].includes(transaction.kind);
   const primaryDuration =
-    [
-      metrics.lifecycleTotalMs,
-      metrics.interactionToPaintMs,
-      metrics.openToPaintMs,
-      metrics.canvasMaxMs,
-      metrics.panelMaxMs,
-      metrics.renderMaxMs,
-      metrics.dropCommitMs,
-    ].find((value) => Number(value) > 0) || transaction.durationMs;
+    getDisplayedDurationMs(transaction) || transaction.durationMs;
   return (
     <div className="border-b border-slate-100 px-3 py-2 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
@@ -266,7 +263,7 @@ const TransactionRow = ({ transaction }) => {
         <DetailMetric
           label="Unrelated · นอกเป้า"
           value={`${unrelatedPercent}%`}
-          status={metricStatus(unrelatedPercent, 10, 25)}
+          status={getUnrelatedMetricStatus(transaction)}
         />
       </div>
       )}

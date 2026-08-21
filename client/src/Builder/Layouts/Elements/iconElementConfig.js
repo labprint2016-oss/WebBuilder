@@ -53,6 +53,68 @@ function numOr(v, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** ระยะว่างระหว่างพื้นหลังไอคอนกับเส้นกรอบ (px) รอบด้าน */
+export const ICON_BORDER_OUTSET_GAP_PX = 5;
+
+/** รัศมีมุมสำหรับ fill / กรอบ นอก-ใน-กลาง — ใช้ทั้ง canvas และ live preview */
+export function getIconShapeMetrics(elementData) {
+  const s = mergeIconElement(elementData);
+  const shape = s.iconShape === "rounded" ? "rounded" : "circle";
+  const radiusPx = Math.max(
+    0,
+    numOr(s.iconCornerRadius, ICON_ELEMENT_DEFAULTS.iconCornerRadius)
+  );
+  const containerPx = Math.max(
+    ICON_STANDALONE_CONTAINER_MIN,
+    Math.min(
+      ICON_STANDALONE_CONTAINER_MAX,
+      numOr(s.containerSize, ICON_ELEMENT_DEFAULTS.containerSize)
+    )
+  );
+  const borderWidthPx = Math.max(
+    0,
+    Math.min(6, numOr(s.borderWidth, ICON_ELEMENT_DEFAULTS.borderWidth))
+  );
+  const gap = ICON_BORDER_OUTSET_GAP_PX;
+  const centerWrapSize = containerPx + borderWidthPx;
+  const outsideWrapSize = containerPx + 2 * gap + 2 * borderWidthPx;
+  if (shape === "circle") {
+    return {
+      shape,
+      radiusPx,
+      containerPx,
+      borderWidthPx,
+      gap,
+      centerWrapSize,
+      fillRadius: "50%",
+      outerRadius: "50%",
+      insetRadius: "50%",
+      centerOuterRadius: "50%",
+    };
+  }
+  return {
+    shape,
+    radiusPx,
+    containerPx,
+    borderWidthPx,
+    gap,
+    centerWrapSize,
+    fillRadius: `${Math.min(radiusPx, containerPx / 2)}px`,
+    outerRadius: `${Math.min(
+      radiusPx + gap + borderWidthPx,
+      outsideWrapSize / 2
+    )}px`,
+    insetRadius: `${Math.max(
+      0,
+      Math.min(radiusPx - gap, (containerPx - 2 * gap) / 2)
+    )}px`,
+    centerOuterRadius: `${Math.min(
+      radiusPx + borderWidthPx / 2,
+      centerWrapSize / 2
+    )}px`,
+  };
+}
+
 export function mergeIconElement(elementData) {
   return {
     ...ICON_ELEMENT_DEFAULTS,
@@ -125,4 +187,112 @@ export function getIconOuterContainerSx(elementData) {
     alignItems: "center",
     flexWrap: "nowrap",
   };
+}
+
+function escapeAttrSelector(id) {
+  const raw = String(id ?? "");
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(raw);
+  }
+  return raw.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function queryIconPreviewNodes(elementId, attr) {
+  const id = String(elementId ?? "");
+  if (!id || typeof document === "undefined") return [];
+  return Array.from(
+    document.querySelectorAll(`[${attr}="${escapeAttrSelector(id)}"]`)
+  );
+}
+
+/** Live-drag preview on canvas DOM — avoids React re-render every tick. */
+export function applyIconCanvasPreview(elementId, nextData, theme) {
+  const id = String(elementId ?? "");
+  if (!id) return;
+  const s = mergeIconElement(nextData);
+  const isList = nextData?.type === "list";
+  const mt = isList
+    ? numOr(nextData?.listMarginTop, 0)
+    : numOr(s.iconMarginTop, ICON_ELEMENT_DEFAULTS.iconMarginTop);
+  const mb = isList
+    ? numOr(nextData?.listMarginBottom, 0)
+    : numOr(s.iconMarginBottom, ICON_ELEMENT_DEFAULTS.iconMarginBottom);
+  const iconSize = numOr(s.iconSize, ICON_ELEMENT_DEFAULTS.iconSize);
+  const metrics = getIconShapeMetrics(nextData);
+  const container = metrics.containerPx;
+  const radiusByKind = {
+    fill: metrics.fillRadius,
+    outer: metrics.outerRadius,
+    inset: metrics.insetRadius,
+    "center-outer": metrics.centerOuterRadius,
+  };
+  const borderEnabled = s.borderEnabled !== false;
+  const fillCss = borderEnabled
+    ? resolveIconBackgroundCss(nextData, theme)
+    : "transparent";
+  const glyphCss = resolveIconGlyphColor(nextData, theme);
+  const borderCssColor = resolveIconBorderCss(nextData, theme);
+
+  queryIconPreviewNodes(id, "data-icon-wrap-id").forEach((wrap) => {
+    wrap.style.marginTop = `${mt}px`;
+    wrap.style.marginBottom = `${mb}px`;
+  });
+  queryIconPreviewNodes(id, "data-icon-fill-id").forEach((box) => {
+    box.style.width = `${container}px`;
+    box.style.height = `${container}px`;
+    box.style.minWidth = `${container}px`;
+    box.style.minHeight = `${container}px`;
+    box.style.borderRadius = metrics.fillRadius;
+    box.style.backgroundColor = fillCss;
+  });
+  queryIconPreviewNodes(id, "data-icon-radius-id").forEach((node) => {
+    const kind = node.getAttribute("data-icon-radius-kind") || "fill";
+    node.style.borderRadius = radiusByKind[kind] || metrics.fillRadius;
+    if (kind === "fill") node.style.backgroundColor = fillCss;
+  });
+  queryIconPreviewNodes(id, "data-icon-border-id").forEach((node) => {
+    node.style.borderColor = borderCssColor;
+  });
+  queryIconPreviewNodes(id, "data-icon-glyph-id").forEach((node) => {
+    node.style.width = `${iconSize}px`;
+    node.style.height = `${iconSize}px`;
+    node.style.fontSize = `${iconSize}px`;
+    node.style.color = glyphCss;
+    node.querySelectorAll("svg").forEach((svg) => {
+      svg.style.color = glyphCss;
+    });
+  });
+}
+
+export function clearIconCanvasPreview(elementId) {
+  const id = String(elementId ?? "");
+  if (!id) return;
+  queryIconPreviewNodes(id, "data-icon-wrap-id").forEach((wrap) => {
+    wrap.style.removeProperty("margin-top");
+    wrap.style.removeProperty("margin-bottom");
+  });
+  queryIconPreviewNodes(id, "data-icon-fill-id").forEach((box) => {
+    box.style.removeProperty("width");
+    box.style.removeProperty("height");
+    box.style.removeProperty("min-width");
+    box.style.removeProperty("min-height");
+    box.style.removeProperty("border-radius");
+    box.style.removeProperty("background-color");
+  });
+  queryIconPreviewNodes(id, "data-icon-radius-id").forEach((node) => {
+    node.style.removeProperty("border-radius");
+    node.style.removeProperty("background-color");
+  });
+  queryIconPreviewNodes(id, "data-icon-border-id").forEach((node) => {
+    node.style.removeProperty("border-color");
+  });
+  queryIconPreviewNodes(id, "data-icon-glyph-id").forEach((node) => {
+    node.style.removeProperty("width");
+    node.style.removeProperty("height");
+    node.style.removeProperty("font-size");
+    node.style.removeProperty("color");
+    node.querySelectorAll("svg").forEach((svg) => {
+      svg.style.removeProperty("color");
+    });
+  });
 }

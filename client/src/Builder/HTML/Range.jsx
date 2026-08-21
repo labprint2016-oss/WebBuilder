@@ -1,3 +1,16 @@
+import { useLayoutEffect, useRef } from "react";
+
+export function applyRangeFillPos(el, min, max) {
+  if (!el) return;
+  const next = Number(el.value);
+  if (!Number.isFinite(next) || Number(max) === Number(min)) return;
+  const nextPos = ((next - Number(min)) / (Number(max) - Number(min))) * 100;
+  el.style.setProperty(
+    "--pos",
+    `${Math.max(0, Math.min(100, nextPos))}%`
+  );
+}
+
 const Range = ({
   min,
   max,
@@ -8,19 +21,43 @@ const Range = ({
   pos,
   color,
   uncontrolled = false,
+  inputRef = null,
 }) => {
-  const change = (e) => {
-    const next = Number(e.currentTarget.value);
-    if (Number.isFinite(next) && Number(max) !== Number(min)) {
-      const nextPos = ((next - Number(min)) / (Number(max) - Number(min))) * 100;
-      e.currentTarget.style.setProperty(
-        "--pos",
-        `${Math.max(0, Math.min(100, nextPos))}%`
-      );
+  const localRef = useRef(null);
+  const draggingRef = useRef(false);
+  const lastValueRef = useRef(value);
+  const assignRef = (node) => {
+    localRef.current = node;
+    if (typeof inputRef === "function") inputRef(node);
+    else if (inputRef) inputRef.current = node;
+  };
+
+  useLayoutEffect(() => {
+    const el = localRef.current;
+    if (!el) return;
+    const valueChanged = lastValueRef.current !== value;
+    lastValueRef.current = value;
+    if (
+      uncontrolled &&
+      valueChanged &&
+      !draggingRef.current &&
+      Number.isFinite(Number(value))
+    ) {
+      el.value = String(value);
     }
+  }, [uncontrolled, value]);
+
+  useLayoutEffect(() => {
+    applyRangeFillPos(localRef.current, min, max);
+  });
+
+  const change = (e) => {
+    draggingRef.current = true;
+    applyRangeFillPos(e.currentTarget, min, max);
     handleChange?.(e);
   };
   const commit = (e, reason) => {
+    draggingRef.current = false;
     if (!onCommit) return;
     const n = Number(e.currentTarget.value);
     onCommit(
@@ -49,11 +86,15 @@ const Range = ({
 `;
   return (
     <input
+      ref={assignRef}
       type="range"
       min={min}
       max={max}
       {...(uncontrolled ? { defaultValue: value } : { value })}
       step={step}
+      onPointerDown={() => {
+        draggingRef.current = true;
+      }}
       onChange={change}
       onPointerUp={onCommit ? (e) => commit(e, "pointerup") : undefined}
       onPointerCancel={
@@ -68,7 +109,6 @@ const Range = ({
       onBlur={onCommit ? (e) => commit(e, "blur") : undefined}
       className={THEME_RANGE_INPUT_CLASS}
       style={{
-        ["--pos"]: `${pos}%`,
         ["--fill"]: color || "var(--dash-panel-accent, #333333)",
         ["--track"]: "var(--dash-panel-slider-track, #e4e4e7)",
         ["--thumb"]: "var(--dash-panel-slider-thumb, #0f172a)",

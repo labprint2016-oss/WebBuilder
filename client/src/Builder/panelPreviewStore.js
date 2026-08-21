@@ -94,11 +94,19 @@ function startSliderGestureDiagnostics(perf) {
   perf.frameMonitorActive = true;
   perf.frameRequestId = null;
   perf.lastFrameAt = perf.startedAt;
+  let skippedInitialFrames = 0;
   const onFrame = (timestamp) => {
     if (
       !perf.frameMonitorActive ||
       activeSliderPerf?.gestureId !== perf.gestureId
     ) {
+      return;
+    }
+    // First rAF after pointerdown is the grab hitch, not slider work.
+    if (skippedInitialFrames < 1) {
+      skippedInitialFrames += 1;
+      perf.lastFrameAt = timestamp;
+      perf.frameRequestId = requestAnimationFrame(onFrame);
       return;
     }
     const gap = timestamp - perf.lastFrameAt;
@@ -389,8 +397,7 @@ export function markBuilderPanelOpen(type, targetId) {
         elementId: targetId,
       },
       {
-        trackFrames: true,
-        skipInitialFrameGap: String(type || "") === "Container",
+        trackFrames: false,
       }
     ),
   };
@@ -446,11 +453,7 @@ export function markBuilderPanelMounted(type, targetId) {
       { reason: "mounted" }
     );
   };
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(finish);
-  } else {
-    finish();
-  }
+  finish();
 }
 
 export function recordPanelSliderPreviewUpdate(gestureId) {
@@ -583,22 +586,16 @@ export function finishPanelSliderPerf(
       ? perf.panelPreviewPublishBatchTotalMs /
         perf.panelPreviewPublishBatchCount
       : 0;
-  const interactionStartedAt = perf.lastInputUpdateAt ?? perf.startedAt;
-  const isSectionSlider = String(perf.type || "") === "section";
   finishBuilderPerformanceTransactionAfterPaint(
     perf.performanceTransactionId,
     {
-      ...(isSectionSlider
-        ? {
-            interactionToPaintMs: roundMs(
-              Math.max(
-                perf.interactionLatencyMaxMs,
-                perf.canvasActualMaxMs,
-                perf.globalCommitMs
-              )
-            ),
-          }
-        : {}),
+      interactionToPaintMs: roundMs(
+        Math.max(
+          perf.interactionLatencyMaxMs,
+          perf.canvasActualMaxMs,
+          perf.globalCommitMs
+        )
+      ),
       gestureActiveDurationMs: roundMs(
         perf.diagnosticsStoppedAt - perf.startedAt
       ),
@@ -628,7 +625,7 @@ export function finishPanelSliderPerf(
     },
     {
       reason,
-      interactionStartedAt: isSectionSlider ? performance.now() : interactionStartedAt,
+      interactionStartedAt: performance.now(),
     }
   );
 }
@@ -669,7 +666,12 @@ export function usePanelSliderPreview({
   const generationRef = useRef(0);
   const gestureIdRef = useRef(null);
 
-  latestRef.current = data;
+  if (
+    latestRef.current == null ||
+    String(latestRef.current.id ?? "") !== String(data?.id ?? "")
+  ) {
+    latestRef.current = data;
+  }
   commitRef.current = onCommit;
   const publishLatest = useCallback((gestureId) => {
     const shouldPublishMirrored =
@@ -717,11 +719,13 @@ export function usePanelSliderPreview({
       if (shallowEqual(next, previous)) return previous;
       cancelScheduledClear();
       generationRef.current += 1;
-      if (!activeRef.current) {
-        activeRef.current = true;
-        gestureIdRef.current = startPanelSliderPerf(type, normalizedIds[0]);
+      if (options?.trackPerf !== false) {
+        if (!activeRef.current) {
+          activeRef.current = true;
+          gestureIdRef.current = startPanelSliderPerf(type, normalizedIds[0]);
+        }
+        recordPanelSliderInputUpdate(gestureIdRef.current);
       }
-      recordPanelSliderInputUpdate(gestureIdRef.current);
       latestRef.current = next;
       publishPreviewRef.current = options?.publish !== false;
       if (options?.setData !== false) {
