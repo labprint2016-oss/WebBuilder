@@ -1,4 +1,4 @@
-import { useMemo, Fragment } from "react";
+import { useMemo, useCallback, Fragment, memo } from "react";
 import { Sparkles } from "lucide-react";
 import { setColor, setFont } from "../../../../function";
 import IconAwsome from "../../IconAwsome";
@@ -71,6 +71,106 @@ const normalizeTabsItems = (itemsRaw) => {
   }));
 };
 
+const TabsNestedElementList = memo(function TabsNestedElementList({
+  elements,
+  activeId,
+  builderMode,
+  tabSelectedElId,
+  ghost,
+  sensors,
+  onDragEnd,
+  renderTabElement,
+  onTabElementEdit,
+  onTabElementSelect,
+}) {
+  const hasElements = Array.isArray(elements) && elements.length > 0;
+  const sortableIds = useMemo(
+    () => (elements || []).map((el) => String(el?.id || "")),
+    [elements]
+  );
+
+  if (!hasElements) {
+    return (
+      <div className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center">
+        {ghost ? (
+          ghost.ghostEl
+        ) : (
+          <span className="font-sans text-[11px] text-slate-400 dark:text-slate-500">
+            ลาก Element มาวางที่นี่
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+        <div className="space-y-0">
+          {elements.map((el, i) => (
+            <Fragment key={String(el?.id || `tab-el-${i}`)}>
+              {ghost && !ghost.isLast && ghost.insertAt === i && ghost.ghostEl}
+              <SortableTabItem
+                id={String(el?.id || `tab-el-${i}`)}
+                builderMode={builderMode}
+                onClick={(e) => {
+                  if (builderMode !== "Layout Mode") return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (e.detail === 2) {
+                    onTabElementEdit?.(el, String(activeId || ""));
+                    return;
+                  }
+                  if (tabSelectedElId === el?.id) {
+                    onTabElementSelect?.(null, String(activeId || ""));
+                  } else {
+                    onTabElementSelect?.(el, String(activeId || ""));
+                  }
+                }}
+              >
+                <div
+                  data-tabs-nested-edit-id={String(el?.id || "")}
+                  data-tab-nested-id={String(el?.id || "")}
+                  className=""
+                >
+                  {(() => {
+                    const nestedRenderEl =
+                      el?.type === "txt"
+                        ? { ...el, __tabsNestedCompactText: true }
+                        : el;
+                    return typeof renderTabElement === "function" ? (
+                      renderTabElement(nestedRenderEl, i, String(activeId || ""))
+                    ) : (
+                      <div className="rounded-md border border-slate-200 bg-white px-2.5 py-2 text-left text-[12px] text-slate-700 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200">
+                        <span className="font-semibold">
+                          {String(el?.type || "element").toUpperCase()}
+                        </span>
+                        <span className="mx-1 text-slate-400">-</span>
+                        <span>{String(el?.id || "no-id")}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+                {builderMode === "Layout Mode" && tabSelectedElId === el?.id && (
+                  <div className="pointer-events-none absolute -inset-x-3 inset-y-0 rounded border border-dashed border-red-400 bg-red-300/10" />
+                )}
+              </SortableTabItem>
+              {ghost &&
+                ghost.isLast &&
+                i === elements.length - 1 &&
+                ghost.ghostEl}
+            </Fragment>
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+});
+
 /** Sortable wrapper for a single element inside a tab */
 const SortableTabItem = ({ id, builderMode, children, onClick }) => {
   const {
@@ -123,7 +223,11 @@ const Tabs = ({
 }) => {
   const panelPreview = usePanelPreview("tabs", rawElementData?.id);
   const elementData = panelPreview
-    ? { ...rawElementData, ...panelPreview }
+    ? {
+        ...rawElementData,
+        ...panelPreview,
+        tabsItems: rawElementData?.tabsItems ?? panelPreview.tabsItems,
+      }
     : rawElementData;
 
   const sensors = useSensors(
@@ -134,7 +238,18 @@ const Tabs = ({
   const activeIdRaw = elementData?.tabsActiveId;
   const activeId =
     items.some((t) => t.id === activeIdRaw) ? activeIdRaw : items[0]?.id;
-  const activeTab = items.find((t) => t.id === activeId) || items[0];
+  const committedItems = useMemo(
+    () => normalizeTabsItems(rawElementData?.tabsItems),
+    [rawElementData?.tabsItems]
+  );
+  const committedActiveId = committedItems.some((t) => t.id === activeId)
+    ? activeId
+    : committedItems[0]?.id;
+  const committedElements = useMemo(() => {
+    const tab =
+      committedItems.find((t) => t.id === committedActiveId) || committedItems[0];
+    return Array.isArray(tab?.elements) ? tab.elements : [];
+  }, [committedActiveId, committedItems]);
 
   const align =
     elementData?.tabsAlign === "center"
@@ -356,7 +471,7 @@ const Tabs = ({
   const effPadX = padX;
 
   const hasElements =
-    Array.isArray(activeTab?.elements) && activeTab.elements.length > 0;
+    Array.isArray(committedElements) && committedElements.length > 0;
 
   const ghost =
     tabGhostData && tabGhostData.ghostEl && tabGhostData.tabId === activeId
@@ -365,21 +480,22 @@ const Tabs = ({
   /* true เมื่อ cursor อยู่เหนือ Tab นี้โดยเฉพาะ (ไม่กระพริบ) */
   const isThisTabHovered = !!ghost;
 
-  const sortableIds = useMemo(
-    () => (activeTab?.elements || []).map((el) => String(el?.id || "")),
-    [activeTab?.elements]
+  const handleDragEnd = useCallback(
+    (event) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const from = committedElements.findIndex(
+        (e) => String(e?.id) === String(active.id)
+      );
+      const to = committedElements.findIndex(
+        (e) => String(e?.id) === String(over.id)
+      );
+      if (from !== -1 && to !== -1) {
+        onTabElementsReorder?.(String(committedActiveId || ""), from, to);
+      }
+    },
+    [committedElements, committedActiveId, onTabElementsReorder]
   );
-
-  const handleDragEnd = (event) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const els = activeTab?.elements || [];
-    const from = els.findIndex((e) => String(e?.id) === String(active.id));
-    const to = els.findIndex((e) => String(e?.id) === String(over.id));
-    if (from !== -1 && to !== -1) {
-      onTabElementsReorder?.(String(activeId || ""), from, to);
-    }
-  };
 
   const isClassic = styleMode === "classic";
   const showAreaGuides = builderMode === "Layout Mode";
@@ -702,7 +818,7 @@ const Tabs = ({
           if (!nestedDiv) return;
           const nestedId = nestedDiv.dataset?.tabNestedId;
           if (!nestedId) return;
-          const el = (activeTab?.elements || []).find(
+          const el = committedElements.find(
             (item) => String(item?.id) === nestedId
           );
           if (!el) return;
@@ -712,90 +828,18 @@ const Tabs = ({
         }}
         onDragOver={(e) => e.preventDefault()}
       >
-        {hasElements ? (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-              <div className="space-y-0">
-                {activeTab.elements.map((el, i) => (
-                  <Fragment key={String(el?.id || `tab-el-${i}`)}>
-                    {/* ghost (from sidebar) BEFORE element i */}
-                    {ghost && !ghost.isLast && ghost.insertAt === i && ghost.ghostEl}
-
-                    <SortableTabItem
-                      id={String(el?.id || `tab-el-${i}`)}
-                      builderMode={builderMode}
-                      onClick={(e) => {
-                        if (builderMode !== "Layout Mode") return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        /* double-click (e.detail === 2): เปิด panel ของ element */
-                        if (e.detail === 2) {
-                          onTabElementEdit?.(el, String(activeId || ""));
-                          return;
-                        }
-                        /* single click: select/deselect for delete */
-                        if (tabSelectedElId === el?.id) {
-                          onTabElementSelect?.(null, String(activeId || ""));
-                        } else {
-                          onTabElementSelect?.(el, String(activeId || ""));
-                        }
-                      }}
-                    >
-                      <div
-                        data-tabs-nested-edit-id={String(el?.id || "")}
-                        data-tab-nested-id={String(el?.id || "")}
-                        className=""
-                      >
-                        {/*
-                          Text ใน Tab Area ให้ใช้ spacing แบบ compact เพื่อลดช่องว่างบน-ล่าง
-                          โดยไม่กระทบการเรนเดอร์ Text ในส่วนอื่นของระบบ
-                        */}
-                        {(() => {
-                          const nestedRenderEl =
-                            el?.type === "txt"
-                              ? { ...el, __tabsNestedCompactText: true }
-                              : el;
-                          return typeof renderTabElement === "function" ? (
-                            renderTabElement(nestedRenderEl, i, String(activeId || ""))
-                          ) : (
-                            <div className="rounded-md border border-slate-200 bg-white px-2.5 py-2 text-left text-[12px] text-slate-700 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200">
-                              <span className="font-semibold">
-                                {String(el?.type || "element").toUpperCase()}
-                              </span>
-                              <span className="mx-1 text-slate-400">-</span>
-                              <span>{String(el?.id || "no-id")}</span>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                      {/* selected overlay */}
-                      {builderMode === "Layout Mode" && tabSelectedElId === el?.id && (
-                        <div className="pointer-events-none absolute -inset-x-3 inset-y-0 rounded border border-dashed border-red-400 bg-red-300/10" />
-                      )}
-                    </SortableTabItem>
-
-                    {/* ghost (from sidebar) AFTER last element */}
-                    {ghost && ghost.isLast && i === activeTab.elements.length - 1 && ghost.ghostEl}
-                  </Fragment>
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-        ) : (
-          <div className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center">
-            {ghost ? (
-              ghost.ghostEl
-            ) : (
-              <span className="font-sans text-[11px] text-slate-400 dark:text-slate-500">
-                ลาก Element มาวางที่นี่
-              </span>
-            )}
-          </div>
-        )}
+        <TabsNestedElementList
+          elements={committedElements}
+          activeId={committedActiveId}
+          builderMode={builderMode}
+          tabSelectedElId={tabSelectedElId}
+          ghost={ghost}
+          sensors={sensors}
+          onDragEnd={handleDragEnd}
+          renderTabElement={renderTabElement}
+          onTabElementEdit={onTabElementEdit}
+          onTabElementSelect={onTabElementSelect}
+        />
       </div>
       </div>
       {useLayoutSelectionFrame && (

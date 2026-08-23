@@ -338,11 +338,14 @@ const DataSliderElementOffcanvas = ({
     setData,
     onCommit: (latest) => scheduleLayoutSync(latest),
   });
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   const updateRangeField = (field, value) => {
     updateSlider((prev) =>
       mergeDataSliderElement({
         ...prev,
+        ...dataRef.current,
         [field]: value,
       })
     );

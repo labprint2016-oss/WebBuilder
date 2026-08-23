@@ -157,6 +157,10 @@ const TABS_ALIGN_OPTIONS = [
   { value: "center", label: "ตรงกลาง" },
   { value: "end", label: "ชิดขวา" },
 ];
+const TABS_ALIGN_OPTIONS_VERTICAL = [
+  { value: "start", label: "ชิดบน" },
+  { value: "center", label: "ตรงกลาง" },
+];
 
 const TABS_LAYOUT_AXIS_OPTIONS = [
   { value: "horizontal", label: "แนวนอน" },
@@ -273,6 +277,29 @@ const normalizeTabsItems = (itemsRaw) => {
   }));
 };
 
+const mergeTabsItemsPreservingCanvasElements = (panelItems, canvasItems) => {
+  const panelList =
+    Array.isArray(panelItems) && panelItems.length
+      ? normalizeTabsItems(panelItems)
+      : [];
+  const canvasList =
+    Array.isArray(canvasItems) && canvasItems.length
+      ? normalizeTabsItems(canvasItems)
+      : [];
+  if (!panelList.length) return canvasList;
+  if (!canvasList.length) return panelList;
+  const canvasById = new Map(canvasList.map((tab) => [String(tab.id), tab]));
+  return panelList.map((tab) => {
+    const canvas = canvasById.get(String(tab.id));
+    if (!canvas) return tab;
+    return {
+      ...canvas,
+      ...tab,
+      elements: Array.isArray(canvas.elements) ? canvas.elements : tab.elements,
+    };
+  });
+};
+
 const TabsElementOffcanvas = ({
   element,
   onUpdate,
@@ -298,6 +325,10 @@ const TabsElementOffcanvas = ({
         ...next,
         type: next?.type ?? base?.type ?? "tabs",
         id: next?.id != null ? next.id : base?.id,
+        tabsItems: mergeTabsItemsPreservingCanvasElements(
+          next?.tabsItems,
+          base?.tabsItems
+        ),
       };
       const changedFields = Object.keys(next || {}).filter(
         (key) => !Object.is(base?.[key], merged?.[key])
@@ -355,8 +386,18 @@ const TabsElementOffcanvas = ({
     setData,
     onCommit: (latest) => scheduleLayoutSync(latest),
   });
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const updateRangeField = (field, value) => {
-    updateSlider((prev) => ({ ...prev, [field]: value }));
+    updateSlider((prev) => ({
+      ...prev,
+      ...dataRef.current,
+      tabsItems: mergeTabsItemsPreservingCanvasElements(
+        dataRef.current?.tabsItems,
+        elementRef.current?.tabsItems
+      ),
+      [field]: value,
+    }));
   };
   const commitRangeField = (_value, reason) => {
     commitSlider(reason || "range-commit");
@@ -385,11 +426,21 @@ const TabsElementOffcanvas = ({
     if (!element?.id) return;
     setData((prev) => {
       if (!prev || prev.id !== element.id) return element;
-      // sync แท็บที่เลือกจากแคนวาส → Check ในรายการทั้งหมดต้องตรงกัน
-      if (String(prev.tabsActiveId || "") === String(element.tabsActiveId || "")) {
+      const nextItems = mergeTabsItemsPreservingCanvasElements(
+        prev.tabsItems,
+        element.tabsItems
+      );
+      const nextActive =
+        String(prev.tabsActiveId || "") === String(element.tabsActiveId || "")
+          ? prev.tabsActiveId
+          : element.tabsActiveId;
+      if (
+        nextItems === prev.tabsItems &&
+        nextActive === prev.tabsActiveId
+      ) {
         return prev;
       }
-      return { ...prev, tabsActiveId: element.tabsActiveId };
+      return { ...prev, tabsItems: nextItems, tabsActiveId: nextActive };
     });
   }, [element]);
 
@@ -405,7 +456,14 @@ const TabsElementOffcanvas = ({
 
   const patch = useCallback((partial) => {
     setData((prev) => {
-      const next = { ...prev, ...partial };
+      const next = {
+        ...prev,
+        ...partial,
+        tabsItems: mergeTabsItemsPreservingCanvasElements(
+          partial.tabsItems ?? prev.tabsItems,
+          elementRef.current?.tabsItems
+        ),
+      };
       scheduleLayoutSync(next);
       return next;
     });
@@ -448,7 +506,10 @@ const TabsElementOffcanvas = ({
   const patchTabsItems = (updater) => {
     setData((prev) => {
       const current = normalizeTabsItems(prev?.tabsItems);
-      const nextItems = updater(current);
+      const nextItems = mergeTabsItemsPreservingCanvasElements(
+        updater(current),
+        elementRef.current?.tabsItems
+      );
       const nextActive = nextItems.some((t) => t.id === prev?.tabsActiveId)
         ? prev?.tabsActiveId
         : nextItems[0]?.id;
@@ -678,7 +739,16 @@ const TabsElementOffcanvas = ({
                   <Button
                     key={opt.value}
                     color="inherit"
-                    onClick={() => patch({ tabsLayoutAxis: opt.value })}
+                    onClick={() => {
+                      if (opt.value === "vertical" && data?.tabsAlign === "end") {
+                        patch({
+                          tabsLayoutAxis: "vertical",
+                          tabsAlign: "start",
+                        });
+                        return;
+                      }
+                      patch({ tabsLayoutAxis: opt.value });
+                    }}
                     sx={{
                       ...sectionLayoutGroupButtonSx(selected, textColor),
                       fontWeight: 400,
@@ -1111,7 +1181,10 @@ const TabsElementOffcanvas = ({
               aria-label="จัดแนวแท็บ"
               sx={sectionLayoutGroupRootSx}
             >
-              {TABS_ALIGN_OPTIONS.map((opt) => {
+              {(layoutAxis === "vertical"
+                ? TABS_ALIGN_OPTIONS_VERTICAL
+                : TABS_ALIGN_OPTIONS
+              ).map((opt) => {
                 const selected = align === opt.value;
                 return (
                   <Button

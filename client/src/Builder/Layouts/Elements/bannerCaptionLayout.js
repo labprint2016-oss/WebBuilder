@@ -138,13 +138,20 @@ export function getBannerCaptionLayout(edgeRaw, slideVerticalPx, slideHorizontal
       top: `${topPct}%`,
       transform: "translate(-50%, -50%)",
       minWidth: 0,
+      maxWidth: "100%",
     };
 
     midRowClass += "items-center ";
     stripClass += "flex-row items-center justify-center px-4 py-3 ";
-    innerClass += "items-center justify-center ";
-    captionSpanClass = "min-w-0 break-words";
-    captionSpanStyle = undefined;
+    stripStyle.width = "max-content";
+    stripStyle.maxWidth = "100%";
+    innerClass += "items-center justify-center max-w-full ";
+    captionSpanClass = "block max-w-full";
+    captionSpanStyle = {
+      whiteSpace: "normal",
+      overflowWrap: "anywhere",
+      wordBreak: "break-word",
+    };
   } else {
     /* ── แนวตั้ง (left / right) ──
      * ขึ้น-ลง: ตรรกะเดิม (top + translateY)

@@ -71,6 +71,7 @@ const Heading = ({
       style={{
         marginTop: h.headingMarginTop ?? 0,
         marginBottom: h.headingMarginBottom ?? 0,
+        ...(previewData ? { transition: "none" } : null),
       }}
       className={`${theme?.textHeading?.value ?? ""} ${animationForElement} ${alignClass}`}
       onMouseDownCapture={(e) => {

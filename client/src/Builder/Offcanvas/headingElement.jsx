@@ -411,14 +411,14 @@ const HeadingElementOffcanvas = ({
 
   const collectHeadingMarginNodes = useCallback(() => {
     const targetId = String(elementRef.current?.id ?? "");
-    if (!targetId) return [];
-    if (marginPreviewNodesRef.current.length === 0) {
-      marginPreviewNodesRef.current = Array.from(
-        document.querySelectorAll("[data-heading-margin-id]")
-      ).filter(
-        (node) => node.getAttribute("data-heading-margin-id") === targetId
-      );
-    }
+    if (!targetId || typeof document === "undefined") return [];
+    const escaped =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(targetId)
+        : targetId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    marginPreviewNodesRef.current = Array.from(
+      document.querySelectorAll(`[data-heading-margin-id="${escaped}"]`)
+    );
     return marginPreviewNodesRef.current;
   }, []);
 
@@ -494,7 +494,6 @@ const HeadingElementOffcanvas = ({
     }
     updateSlider((prev) => ({ ...prev, ...partial }), {
       setData: false,
-      publish: !directMarginProperty,
     });
   };
 

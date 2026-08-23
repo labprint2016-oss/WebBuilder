@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { setColor } from "../../../../function";
+import { usePanelPreview } from "../../panelPreviewStore";
 import {
   COUNTER_ELEMENT_DEFAULTS,
   mergeCounterElement,
@@ -24,27 +25,37 @@ const Counter = ({
   builderMode,
 }) => {
   const { id } = elementData;
-  const merged = useMemo(() => mergeCounterElement(elementData), [elementData]);
+  const previewData = usePanelPreview("ctn", id);
+  const liveElementData = previewData || elementData;
+  const merged = useMemo(
+    () => mergeCounterElement(liveElementData),
+    [liveElementData]
+  );
+  const committed = useMemo(
+    () => mergeCounterElement(elementData),
+    [elementData]
+  );
   const hostRef = useRef(null);
   const frameRef = useRef(0);
   const hasCompletedRef = useRef(false);
   const [isInViewport, setIsInViewport] = useState(false);
   const [displayValue, setDisplayValue] = useState(
-    clampNumber(merged.counterStartValue, COUNTER_ELEMENT_DEFAULTS.counterStartValue)
+    clampNumber(committed.counterStartValue, COUNTER_ELEMENT_DEFAULTS.counterStartValue)
   );
 
   const startValue = clampNumber(
-    merged.counterStartValue,
+    committed.counterStartValue,
     COUNTER_ELEMENT_DEFAULTS.counterStartValue
   );
   const targetValue = clampNumber(
-    merged.counterTargetValue,
+    committed.counterTargetValue,
     COUNTER_ELEMENT_DEFAULTS.counterTargetValue
   );
   const durationMs = Math.max(
     200,
-    clampNumber(merged.counterDurationMs, COUNTER_ELEMENT_DEFAULTS.counterDurationMs)
+    clampNumber(committed.counterDurationMs, COUNTER_ELEMENT_DEFAULTS.counterDurationMs)
   );
+  const counterTrigger = committed.counterTrigger;
   const isBuilderCanvas =
     builderMode === "Layout Mode" || builderMode === "Editor Mode";
   const isLayoutMode = builderMode === "Layout Mode";
@@ -55,7 +66,7 @@ const Counter = ({
     hasCompletedRef.current = false;
     setIsInViewport(false);
     setDisplayValue(startValue);
-  }, [id, startValue, targetValue, durationMs, merged.counterTrigger, shouldPreviewAnimate]);
+  }, [id, startValue, targetValue, durationMs, counterTrigger, shouldPreviewAnimate]);
 
   useEffect(() => {
     if (isBuilderCanvas) {
@@ -66,7 +77,7 @@ const Counter = ({
       setIsInViewport(false);
       return;
     }
-    if (merged.counterTrigger !== "viewport") {
+    if (counterTrigger !== "viewport") {
       setIsInViewport(true);
       return;
     }
@@ -87,7 +98,7 @@ const Counter = ({
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [merged.counterTrigger, id, shouldPreviewAnimate, isBuilderCanvas]);
+  }, [counterTrigger, id, shouldPreviewAnimate, isBuilderCanvas]);
 
   useEffect(() => {
     cancelAnimationFrame(frameRef.current);
@@ -217,6 +228,7 @@ const Counter = ({
       style={{
         marginTop: marginTopPx,
         marginBottom: marginBottomPx,
+        ...(previewData ? { transition: "none" } : null),
       }}
     >
       <div
@@ -239,6 +251,7 @@ const Counter = ({
           >
             {compositionLeft ? (
               <span
+                data-counter-composition-id={id}
                 className="break-words leading-none [font-variant-numeric:normal]"
                 style={{
                   color: compositionColor,
@@ -255,6 +268,7 @@ const Counter = ({
               </span>
             ) : null}
             <span
+              data-counter-number-id={id}
               className="leading-none"
               style={{
                 color,
@@ -270,6 +284,7 @@ const Counter = ({
             </span>
             {compositionRight ? (
               <span
+                data-counter-composition-id={id}
                 className="break-words leading-none [font-variant-numeric:normal]"
                 style={{
                   color: compositionColor,

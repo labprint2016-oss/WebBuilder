@@ -541,6 +541,11 @@ const ImageElementOffcanvas = ({
       : layoutElementType === "imgh"
         ? "Image Hover"
         : null;
+  const keepPanelImageUnstyled =
+    layoutElementType === "bnr" ||
+    layoutElementType === "img" ||
+    layoutElementType === "lbx" ||
+    layoutElementType === "vid";
   const initialRenderStartedAtRef = useRef(
     imageHoverPanelPerfEnabled ? performance.now() : 0
   );
@@ -758,12 +763,19 @@ const ImageElementOffcanvas = ({
       )
     : 48;
 
+  const patchBannerCaptionSlider = (partial) => {
+    const fields = Object.keys(partial || {});
+    const next = { ...dataRef.current, ...partial };
+    dataRef.current = next;
+    sliderChangedFieldsRef.current = Array.from(
+      new Set([...sliderChangedFieldsRef.current, ...fields])
+    );
+    updateSlider(() => next);
+    return next;
+  };
+
   const handleBannerCaptionFontSizeChange = (value) => {
-    setData((prev) => {
-      const next = { ...prev, bannerCaptionFontSize: value };
-      scheduleLayoutSync(next);
-      return next;
-    });
+    patchBannerCaptionSlider({ bannerCaptionFontSize: value });
   };
 
   const BANNER_LETTER_SPACING_MIN = 0;
@@ -779,11 +791,7 @@ const ImageElementOffcanvas = ({
     : 6;
 
   const handleBannerCaptionLetterSpacingChange = (value) => {
-    setData((prev) => {
-      const next = { ...prev, bannerCaptionLetterSpacing: value };
-      scheduleLayoutSync(next);
-      return next;
-    });
+    patchBannerCaptionSlider({ bannerCaptionLetterSpacing: value });
   };
 
   const bannerCaptionSlideVerticalRaw = Number(
@@ -808,11 +816,7 @@ const ImageElementOffcanvas = ({
   const bannerCaptionSlideVerticalStep = 1;
 
   const handleBannerCaptionSlideVerticalChange = (value) => {
-    setData((prev) => {
-      const next = { ...prev, bannerCaptionSlideVertical: value };
-      scheduleLayoutSync(next);
-      return next;
-    });
+    patchBannerCaptionSlider({ bannerCaptionSlideVertical: value });
   };
 
   const bannerCaptionSlideHorizontalRaw = Number(
@@ -830,11 +834,7 @@ const ImageElementOffcanvas = ({
     : 0;
 
   const handleBannerCaptionSlideHorizontalChange = (value) => {
-    setData((prev) => {
-      const next = { ...prev, bannerCaptionSlideHorizontal: value };
-      scheduleLayoutSync(next);
-      return next;
-    });
+    patchBannerCaptionSlider({ bannerCaptionSlideHorizontal: value });
   };
 
   const bannerCaptionEdgeLabel =
@@ -851,19 +851,12 @@ const ImageElementOffcanvas = ({
     : 255;
 
   const handleBannerCaptionTextColorChange = (colorValue) => {
-    setData((prev) => {
-      const next = { ...prev, bannerCaptionTextColor: colorValue };
-      scheduleLayoutSync(next);
-      return next;
-    });
+    patchBannerCaptionSlider({ bannerCaptionTextColor: colorValue });
+    commitSlider("color");
   };
 
   const handleBannerCaptionTextOpacityChange = (value) => {
-    setData((prev) => {
-      const next = { ...prev, bannerCaptionTextOpacity: value };
-      scheduleLayoutSync(next);
-      return next;
-    });
+    patchBannerCaptionSlider({ bannerCaptionTextOpacity: value });
   };
 
   const cycleBannerCaptionEdge = (delta) => {
@@ -892,7 +885,7 @@ const ImageElementOffcanvas = ({
       cornerRadiusLabelRef.current.textContent = String(Math.round(n));
     }
     const preview = panelPreviewImgRef.current;
-    if (!preview) return;
+    if (!preview || keepPanelImageUnstyled) return;
     const aspect = String(nextData?.aspectRatio || IMAGE_ASPECT_DEFAULT)
       .trim()
       .replace(/\s+/g, "")
@@ -1384,10 +1377,12 @@ const ImageElementOffcanvas = ({
                       height: "100%",
                       objectFit: "cover",
                       display: "block",
-                      ...imageCornerRadiusStyle(
-                        data?.borderRadius,
-                        currentAspect
-                      ),
+                      ...(keepPanelImageUnstyled
+                        ? { filter: "none" }
+                        : imageCornerRadiusStyle(
+                            data?.borderRadius,
+                            currentAspect
+                          )),
                     }}
                     draggable={false}
                   />

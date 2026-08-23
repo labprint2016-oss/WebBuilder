@@ -901,7 +901,9 @@ const DataSlider = ({
                   role="button"
                   tabIndex={0}
                   className={
-                    `${navShape === "circle" ? "h-3 w-3 rounded-full" : "h-2 w-4 rounded-sm"} cursor-pointer`
+                    `inline-block shrink-0 cursor-pointer transition-none ${
+                      navShape === "circle" ? "h-3 w-3 rounded-full" : "h-2 w-4 rounded-sm"
+                    }`
                   }
                   style={{ backgroundColor: active ? activeDotColor : inactiveDotColor }}
                   onMouseDown={(e) => {

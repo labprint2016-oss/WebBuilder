@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, ButtonGroup, Switch, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import {
@@ -9,7 +9,7 @@ import {
   Check,
 } from "lucide-react";
 import lodash from "lodash";
-import Range from "../HTML/Range";
+import Range, { applyRangeFillPos } from "../HTML/Range";
 import SelectLine from "../HTML/SelectLine";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
@@ -18,6 +18,7 @@ import {
   mergeCounterElement,
 } from "../Layouts/Elements/counterElementConfig";
 import { PANEL_BTN_GROUP, panelGroupButtonSx } from "../panelControlSx";
+import { usePanelSliderPreview } from "../panelPreviewStore";
 
 const finiteNumberOr = (value, fallback) => {
   const number = Number(value);
@@ -225,13 +226,30 @@ const FullWidthRangeRow = ({
   step = 1,
   value,
   onChange,
+  onCommit,
   posPct,
   trackAriaLabel,
   accentColor,
   mt = 0,
   labelMb = 0.25,
   formatLabelValue = null,
-}) => (
+}) => {
+  const valueTextRef = useRef(null);
+  const rangeInputRef = useRef(null);
+  const writeLabel = (nextValue) => {
+    if (valueTextRef.current && !isNaN(nextValue)) {
+      valueTextRef.current.textContent = formatLabelValue
+        ? formatLabelValue(nextValue)
+        : String(Math.round(nextValue));
+    }
+  };
+  const handleRangeChange = (nextValue) => {
+    const el = rangeInputRef.current;
+    if (el) applyRangeFillPos(el, min, max);
+    writeLabel(nextValue);
+    onChange(nextValue);
+  };
+  return (
   <Box sx={{ width: "100%", px: 0.25, mt }} aria-label={trackAriaLabel}>
     {mainLabel != null ? (
       <div className="mb-0">
@@ -252,7 +270,10 @@ const FullWidthRangeRow = ({
         >
           {mainLabel}{" "}
           {!isNaN(valueForLabel) && (
-            <span className="text-slate-400 dark:text-slate-400">
+            <span
+              ref={valueTextRef}
+              className="text-slate-400 dark:text-slate-400"
+            >
               {formatLabelValue
                 ? formatLabelValue(valueForLabel)
                 : Math.round(valueForLabel)}
@@ -268,38 +289,71 @@ const FullWidthRangeRow = ({
         max={max}
         step={step}
         value={value}
-        handleChange={(e) => onChange(Number(e.target.value))}
+        uncontrolled
+        inputRef={rangeInputRef}
+        handleChange={(e) => handleRangeChange(Number(e.target.value))}
+        onCommit={onCommit}
         pos={posPct}
         color={accentColor || "#0d9488"}
         className={THEME_RANGE_INPUT_CLASS}
       />
     </div>
   </Box>
-);
+  );
+};
 
 const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) => {
   const [data, setData] = useState(() => mergeCounterElement(element));
+  const dataRef = useRef(data);
+  const rangeGestureActiveRef = useRef(false);
   const [counterColorMode, setCounterColorMode] = useState(
     COUNTER_COLOR_MODES_BASE[0].value
   );
+  const merged = useMemo(() => mergeCounterElement(data), [data]);
+
+  const { updateSlider, commitSlider, hasActiveSlider } = usePanelSliderPreview({
+    type: "ctn",
+    targetIds: [element?.id],
+    data,
+    setData,
+    onCommit: (latest) => {
+      const next = mergeCounterElement(latest);
+      dataRef.current = next;
+      setData(next);
+      onUpdate?.(next);
+    },
+  });
+
+  const hasActiveSliderRef = useRef(hasActiveSlider);
+  hasActiveSliderRef.current = hasActiveSlider;
+  if (!hasActiveSlider()) {
+    dataRef.current = data;
+  }
 
   useEffect(() => {
+    if (hasActiveSliderRef.current()) return;
     setData(mergeCounterElement(element));
   }, [element?.id, element]);
   useEffect(() => {
     setCounterColorMode(COUNTER_COLOR_MODES_BASE[0].value);
   }, [element?.id]);
 
-  const merged = useMemo(() => mergeCounterElement(data), [data]);
-
   const patch = useCallback(
     (partial) => {
-      const next = mergeCounterElement({ ...data, ...partial });
+      const next = mergeCounterElement({ ...dataRef.current, ...partial });
+      dataRef.current = next;
       setData(next);
       onUpdate?.(next);
     },
-    [data, onUpdate]
+    [onUpdate]
   );
+
+  const patchSlider = (partial) => {
+    const next = mergeCounterElement({ ...dataRef.current, ...partial });
+    dataRef.current = next;
+    updateSlider(() => next, { setData: false });
+    return next;
+  };
 
   const allColors = useMemo(() => {
     if (!theme?.mainColor?.length) return [];
@@ -438,6 +492,24 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
     <aside
       className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
       style={{ color: textColor || undefined }}
+      onPointerDownCapture={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          rangeGestureActiveRef.current = true;
+        }
+      }}
+      onPointerUp={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointerup");
+      }}
+      onPointerCancel={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointercancel");
+      }}
     >
       <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
@@ -563,7 +635,8 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                 max={10000}
                 step={100}
                 value={durationMs}
-                onChange={(v) => patch({ counterDurationMs: v })}
+                onChange={(v) => patchSlider({ counterDurationMs: v })}
+                onCommit={(_, reason) => commitSlider(reason)}
                 posPct={((durationMs - 200) / 9800) * 100}
                 trackAriaLabel="ความเร็วการนับ"
                 accentColor={textColor}
@@ -577,7 +650,8 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                 max={120}
                 step={1}
                 value={fontSize}
-                onChange={(v) => patch({ counterFontSize: v })}
+                onChange={(v) => patchSlider({ counterFontSize: v })}
+                onCommit={(_, reason) => commitSlider(reason)}
                 posPct={((fontSize - 12) / 108) * 100}
                 trackAriaLabel="ขนาดตัวเลข"
                 accentColor={textColor}
@@ -846,7 +920,10 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                     max={120}
                     step={1}
                     value={compositionFontSize}
-                    onChange={(v) => patch({ counterCompositionFontSize: v })}
+                    onChange={(v) =>
+                      patchSlider({ counterCompositionFontSize: v })
+                    }
+                    onCommit={(_, reason) => commitSlider(reason)}
                     posPct={((compositionFontSize - 10) / 110) * 100}
                     trackAriaLabel="ขนาดข้อความประกอบ"
                     accentColor={textColor}
@@ -863,11 +940,12 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                           value={compositionOpacity}
                           step={1}
                           handleChange={(e) =>
-                            patch({
+                            patchSlider({
                               counterCompositionColorOpacity:
                                 Number(e.target.value) || 0,
                             })
                           }
+                          onCommit={(_, reason) => commitSlider(reason)}
                           pos={(compositionOpacity / 255) * 100}
                           color={textColor || "#0d9488"}
                           className={THEME_RANGE_INPUT_CLASS}
@@ -890,9 +968,12 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                                 type="button"
                                 className="flex size-[25px] items-center justify-center rounded-full border border-slate-200 dark:border-white/15"
                                 style={{ backgroundColor: bgColor }}
-                                onClick={() =>
-                                  patch({ counterCompositionColor: color })
-                                }
+                                onClick={() => {
+                                  patchSlider({
+                                    counterCompositionColor: color,
+                                  });
+                                  commitSlider("color");
+                                }}
                                 aria-label={`เลือกสีความประกอบ ${bgColor}`}
                               >
                                 {selected ? (
@@ -963,7 +1044,8 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                 max={80}
                 step={1}
                 value={marginTop}
-                onChange={(v) => patch({ counterMarginTop: v })}
+                onChange={(v) => patchSlider({ counterMarginTop: v })}
+                onCommit={(_, reason) => commitSlider(reason)}
                 posPct={(marginTop / 80) * 100}
                 trackAriaLabel="ระยะด้านบน"
                 accentColor={textColor}
@@ -977,7 +1059,8 @@ const CounterElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                 max={80}
                 step={1}
                 value={marginBottom}
-                onChange={(v) => patch({ counterMarginBottom: v })}
+                onChange={(v) => patchSlider({ counterMarginBottom: v })}
+                onCommit={(_, reason) => commitSlider(reason)}
                 posPct={(marginBottom / 80) * 100}
                 trackAriaLabel="ระยะด้านล่าง"
                 accentColor={textColor}

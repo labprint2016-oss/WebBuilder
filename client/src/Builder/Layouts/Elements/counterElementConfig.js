@@ -1,3 +1,5 @@
+import { setColor } from "../../../../function";
+
 export const COUNTER_ELEMENT_DEFAULTS = {
   type: "ctn",
   counterStartValue: 0,
@@ -45,4 +47,60 @@ export function mergeCounterElement(data) {
     type: data.type ?? "ctn",
     id: data.id,
   };
+}
+
+function escapeAttrSelector(id) {
+  const raw = String(id ?? "");
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(raw);
+  }
+  return raw.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function queryCounterPreviewNodes(elementId, attr) {
+  const id = String(elementId ?? "");
+  if (!id || typeof document === "undefined") return [];
+  return Array.from(
+    document.querySelectorAll(`[${attr}="${escapeAttrSelector(id)}"]`)
+  );
+}
+
+/** Live-drag preview on canvas DOM — avoids React re-render every tick. */
+export function applyCounterCanvasPreview(elementId, nextData, theme) {
+  const id = String(elementId ?? "");
+  if (!id) return;
+  const merged = mergeCounterElement(nextData);
+  const fontSize = Math.min(
+    120,
+    Math.max(12, Number(merged.counterFontSize) || 42)
+  );
+  const compositionFontSize = Math.min(
+    120,
+    Math.max(10, Number(merged.counterCompositionFontSize) || 18)
+  );
+  const compositionColor = setColor(
+    theme,
+    merged.counterCompositionColor,
+    merged.counterCompositionColorOpacity ?? 255
+  );
+
+  queryCounterPreviewNodes(id, "data-counter-number-id").forEach((node) => {
+    node.style.fontSize = `${fontSize}px`;
+  });
+  queryCounterPreviewNodes(id, "data-counter-composition-id").forEach((node) => {
+    node.style.fontSize = `${compositionFontSize}px`;
+    node.style.color = compositionColor;
+  });
+}
+
+export function clearCounterCanvasPreview(elementId) {
+  const id = String(elementId ?? "");
+  if (!id) return;
+  queryCounterPreviewNodes(id, "data-counter-number-id").forEach((node) => {
+    node.style.removeProperty("font-size");
+  });
+  queryCounterPreviewNodes(id, "data-counter-composition-id").forEach((node) => {
+    node.style.removeProperty("font-size");
+    node.style.removeProperty("color");
+  });
 }

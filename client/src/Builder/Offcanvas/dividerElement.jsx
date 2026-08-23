@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, ButtonGroup, Typography } from "@mui/material";
 import { Check } from "lucide-react";
 import Range from "../HTML/Range";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { panelGroupButtonSx } from "../panelControlSx";
+import { usePanelSliderPreview } from "../panelPreviewStore";
 import {
   DIVIDER_STYLE_OPTIONS,
   mergeDividerElement,
@@ -54,7 +55,7 @@ const dividerGroupRootSx = {
 
 const dividerBtnSx = panelGroupButtonSx;
 
-const MainLabel = ({ label, value }) => (
+const MainLabel = ({ label, value, valueRef = null }) => (
   <Typography
     component="div"
     sx={{
@@ -72,7 +73,12 @@ const MainLabel = ({ label, value }) => (
   >
     {label}
     {Number.isFinite(Number(value)) ? (
-      <span className="text-slate-400 dark:text-slate-400">{value}</span>
+      <span
+        ref={valueRef}
+        className="text-slate-400 dark:text-slate-400"
+      >
+        {value}
+      </span>
     ) : null}
     <div className="dash-heading-rule min-w-0 flex-1 border-b" />
   </Typography>
@@ -80,9 +86,34 @@ const MainLabel = ({ label, value }) => (
 
 const DividerElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) => {
   const [data, setData] = useState(() => mergeDividerElement(element));
+  const dataRef = useRef(data);
+  const rangeGestureActiveRef = useRef(false);
+  const weightLabelRef = useRef(null);
+  const marginTopLabelRef = useRef(null);
+  const marginBottomLabelRef = useRef(null);
   const accent = textColor || "#0d9488";
 
+  const { updateSlider, commitSlider, hasActiveSlider } = usePanelSliderPreview({
+    type: "divider",
+    targetIds: [element?.id],
+    data,
+    setData,
+    onCommit: (latest) => {
+      const next = mergeDividerElement(latest);
+      dataRef.current = next;
+      setData(next);
+      onUpdate?.(next);
+    },
+  });
+
+  const hasActiveSliderRef = useRef(hasActiveSlider);
+  hasActiveSliderRef.current = hasActiveSlider;
+  if (!hasActiveSlider()) {
+    dataRef.current = data;
+  }
+
   useEffect(() => {
+    if (hasActiveSliderRef.current()) return;
     setData(mergeDividerElement(element));
   }, [element]);
 
@@ -98,12 +129,20 @@ const DividerElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
 
   const patch = useCallback(
     (partial) => {
-      const next = mergeDividerElement({ ...data, ...partial });
+      const next = mergeDividerElement({ ...dataRef.current, ...partial });
+      dataRef.current = next;
       setData(next);
       onUpdate?.(next);
     },
-    [data, onUpdate]
+    [onUpdate]
   );
+
+  const patchSlider = (partial) => {
+    const next = mergeDividerElement({ ...dataRef.current, ...partial });
+    dataRef.current = next;
+    updateSlider(() => next, { setData: false });
+    return next;
+  };
 
   const chipSelected = (active, chip) =>
     typeof active === "object" &&
@@ -119,7 +158,27 @@ const DividerElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
   const dividerWeightLabel = dividerWeight.toFixed(1);
 
   return (
-    <aside className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
+    <aside
+      className="dash-panel flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
+      onPointerDownCapture={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          rangeGestureActiveRef.current = true;
+        }
+      }}
+      onPointerUp={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointerup");
+      }}
+      onPointerCancel={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointercancel");
+      }}
+    >
       <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
           <span className="shrink-0 font-bold tracking-wide">
@@ -184,14 +243,26 @@ const DividerElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
           </li>
 
           <li>
-            <MainLabel label="ความหนา" value={dividerWeightLabel} />
+            <MainLabel
+              label="ความหนา"
+              value={dividerWeightLabel}
+              valueRef={weightLabelRef}
+            />
             <div className="w-full pt-[2px] pb-[2px] px-[2px]">
               <Range
                 min={0.1}
                 max={12}
                 step={0.1}
                 value={dividerWeight}
-                handleChange={(e) => patch({ dividerWeight: Number(e.target.value) })}
+                uncontrolled
+                handleChange={(e) => {
+                  const nextValue = Number(e.target.value);
+                  if (weightLabelRef.current) {
+                    weightLabelRef.current.textContent = nextValue.toFixed(1);
+                  }
+                  patchSlider({ dividerWeight: nextValue });
+                }}
+                onCommit={(_, reason) => commitSlider(reason)}
                 pos={((dividerWeight - 0.1) / (12 - 0.1)) * 100}
                 color={accent}
                 className={THEME_RANGE_INPUT_CLASS}
@@ -203,19 +274,19 @@ const DividerElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
             <MainLabel label="สีเส้นคั่น" />
             <div className="mt-1 dash-card rounded-md bg-white px-1 pb-1.5 pt-0 dark:bg-zinc-800">
               <div className="px-1 pb-2 pt-0">
-                <input
-                  type="range"
+                <Range
                   min={0}
                   max={255}
                   step={1}
                   value={merged.dividerOpacity}
+                  uncontrolled
+                  handleChange={(e) =>
+                    patchSlider({ dividerOpacity: Number(e.target.value) })
+                  }
+                  onCommit={(_, reason) => commitSlider(reason)}
+                  pos={(merged.dividerOpacity / 255) * 100}
+                  color={accent}
                   className={THEME_RANGE_INPUT_CLASS}
-                  style={{
-                    "--fill": accent,
-                    "--pos": `${(merged.dividerOpacity / 255) * 100}%`,
-                  }}
-                  aria-label="ความโปร่งแสงสีเส้นคั่น"
-                  onChange={(e) => patch({ dividerOpacity: Number(e.target.value) })}
                 />
               </div>
               <div className="grid grid-cols-10 place-items-center gap-y-[6px]">
@@ -231,7 +302,10 @@ const DividerElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
                       className="flex size-[25px] items-center justify-center rounded-full border border-slate-200 dark:border-white/10"
                       style={{ backgroundColor: bgColor }}
                       aria-label={`สีเส้นคั่น ${bgColor}`}
-                      onClick={() => patch({ dividerColor: color })}
+                      onClick={() => {
+                        patchSlider({ dividerColor: color });
+                        commitSlider("color");
+                      }}
                     >
                       {selected ? (
                         <Check
@@ -251,14 +325,28 @@ const DividerElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
             <div className="grid grid-cols-2 gap-x-2">
               <div className="col-span-1">
                 <Box sx={{ width: "100%", px: 0.25 }}>
-                  <MainLabel label="ระยะบน" value={merged.dividerMarginTop} />
+                  <MainLabel
+                    label="ระยะบน"
+                    value={merged.dividerMarginTop}
+                    valueRef={marginTopLabelRef}
+                  />
                   <div className="w-full pt-[2px] pb-[2px] px-[2px]">
                     <Range
                       min={0}
                       max={80}
                       step={1}
                       value={merged.dividerMarginTop}
-                      handleChange={(e) => patch({ dividerMarginTop: Number(e.target.value) })}
+                      uncontrolled
+                      handleChange={(e) => {
+                        const nextValue = Number(e.target.value);
+                        if (marginTopLabelRef.current) {
+                          marginTopLabelRef.current.textContent = String(
+                            Math.round(nextValue)
+                          );
+                        }
+                        patchSlider({ dividerMarginTop: nextValue });
+                      }}
+                      onCommit={(_, reason) => commitSlider(reason)}
                       pos={(merged.dividerMarginTop / 80) * 100}
                       color={accent}
                       className={THEME_RANGE_INPUT_CLASS}
@@ -268,14 +356,28 @@ const DividerElementOffcanvas = ({ element, onUpdate, close, textColor, theme })
               </div>
               <div className="col-span-1">
                 <Box sx={{ width: "100%", px: 0.25 }}>
-                  <MainLabel label="ระยะล่าง" value={merged.dividerMarginBottom} />
+                  <MainLabel
+                    label="ระยะล่าง"
+                    value={merged.dividerMarginBottom}
+                    valueRef={marginBottomLabelRef}
+                  />
                   <div className="w-full pt-[2px] pb-[2px] px-[2px]">
                     <Range
                       min={0}
                       max={80}
                       step={1}
                       value={merged.dividerMarginBottom}
-                      handleChange={(e) => patch({ dividerMarginBottom: Number(e.target.value) })}
+                      uncontrolled
+                      handleChange={(e) => {
+                        const nextValue = Number(e.target.value);
+                        if (marginBottomLabelRef.current) {
+                          marginBottomLabelRef.current.textContent = String(
+                            Math.round(nextValue)
+                          );
+                        }
+                        patchSlider({ dividerMarginBottom: nextValue });
+                      }}
+                      onCommit={(_, reason) => commitSlider(reason)}
                       pos={(merged.dividerMarginBottom / 80) * 100}
                       color={accent}
                       className={THEME_RANGE_INPUT_CLASS}

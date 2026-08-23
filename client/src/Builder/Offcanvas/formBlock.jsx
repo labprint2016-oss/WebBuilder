@@ -1,13 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { getForms } from "../../../Functions/forms";
 import Range from "../HTML/Range";
+import { usePanelSliderPreview } from "../panelPreviewStore";
 
 const FORMS_MENU_BAR_ID = "69db17211be82fe7637ea096";
 const SPACING_MIN = 0;
 const SPACING_MAX = 80;
-const DEFAULT_MARGIN_X = 0;
-const DEFAULT_MARGIN_Y = 8;
+const DEFAULT_MARGIN_TOP = 8;
+const DEFAULT_MARGIN_BOTTOM = 8;
 
 const clampSpacing = (value, fallback) => {
   const n = Number(value);
@@ -15,19 +16,16 @@ const clampSpacing = (value, fallback) => {
   return Math.max(SPACING_MIN, Math.min(SPACING_MAX, Math.round(n)));
 };
 
-const readMarginX = (element) =>
+const readMarginTop = (element) =>
   clampSpacing(
-    element?.formMarginX ?? element?.formGapX,
-    DEFAULT_MARGIN_X
+    element?.formMarginTop ?? element?.formMarginY ?? element?.formGapY,
+    DEFAULT_MARGIN_TOP
   );
 
-const readMarginY = (element) =>
+const readMarginBottom = (element) =>
   clampSpacing(
-    element?.formMarginY ??
-      element?.formGapY ??
-      element?.formMarginTop ??
-      element?.formMarginBottom,
-    DEFAULT_MARGIN_Y
+    element?.formMarginBottom ?? element?.formMarginY ?? element?.formGapY,
+    DEFAULT_MARGIN_BOTTOM
   );
 
 const FormBlockOffcanvas = ({
@@ -40,6 +38,30 @@ const FormBlockOffcanvas = ({
   const [presets, setPresets] = useState([]);
   const [defaultFormPresetId, setDefaultFormPresetId] = useState("");
   const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(() => ({ ...(element || {}) }));
+  const dataRef = useRef(data);
+  const rangeGestureActiveRef = useRef(false);
+  const marginTopLabelRef = useRef(null);
+  const marginBottomLabelRef = useRef(null);
+
+  const { updateSlider, commitSlider, hasActiveSlider } = usePanelSliderPreview({
+    type: "form",
+    targetIds: [element?.id],
+    data,
+    setData,
+    onCommit: (latest) => {
+      const next = { ...(latest || {}) };
+      dataRef.current = next;
+      setData(next);
+      onUpdate?.(next);
+    },
+  });
+
+  const hasActiveSliderRef = useRef(hasActiveSlider);
+  hasActiveSliderRef.current = hasActiveSlider;
+  if (!hasActiveSlider()) {
+    dataRef.current = data;
+  }
 
   useEffect(() => {
     let alive = true;
@@ -63,6 +85,11 @@ const FormBlockOffcanvas = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (hasActiveSliderRef.current()) return;
+    setData({ ...(element || {}) });
+  }, [element]);
+
   const selectedId = useMemo(() => {
     const raw = String(element?.formPresetId || "").trim();
     if (raw && presets.some((item) => String(item?.id) === raw)) return raw;
@@ -70,7 +97,17 @@ const FormBlockOffcanvas = ({
   }, [element?.formPresetId, presets, defaultFormPresetId]);
 
   const patch = (partial) => {
-    onUpdate?.({ ...(element || {}), ...partial });
+    const next = { ...(dataRef.current || {}), ...partial };
+    dataRef.current = next;
+    setData(next);
+    onUpdate?.(next);
+  };
+
+  const patchSlider = (partial) => {
+    const next = { ...(dataRef.current || {}), ...partial };
+    dataRef.current = next;
+    updateSlider(() => next, { setData: false });
+    return next;
   };
 
   const selectPreset = (presetId) => {
@@ -79,12 +116,32 @@ const FormBlockOffcanvas = ({
     patch({ formPresetId: nextId });
   };
 
-  const marginX = readMarginX(element);
-  const marginY = readMarginY(element);
+  const marginTop = readMarginTop(data);
+  const marginBottom = readMarginBottom(data);
   const accent = textColor || "#333333";
 
   return (
-    <aside className="dash-panel absolute right-0 top-0 z-[80] flex h-full w-[400px] flex-col overflow-hidden">
+    <aside
+      className="dash-panel absolute right-0 top-0 z-[80] flex h-full w-[400px] flex-col overflow-hidden"
+      onPointerDownCapture={(event) => {
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "range"
+        ) {
+          rangeGestureActiveRef.current = true;
+        }
+      }}
+      onPointerUp={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointerup");
+      }}
+      onPointerCancel={() => {
+        if (!rangeGestureActiveRef.current) return;
+        rangeGestureActiveRef.current = false;
+        commitSlider("pointercancel");
+      }}
+    >
       <div className="dash-panel-header shrink-0 flex items-center justify-between border-b px-6 pt-5 pb-3">
         <span className="shrink-0 font-bold tracking-wide">ตั้งค่าฟอร์ม</span>
         <button
@@ -175,13 +232,14 @@ const FormBlockOffcanvas = ({
           <div className="min-w-0">
             <div className="mb-2 flex items-center gap-2">
               <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
-                ระยะห่างแนวนอน
+                ระยะด้านบน
               </span>
               <span
+                ref={marginTopLabelRef}
                 className="shrink-0 text-[12px] font-medium tabular-nums"
                 style={{ color: darkMode === "dark" ? "#94a3b8" : "#64748b" }}
               >
-                {marginX}
+                {marginTop}
               </span>
               <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
@@ -190,12 +248,17 @@ const FormBlockOffcanvas = ({
                 min={SPACING_MIN}
                 max={SPACING_MAX}
                 step={1}
-                value={marginX}
+                value={marginTop}
+                uncontrolled
                 handleChange={(event) => {
-                  const next = clampSpacing(event.target.value, DEFAULT_MARGIN_X);
-                  patch({ formMarginX: next });
+                  const next = clampSpacing(event.target.value, DEFAULT_MARGIN_TOP);
+                  if (marginTopLabelRef.current) {
+                    marginTopLabelRef.current.textContent = String(next);
+                  }
+                  patchSlider({ formMarginTop: next });
                 }}
-                pos={(marginX / SPACING_MAX) * 100}
+                onCommit={(_, reason) => commitSlider(reason)}
+                pos={(marginTop / SPACING_MAX) * 100}
                 color={accent}
               />
             </div>
@@ -203,13 +266,14 @@ const FormBlockOffcanvas = ({
           <div className="min-w-0">
             <div className="mb-2 flex items-center gap-2">
               <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
-                ระยะห่างแนวตั้ง
+                ระยะด้านล่าง
               </span>
               <span
+                ref={marginBottomLabelRef}
                 className="shrink-0 text-[12px] font-medium tabular-nums"
                 style={{ color: darkMode === "dark" ? "#94a3b8" : "#64748b" }}
               >
-                {marginY}
+                {marginBottom}
               </span>
               <div className="dash-heading-rule min-w-0 flex-1 border-b" />
             </div>
@@ -218,16 +282,20 @@ const FormBlockOffcanvas = ({
                 min={SPACING_MIN}
                 max={SPACING_MAX}
                 step={1}
-                value={marginY}
+                value={marginBottom}
+                uncontrolled
                 handleChange={(event) => {
-                  const next = clampSpacing(event.target.value, DEFAULT_MARGIN_Y);
-                  patch({
-                    formMarginY: next,
-                    formMarginTop: next,
-                    formMarginBottom: next,
-                  });
+                  const next = clampSpacing(
+                    event.target.value,
+                    DEFAULT_MARGIN_BOTTOM
+                  );
+                  if (marginBottomLabelRef.current) {
+                    marginBottomLabelRef.current.textContent = String(next);
+                  }
+                  patchSlider({ formMarginBottom: next });
                 }}
-                pos={(marginY / SPACING_MAX) * 100}
+                onCommit={(_, reason) => commitSlider(reason)}
+                pos={(marginBottom / SPACING_MAX) * 100}
                 color={accent}
               />
             </div>

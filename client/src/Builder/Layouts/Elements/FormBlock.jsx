@@ -17,6 +17,7 @@ import {
   FORM_SUBMIT_ERROR_RATE_LIMIT,
 } from "../../formSubmitMessages";
 import { getFormsCacheSnapshot, loadFormsCached } from "./formsCache";
+import { usePanelPreview } from "../../panelPreviewStore";
 
 const FORMS_MENU_BAR_ID = "69db17211be82fe7637ea096";
 const FORM_SUCCESS_MESSAGE_DURATION_MS = 2500;
@@ -93,20 +94,24 @@ function FormBlock({
   builderMode,
   lite = false,
 }) {
-  const marginYRaw = Number(
-    elementData?.formMarginY ??
-      elementData?.formMarginTop ??
-      elementData?.formMarginBottom
+  const previewData = usePanelPreview("form", elementData?.id);
+  const liveElementData = previewData || elementData;
+  const marginTopRaw = Number(
+    liveElementData?.formMarginTop ?? liveElementData?.formMarginY
+  );
+  const marginBottomRaw = Number(
+    liveElementData?.formMarginBottom ?? liveElementData?.formMarginY
   );
   const marginXRaw = Number(elementData?.formMarginX);
-  const marginY = Number.isFinite(marginYRaw)
-    ? Math.max(0, Math.min(80, marginYRaw))
+  const marginTop = Number.isFinite(marginTopRaw)
+    ? Math.max(0, Math.min(80, marginTopRaw))
+    : 8;
+  const marginBottom = Number.isFinite(marginBottomRaw)
+    ? Math.max(0, Math.min(80, marginBottomRaw))
     : 8;
   const marginX = Number.isFinite(marginXRaw)
     ? Math.max(0, Math.min(80, marginXRaw))
     : 0;
-  const marginTop = marginY;
-  const marginBottom = marginY;
 
   const [presets, setPresets] = useState(
     () => getFormsCacheSnapshot()?.presets || []

@@ -89,6 +89,7 @@ export function mergeDataSliderElement(raw) {
       Number(base.dataSliderAutoplayDelayMs) || 4500
     ),
     dataSliderNavShowOnWebsite: base.dataSliderNavShowOnWebsite !== false,
+    dataSliderNavShape: base.dataSliderNavShape === "circle" ? "circle" : "square",
     dataSliderNavColorOpacity: op255(base.dataSliderNavColorOpacity),
     dataSliderNavActiveColorOpacity: op255(base.dataSliderNavActiveColorOpacity),
   };

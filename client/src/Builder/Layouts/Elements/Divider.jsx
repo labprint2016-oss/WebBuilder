@@ -1,4 +1,5 @@
 import { setColor } from "../../../../function";
+import { usePanelPreview } from "../../panelPreviewStore";
 import {
   DIVIDER_ELEMENT_DEFAULTS,
   mergeDividerElement,
@@ -12,7 +13,8 @@ const DividerElement = ({
   theme,
   builderMode,
 }) => {
-  const data = mergeDividerElement(elementData);
+  const previewData = usePanelPreview("divider", elementData?.id);
+  const data = mergeDividerElement(previewData || elementData);
   const isLayoutMode = builderMode === "Layout Mode";
   const useLayoutSelectionFrame = isLayoutMode && selected;
   const borderColor = setColor(theme, data.dividerColor, data.dividerOpacity);
@@ -38,7 +40,11 @@ const DividerElement = ({
           ? "rounded-md border border-dashed border-red-400 bg-red-300/10 p-2"
           : ""
       }`}
-      style={{ marginTop: marginTopPx, marginBottom: marginBottomPx }}
+      style={{
+        marginTop: marginTopPx,
+        marginBottom: marginBottomPx,
+        ...(previewData ? { transition: "none" } : null),
+      }}
     >
       <div className={useLayoutSelectionFrame ? "relative block w-full" : ""}>
         <div

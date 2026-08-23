@@ -6852,7 +6852,10 @@ const Content = ({
           data?.type === "heading" ||
           data?.type === "icon" ||
           data?.type === "btn" ||
-          data?.type === "btnG"
+          data?.type === "btnG" ||
+          data?.type === "ctn" ||
+          data?.type === "divider" ||
+          data?.type === "form"
         ) {
           let targetPath = null;
           for (let conI = 0; conI < prev.length && !targetPath; conI += 1) {
@@ -7850,6 +7853,7 @@ const Content = ({
           elementType: "element",
           elementId,
           scope: `${String(tabsHostId || "")}/${String(tabId || "")}`,
+          skipInitialFrameGap: true,
         });
       }
       setLayout((prev) => {
@@ -13865,6 +13869,7 @@ const Content = ({
         scope: [conID, colID, spnID, nestID]
           .filter((value) => value != null && value !== "")
           .join("/"),
+        skipInitialFrameGap: true,
       });
       if (builderSectionPerfEnabled) {
         const sessionId = nextElementDeletePerfSessionIdRef.current++;
