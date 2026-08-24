@@ -10180,7 +10180,10 @@ const Content = ({
           String(node.getAttribute("data-tab-id") || "") === String(index.tabId)
         ) {
           const parent = node.firstElementChild || node;
-          return { parent, referenceNode: null };
+          return {
+            parent,
+            referenceNode: parent.firstChild || null,
+          };
         }
       }
       return null;
@@ -19066,6 +19069,7 @@ const Content = ({
     if (!isTargetingThisTab) {
       return {
         isDragging: true,
+        isHovering: false,
         ghostEl: null,
         tabId:
           ele.type === "dts"
@@ -19081,6 +19085,7 @@ const Content = ({
     const idx = dropTargetRef.current.index;
     return {
       isDragging: true,
+      isHovering: true,
       tabId:
         String(
           idx.tabId ||

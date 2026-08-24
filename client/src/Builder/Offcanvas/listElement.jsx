@@ -2774,7 +2774,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                         </span>
 
                         <div className="flex min-w-0 flex-1 items-center gap-2">
-                          {/* Text preview — สีข้อความตาม สีข้อความปุ่ม Active */}
+                          {/* Text preview — สีข้อความตาม ตั้งค่าสี Dashboard (Btn Group) */}
                           <Typography
                             sx={{
                               fontSize: 12,
@@ -2782,7 +2782,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
                               minWidth: 0,
                               flex: "1 1 auto",
                               color:
-                                "var(--dash-panel-btn-group-active-text, #ffffff)",
+                                "var(--dash-panel-btn-group-inactive-text, #1e293b)",
                             }}
                             className="truncate"
                             component="span"

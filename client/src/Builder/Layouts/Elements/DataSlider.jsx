@@ -338,13 +338,12 @@ const DataSlider = ({
           {visibleItems.map((slide, slideIndex) => {
           const hasElements =
             Array.isArray(slide?.elements) && slide.elements.length > 0;
-          const ghost =
+          const isThisSlideHovered = Boolean(
             tabGhostData &&
-            tabGhostData.ghostEl &&
-            tabGhostData.tabId === String(slide?.id || "")
-              ? tabGhostData
-              : null;
-          const isThisSlideHovered = !!ghost;
+              tabGhostData.tabId === String(slide?.id || "") &&
+              (tabGhostData.ghostEl || tabGhostData.isHovering)
+          );
+          const ghost = isThisSlideHovered ? tabGhostData : null;
           const sortableIds = (slide?.elements || []).map((el) => String(el?.id || ""));
 
           const handleDragEnd = (event) => {
@@ -361,7 +360,7 @@ const DataSlider = ({
           return (
             <div key={String(slide?.id || `dts-slide-${slideIndex}`)} className="min-w-0">
               <div
-                className={`min-h-[72px] w-full px-3 py-2 text-[12px] transition-colors ${
+                className={`relative min-h-[72px] w-full px-3 py-2 text-[12px] transition-colors ${
                   !showAreaGuides
                     ? "border border-transparent bg-transparent"
                     : isThisSlideHovered
@@ -873,16 +872,14 @@ const DataSlider = ({
                     </SortableContext>
                   </DndContext>
                 ) : (
-                  <div className="flex min-h-[56px] w-full items-center justify-center text-center">
-                    {ghost ? (
+                  <div className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center">
+                    {ghost?.ghostEl ? (
                       ghost.ghostEl
-                    ) : (
-                      builderMode === "Layout Mode" ? (
-                        <span className="block w-full text-[11px] text-slate-400 dark:text-slate-500">
-                          ลาก Element มาวางที่นี่
-                        </span>
-                      ) : null
-                    )}
+                    ) : ghost ? null : builderMode === "Layout Mode" ? (
+                      <span className="pointer-events-none text-[11px] text-slate-400 dark:text-slate-500">
+                        ลาก Element มาวางที่นี่
+                      </span>
+                    ) : null}
                   </div>
                 )}
               </div>

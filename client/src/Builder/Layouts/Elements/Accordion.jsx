@@ -309,7 +309,12 @@ const AccordionElement = ({
 }) => {
   const panelPreview = usePanelPreview("acc", rawElementData?.id);
   const elementData = panelPreview
-    ? { ...rawElementData, ...panelPreview }
+    ? {
+        ...rawElementData,
+        ...panelPreview,
+        accordionItems:
+          rawElementData?.accordionItems ?? panelPreview.accordionItems,
+      }
     : rawElementData;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })

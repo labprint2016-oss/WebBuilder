@@ -273,6 +273,29 @@ const normalizeAccordionItems = (itemsRaw) => {
   }));
 };
 
+const mergeAccordionItemsPreservingCanvasElements = (panelItems, canvasItems) => {
+  const panelList =
+    Array.isArray(panelItems) && panelItems.length
+      ? normalizeAccordionItems(panelItems)
+      : [];
+  const canvasList =
+    Array.isArray(canvasItems) && canvasItems.length
+      ? normalizeAccordionItems(canvasItems)
+      : [];
+  if (!panelList.length) return canvasList;
+  if (!canvasList.length) return panelList;
+  const canvasById = new Map(canvasList.map((item) => [String(item.id), item]));
+  return panelList.map((item) => {
+    const canvas = canvasById.get(String(item.id));
+    if (!canvas) return item;
+    return {
+      ...canvas,
+      ...item,
+      elements: Array.isArray(canvas.elements) ? canvas.elements : item.elements,
+    };
+  });
+};
+
 const chipSelected = (active, chip) => {
   if (active && typeof active === "object" && chip && typeof chip === "object") {
     return lodash.isEqual(active, chip);
@@ -308,6 +331,10 @@ const AccordionElementOffcanvas = ({
         ...next,
         type: next?.type ?? base?.type ?? "acc",
         id: next?.id != null ? next.id : base?.id,
+        accordionItems: mergeAccordionItemsPreservingCanvasElements(
+          next?.accordionItems,
+          base?.accordionItems
+        ),
       };
       const changedFields = Object.keys(next || {}).filter(
         (key) => !Object.is(base?.[key], merged?.[key])
@@ -366,8 +393,18 @@ const AccordionElementOffcanvas = ({
     setData,
     onCommit: (latest) => scheduleLayoutSync(latest),
   });
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const updateRangeField = (field, value) => {
-    updateSlider((prev) => ({ ...prev, [field]: value }));
+    updateSlider((prev) => ({
+      ...prev,
+      ...dataRef.current,
+      accordionItems: mergeAccordionItemsPreservingCanvasElements(
+        dataRef.current?.accordionItems,
+        elementRef.current?.accordionItems
+      ),
+      [field]: value,
+    }));
   };
   const commitRangeField = (_value, reason) => {
     commitSlider(reason || "range-commit");
@@ -396,14 +433,26 @@ const AccordionElementOffcanvas = ({
     if (!element?.id) return;
     setData((prev) => {
       if (!prev || prev.id !== element.id) return element;
-      // sync แถบที่เลือกจากแคนวาส → Check ในรายการทั้งหมดต้องตรงกัน
-      if (
+      const nextItems = mergeAccordionItemsPreservingCanvasElements(
+        prev.accordionItems,
+        element.accordionItems
+      );
+      const nextActive =
         String(prev.accordionActiveId || "") ===
         String(element.accordionActiveId || "")
+          ? prev.accordionActiveId
+          : element.accordionActiveId;
+      if (
+        nextItems === prev.accordionItems &&
+        nextActive === prev.accordionActiveId
       ) {
         return prev;
       }
-      return { ...prev, accordionActiveId: element.accordionActiveId };
+      return {
+        ...prev,
+        accordionItems: nextItems,
+        accordionActiveId: nextActive,
+      };
     });
   }, [element]);
 
@@ -422,7 +471,14 @@ const AccordionElementOffcanvas = ({
 
   const patch = (partial) => {
     setData((prev) => {
-      const next = { ...prev, ...partial };
+      const next = {
+        ...prev,
+        ...partial,
+        accordionItems: mergeAccordionItemsPreservingCanvasElements(
+          partial.accordionItems ?? prev.accordionItems,
+          elementRef.current?.accordionItems
+        ),
+      };
       scheduleLayoutSync(next);
       return next;
     });
@@ -439,23 +495,11 @@ const AccordionElementOffcanvas = ({
 
   const patchAccordionItems = (updater) => {
     setData((prev) => {
-      const current = normalizeAccordionItems(prev?.accordionItems);
-      const latestFromLayout = normalizeAccordionItems(elementRef.current?.accordionItems);
-      const latestById = new Map(
-        latestFromLayout.map((it) => [String(it?.id || ""), it])
+      const current = mergeAccordionItemsPreservingCanvasElements(
+        prev?.accordionItems,
+        elementRef.current?.accordionItems
       );
-      const nextItems = updater(current).map((item) => {
-        const latest = latestById.get(String(item?.id || ""));
-        return {
-          ...(latest && typeof latest === "object" ? latest : {}),
-          ...(item && typeof item === "object" ? item : {}),
-          elements: Array.isArray(latest?.elements)
-            ? latest.elements
-            : Array.isArray(item?.elements)
-              ? item.elements
-              : [],
-        };
-      });
+      const nextItems = updater(current);
       const nextActive = nextItems.some((t) => t.id === prev?.accordionActiveId)
         ? prev?.accordionActiveId
         : nextItems[0]?.id;

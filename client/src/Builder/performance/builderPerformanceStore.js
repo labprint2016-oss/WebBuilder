@@ -57,6 +57,40 @@ const roundMs = (value) =>
 
 const normalizeId = (value) => String(value ?? "").slice(0, 120);
 
+const collectIdsFromElements = (elements, into) => {
+  if (!Array.isArray(elements)) return;
+  for (const item of elements) {
+    const id = normalizeId(item?.id);
+    if (id) into.add(id);
+  }
+};
+
+export const collectNestedCanvasElementIds = (data) => {
+  const ids = new Set();
+  if (Array.isArray(data?.accordionItems)) {
+    for (const item of data.accordionItems) {
+      collectIdsFromElements(item?.elements, ids);
+    }
+  }
+  if (Array.isArray(data?.tabsItems)) {
+    for (const item of data.tabsItems) {
+      collectIdsFromElements(item?.elements, ids);
+    }
+  }
+  if (Array.isArray(data?.dataSliderItems)) {
+    for (const item of data.dataSliderItems) {
+      collectIdsFromElements(item?.elements, ids);
+    }
+  }
+  if (Array.isArray(data?.catagoriesItems)) {
+    for (const item of data.catagoriesItems) {
+      collectIdsFromElements(item?.elements, ids);
+    }
+  }
+  collectIdsFromElements(data?.postElements, ids);
+  return [...ids];
+};
+
 const STRUCTURAL_UNRELATED_IGNORE_KINDS = new Set([
   "dnd-sidebar",
   "dnd",
@@ -106,6 +140,22 @@ export const usesInteractionDuration = (kind) =>
   !ONE_SHOT_DURATION_KINDS.has(kind) &&
   !LIFECYCLE_TRANSACTION_KINDS.has(kind);
 
+export const getDisplayedFrameGapMs = (transaction) => {
+  if (transaction?.kind === "panel-open") return null;
+  const metrics = transaction?.metrics || {};
+  const frameMs = Number(metrics.frameGapP95Ms || metrics.frameGapMaxMs) || 0;
+  if (frameMs <= 0) return null;
+  if (transaction?.kind === "panel-slider") {
+    const isolatedDoubleVsync =
+      (Number(metrics.severeFrameCount) || 0) === 0 &&
+      (Number(metrics.droppedFrameCount) || 0) <= 1 &&
+      frameMs > 24 &&
+      frameMs <= 34.5;
+    if (isolatedDoubleVsync) return null;
+  }
+  return frameMs;
+};
+
 export const getDisplayedDurationMs = (transaction) => {
   const metrics = transaction?.metrics || {};
   const kind = transaction?.kind;
@@ -134,21 +184,20 @@ const getMetricStatus = (transaction) => {
   const metrics = transaction?.metrics || {};
   if (metrics.failed) return "red";
   const isLifecycle = LIFECYCLE_TRANSACTION_KINDS.has(transaction?.kind);
-  const isPanelOpen = transaction?.kind === "panel-open";
   const renderMs = metrics.renderMaxMs || metrics.panelMaxMs;
-  const frameMs = metrics.frameGapP95Ms || metrics.frameGapMaxMs;
+  const frameMs = getDisplayedFrameGapMs(transaction);
   const values = (
     isLifecycle
       ? [
           ["api", metrics.apiLatencyMs, 800, 2000],
           ["lifecycle", metrics.lifecycleTotalMs, 1000, 2500],
           ["commit", metrics.canvasMaxMs, 8, 16.7],
-          ["frame", frameMs, 20, 33],
+          ...(frameMs == null ? [] : [["frame", frameMs, 20, 33]]),
         ]
       : [
           ["commit", metrics.canvasMaxMs, 8, 16.7],
           ["render", renderMs, 8, 16.7],
-          ...(isPanelOpen ? [] : [["frame", frameMs, 20, 33]]),
+          ...(frameMs == null ? [] : [["frame", frameMs, 20, 33]]),
           ["rerenders", metrics.targetRenderCount, 2, 5],
           ...(shouldScoreUnrelatedRatio(transaction)
             ? [["unrelated", metrics.unrelatedRenderRatio, 0.1, 0.25]]
@@ -218,14 +267,9 @@ const createSnapshot = () => {
       maxFrameGapMs: roundMs(
         Math.max(
           0,
-          ...visibleTransactions
-            .filter((transaction) => transaction.kind !== "panel-open")
-            .map(
-              (transaction) =>
-                transaction.metrics?.frameGapP95Ms ||
-                transaction.metrics?.frameGapMaxMs ||
-                0
-            )
+          ...visibleTransactions.map(
+            (transaction) => getDisplayedFrameGapMs(transaction) || 0
+          )
         )
       ),
       maxTargetRenderCount: Math.max(
@@ -475,6 +519,11 @@ export function beginBuilderPerformanceTransaction(kind, meta = {}, options = {}
     skippedFrameGaps: 0,
     frameBaselineReady: false,
     renderedElementKeys: new Set(),
+    relatedElementIds: new Set(
+      (Array.isArray(meta.relatedElementIds) ? meta.relatedElementIds : []).map(
+        normalizeId
+      )
+    ),
     targetRenderCount: 0,
     unrelatedRenderCount: 0,
     frameGaps: [],
@@ -558,11 +607,24 @@ export function finishBuilderPerformanceTransaction(
     }
   });
 
-  const sortedFrameGaps = [...transaction.frameGaps].sort((a, b) => a - b);
-  const p95Index = Math.max(0, Math.ceil(sortedFrameGaps.length * 0.95) - 1);
-  transaction.metrics.frameGapP95Ms = roundMs(
-    sortedFrameGaps[p95Index] || transaction.metrics.frameGapMaxMs || 0
-  );
+  if (Array.isArray(details.frameGaps) && details.frameGaps.length) {
+    transaction.frameGaps = details.frameGaps
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+  }
+  if (transaction.frameGaps.length > 0) {
+    const sortedFrameGaps = [...transaction.frameGaps].sort((a, b) => a - b);
+    const p95Index = Math.max(0, Math.ceil(sortedFrameGaps.length * 0.95) - 1);
+    transaction.metrics.frameGapP95Ms = roundMs(sortedFrameGaps[p95Index] || 0);
+  } else if (!Number.isFinite(Number(transaction.metrics.frameGapP95Ms))) {
+    transaction.metrics.frameGapP95Ms = roundMs(
+      transaction.metrics.frameGapMaxMs || 0
+    );
+  } else {
+    transaction.metrics.frameGapP95Ms = roundMs(
+      transaction.metrics.frameGapP95Ms
+    );
+  }
   transaction.metrics.droppedFrameRatio =
     transaction.metrics.frameCount > 0
       ? roundMs(
@@ -791,7 +853,9 @@ export function recordBuilderElementRenderOccurrence({
     transaction.renderedElementKeys.add(key);
     const isTarget = normalizeId(transaction.elementId) === id;
     if (isTarget) transaction.targetRenderCount += 1;
-    else transaction.unrelatedRenderCount += 1;
+    else if (transaction.relatedElementIds?.has(id)) {
+      // Nested content of the target (Accordion/Tabs/etc). Expected, not off-target.
+    } else transaction.unrelatedRenderCount += 1;
   }
 }
 

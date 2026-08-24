@@ -468,7 +468,9 @@ const Catagories = ({
               {items.map((item, idx) => {
               const hasElements = Array.isArray(item?.elements) && item.elements.length > 0;
               const rawGhost =
-                tabGhostData && tabGhostData.ghostEl && tabGhostData.tabId === String(item?.id || "")
+                tabGhostData &&
+                tabGhostData.tabId === String(item?.id || "") &&
+                (tabGhostData.ghostEl || tabGhostData.isHovering)
                   ? tabGhostData
                   : null;
               const itemElements = item?.elements || [];
@@ -1599,15 +1601,13 @@ const Catagories = ({
                         </DndContext>
                       ) : (
                         <div className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center">
-                          {ghost ? (
+                          {ghost?.ghostEl ? (
                             ghost.ghostEl
-                          ) : (
-                            <span className={`text-[11px] text-slate-400 dark:text-slate-500 ${
-                              builderMode !== "Layout Mode" ? "hidden" : ""
-                            }`}>
+                          ) : ghost ? null : builderMode === "Layout Mode" ? (
+                            <span className="pointer-events-none text-[11px] text-slate-400 dark:text-slate-500">
                               ลาก Element มาวางที่นี่
                             </span>
-                          )}
+                          ) : null}
                         </div>
                       )}
                     </div>

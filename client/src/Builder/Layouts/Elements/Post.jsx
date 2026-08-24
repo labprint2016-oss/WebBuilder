@@ -205,16 +205,44 @@ const PostElement = ({
     align === "center" ? "items-center text-center" : align === "end" ? "items-end text-right" : "items-start text-left";
   const verticalHeadingAlignMode = align === "center" ? "center" : align === "end" ? "end" : "start";
   const contentOnlyVerticalHeading = !showImagePane && headingEnabled && !isHorizontalHeading;
+  const matchImageHeight = showImagePane;
+  const imagePaneMinHeight = postImageIsFixedAspect ? undefined : 220;
+  const contentOnlyMinHeight = !showImagePane && headingEnabled
+    ? isHorizontalHeading
+      ? Math.max(44, Math.round(headingFontSize) + 16)
+      : undefined
+    : undefined;
   const gridColumnGap = headingDisabled && showImagePane ? 10 : contentOnlyVerticalHeading ? headingGap : 0;
   const verticalHeadingPadLeft = showImagePane ? headingGap : 0;
   const verticalHeadingPadRight = showImagePane ? headingGap : 0;
-  const selectedEmptyContentInsetY = useLayoutSelectionFrame && !hasElements ? 10 : 0;
-  const contentMarginTop =
-    (isHorizontalHeading ? horizontalHeadingGap : 0) + selectedEmptyContentInsetY;
-  const contentMarginBottom = selectedEmptyContentInsetY;
+  const selectedEmptyContentInsetY =
+    matchImageHeight || !(useLayoutSelectionFrame && !hasElements) ? 0 : 10;
+  const contentMarginTop = matchImageHeight
+    ? isHorizontalHeading
+      ? horizontalHeadingGap
+      : 0
+    : (isHorizontalHeading ? horizontalHeadingGap : 0) + selectedEmptyContentInsetY;
+  const contentMarginBottom = matchImageHeight ? 0 : selectedEmptyContentInsetY;
   const verticalHeadingMinWidth = contentOnlyVerticalHeading
     ? Math.max(18, Math.round(headingFontSize) + 6)
     : undefined;
+  const verticalHeadingSizer =
+    headingEnabled && !isHorizontalHeading ? (
+      <div
+        aria-hidden
+        className="invisible select-none px-1 py-1"
+        style={{
+          fontFamily: headingFontFamily,
+          fontSize: headingFontSize,
+          fontWeight: headingBold ? 700 : 500,
+          whiteSpace: "nowrap",
+          writingMode: "vertical-rl",
+          textOrientation: "mixed",
+        }}
+      >
+        {heading || " "}
+      </div>
+    ) : null;
   const dropBody = hasElements ? (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
@@ -268,7 +296,14 @@ const PostElement = ({
       </SortableContext>
     </DndContext>
   ) : (
-    <div className="flex h-full min-h-[44px] w-full flex-col items-center justify-center gap-1 text-center">
+    <div
+      className={`flex h-full w-full flex-col items-center justify-center gap-1 text-center ${
+        contentOnlyVerticalHeading || matchImageHeight
+          ? "min-h-full"
+          : "min-h-[44px]"
+      }`}
+      style={contentOnlyMinHeight ? { minHeight: contentOnlyMinHeight } : undefined}
+    >
       {ghost ? (
         ghost.ghostEl
       ) : (
@@ -293,7 +328,7 @@ const PostElement = ({
           }
         >
           <div
-            className={`grid w-full ${
+            className={`grid w-full items-stretch ${
           showImagePane
             ? isHorizontalHeading || headingDisabled
               ? "grid-cols-[minmax(180px,36%)_minmax(260px,1fr)]"
@@ -302,7 +337,15 @@ const PostElement = ({
               ? "grid-cols-[auto_minmax(260px,1fr)]"
               : "grid-cols-[minmax(260px,1fr)]"
             }`}
-            style={{ columnGap: gridColumnGap }}
+            style={{
+              columnGap: gridColumnGap,
+              ...(matchImageHeight
+                ? {
+                    paddingTop: imageMarginTop,
+                    paddingBottom: imageMarginBottom,
+                  }
+                : {}),
+            }}
           >
         {showImagePane && (
           <div
@@ -311,11 +354,15 @@ const PostElement = ({
             data-post-image-pane="true"
             style={{
               ...postImageCornerStyle,
-              marginTop: imageMarginTop,
-              marginBottom: imageMarginBottom,
+              ...(matchImageHeight
+                ? {}
+                : {
+                    marginTop: imageMarginTop,
+                    marginBottom: imageMarginBottom,
+                  }),
               ...(postImageIsFixedAspect
                 ? { aspectRatio: postPreviewReservedAspectRatio }
-                : { minHeight: 220 }),
+                : { minHeight: imagePaneMinHeight }),
             }}
             onMouseEnter={() => setIsPostImageHover(true)}
             onMouseLeave={() => setIsPostImageHover(false)}
@@ -371,6 +418,7 @@ const PostElement = ({
               minWidth: verticalHeadingMinWidth,
             }}
           >
+            {verticalHeadingSizer}
             {verticalHeadingAlignMode === "start" && (
               <div className="pointer-events-none absolute inset-0 flex h-full w-full flex-col items-center gap-2 overflow-hidden pt-1">
                 <div
@@ -465,7 +513,13 @@ const PostElement = ({
           </div>
         )}
 
-            <div className="flex h-full w-full flex-col">
+            <div
+              className={
+                matchImageHeight
+                  ? "flex h-full min-h-0 w-full flex-col"
+                  : "flex min-h-0 w-full flex-col self-stretch"
+              }
+            >
           {headingEnabled && isHorizontalHeading && (
             <div className="pointer-events-none flex items-center justify-center px-2" data-post-part="heading">
               {dividerEnabled && (
@@ -506,9 +560,19 @@ const PostElement = ({
             </div>
           )}
           <div
-            className={`relative flex w-full flex-1 flex-col rounded-sm ${
+            className={`relative flex w-full flex-col rounded-sm ${
               useLayoutSelectionFrame ? "px-0" : "px-2"
-            } py-1 ${contentSurfaceClass} ${contentJustifyClass}`}
+            } ${
+              matchImageHeight && !isHorizontalHeading
+                ? "h-full min-h-0 py-0"
+                : matchImageHeight
+                  ? "min-h-0 flex-1 py-0"
+                  : "flex-1 py-1"
+            } ${
+              contentSurfaceClass
+            } ${contentJustifyClass} ${
+              contentOnlyVerticalHeading ? "min-h-full" : ""
+            }`}
             data-post-part="content"
             data-drop="TAB-CONTENT"
             data-tab-element-id={String(elementData?.id || "")}
@@ -516,6 +580,7 @@ const PostElement = ({
             style={{
               ...(contentMarginTop ? { marginTop: contentMarginTop } : {}),
               ...(contentMarginBottom ? { marginBottom: contentMarginBottom } : {}),
+              ...(contentOnlyMinHeight ? { minHeight: contentOnlyMinHeight } : {}),
             }}
             onDragOver={(e) => e.preventDefault()}
             onDoubleClickCapture={(e) => {

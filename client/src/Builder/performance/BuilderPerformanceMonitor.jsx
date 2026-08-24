@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   getDisplayedDurationMs,
+  getDisplayedFrameGapMs,
   getUnrelatedMetricStatus,
   resetBuilderPerformanceSession,
   setBuilderPerformanceEnabled,
@@ -158,10 +159,7 @@ const metricStatus = (value, yellow, red) => {
 const TransactionRow = ({ transaction }) => {
   const metrics = transaction.metrics || {};
   const renderMs = metrics.renderMaxMs || metrics.panelMaxMs;
-  const frameMs =
-    transaction.kind === "panel-open"
-      ? null
-      : metrics.frameGapP95Ms || metrics.frameGapMaxMs;
+  const frameMs = getDisplayedFrameGapMs(transaction);
   const rerenders = metrics.targetRenderCount || 0;
   const unrelatedPercent = Math.round((metrics.unrelatedRenderRatio || 0) * 100);
   const isLifecycle = [

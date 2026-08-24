@@ -8,6 +8,7 @@ import {
 import {
   beginBuilderPerformanceTransaction,
   cancelBuilderPerformanceTransaction,
+  collectNestedCanvasElementIds,
   finishBuilderPerformanceTransaction,
   finishBuilderPerformanceTransactionAfterPaint,
   isBuilderPerformanceEnabled,
@@ -102,8 +103,8 @@ function startSliderGestureDiagnostics(perf) {
     ) {
       return;
     }
-    // First rAF after pointerdown is the grab hitch, not slider work.
-    if (skippedInitialFrames < 1) {
+    // Grab hitch + first preview publish are not in-gesture smoothness.
+    if (skippedInitialFrames < 2) {
       skippedInitialFrames += 1;
       perf.lastFrameAt = timestamp;
       perf.frameRequestId = requestAnimationFrame(onFrame);
@@ -111,6 +112,7 @@ function startSliderGestureDiagnostics(perf) {
     }
     const gap = timestamp - perf.lastFrameAt;
     perf.frameCount += 1;
+    perf.frameGaps.push(gap);
     perf.frameGapTotalMs += gap;
     perf.frameGapMaxMs = Math.max(perf.frameGapMaxMs, gap);
     if (gap > 24) perf.droppedFrameCount += 1;
@@ -295,7 +297,7 @@ export function usePanelPreview(type, id) {
   );
 }
 
-export function startPanelSliderPerf(type, targetId) {
+export function startPanelSliderPerf(type, targetId, relatedElementIds = []) {
   if (!isPerfEnabled()) return null;
   if (activeSliderPerf) {
     finishPanelSliderPerf(
@@ -325,6 +327,7 @@ export function startPanelSliderPerf(type, targetId) {
     panelPreviewPublishBatchTotalMs: 0,
     panelPreviewPublishBatchMaxMs: 0,
     frameCount: 0,
+    frameGaps: [],
     frameGapTotalMs: 0,
     frameGapMaxMs: 0,
     droppedFrameCount: 0,
@@ -364,6 +367,7 @@ export function startPanelSliderPerf(type, targetId) {
         elementType: type,
         elementId: targetId,
         controlKind: "slider",
+        relatedElementIds,
       },
       { trackFrames: false }
     ),
@@ -611,6 +615,13 @@ export function finishPanelSliderPerf(
       ),
       frameCount: perf.frameCount,
       frameGapMaxMs: roundMs(perf.frameGapMaxMs),
+      frameGapP95Ms: roundMs(
+        (() => {
+          const sorted = [...(perf.frameGaps || [])].sort((a, b) => a - b);
+          if (!sorted.length) return 0;
+          return sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)];
+        })()
+      ),
       droppedFrameCount: perf.droppedFrameCount,
       severeFrameCount: perf.severeFrameCount,
       longTaskCount: perf.longTaskCount,
@@ -626,6 +637,7 @@ export function finishPanelSliderPerf(
     {
       reason,
       interactionStartedAt: performance.now(),
+      frameGaps: perf.frameGaps,
     }
   );
 }
@@ -667,6 +679,7 @@ export function usePanelSliderPreview({
   const gestureIdRef = useRef(null);
 
   if (
+    !activeRef.current ||
     latestRef.current == null ||
     String(latestRef.current.id ?? "") !== String(data?.id ?? "")
   ) {
@@ -722,7 +735,11 @@ export function usePanelSliderPreview({
       if (options?.trackPerf !== false) {
         if (!activeRef.current) {
           activeRef.current = true;
-          gestureIdRef.current = startPanelSliderPerf(type, normalizedIds[0]);
+          gestureIdRef.current = startPanelSliderPerf(
+            type,
+            normalizedIds[0],
+            collectNestedCanvasElementIds(next)
+          );
         }
         recordPanelSliderInputUpdate(gestureIdRef.current);
       }
