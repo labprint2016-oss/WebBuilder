@@ -8,6 +8,12 @@ const opacityByte = (value, fallback = 255) => {
   return Number.isFinite(n) ? Math.max(0, Math.min(255, n)) : fallback;
 };
 
+const COLUMN_PADDING_X_MIN = 8;
+const clampColumnPaddingX = (value, fallback = 18) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(COLUMN_PADDING_X_MIN, n) : fallback;
+};
+
 export function SpanCanvasFill({ elementData, theme, children, onDragOver }) {
   const previewData = usePanelPreview("column", elementData?.id);
   const visual = useMemo(
@@ -33,6 +39,7 @@ export function SpanCanvasFill({ elementData, theme, children, onDragOver }) {
     colGlassEnabled = false,
     colGlassLevel = 50,
   } = visual || {};
+  const padX = clampColumnPaddingX(paddingX);
 
   const glassLevelNum = Number.isFinite(Number(colGlassLevel))
     ? Number(colGlassLevel)
@@ -98,7 +105,7 @@ export function SpanCanvasFill({ elementData, theme, children, onDragOver }) {
           className="box-border flex min-h-0 w-full min-w-0 flex-1 flex-col"
           style={{
             borderRadius: innerRadius,
-            padding: `${paddingY}px ${paddingX}px`,
+            padding: `${paddingY}px ${padX}px`,
             background: fill,
             ...glassStyle,
           }}
@@ -116,7 +123,7 @@ export function SpanCanvasFill({ elementData, theme, children, onDragOver }) {
       style={{
         borderRadius: r,
         borderWidth: bw,
-        padding: `${paddingY}px ${paddingX}px`,
+        padding: `${paddingY}px ${padX}px`,
         borderColor: brColor,
         background: fill,
         ...glassStyle,
@@ -183,6 +190,7 @@ function Column({
     colGlassLevel,
     elements = [],
   } = visualElementData;
+  const padX = clampColumnPaddingX(paddingX);
 
   const glassLevelNum = Number.isFinite(Number(colGlassLevel)) ? Number(colGlassLevel) : 50;
   const glassRatio = colGlassEnabled === true
@@ -336,7 +344,7 @@ function Column({
             className="box-border flex min-h-0 w-full min-w-0 flex-1 flex-col"
             style={{
               borderRadius: innerRadius,
-              padding: `${paddingY}px ${paddingX}px`,
+              padding: `${paddingY}px ${padX}px`,
               background: color,
               ...glassStyle,
             }}
@@ -351,7 +359,7 @@ function Column({
           style={{
             borderRadius: borderRadius,
             borderWidth: borderWidth,
-            padding: `${paddingY}px ${paddingX}px`,
+            padding: `${paddingY}px ${padX}px`,
             borderColor: brColor,
             background: color,
             ...glassStyle,

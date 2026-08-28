@@ -5,6 +5,7 @@ import { mergeBetweenElement } from "./betweenElementConfig";
 import { SegmentedRichTextInner } from "../../richText/SegmentedRichText";
 import { normalizeParagraph } from "../../richText/richTextParagraphModel";
 import { usePanelPreview } from "../../panelPreviewStore";
+import { useBuilderContextStore } from "../../store/builderContextStore";
 
 const BetweenTextBlock = ({
   side,
@@ -32,7 +33,7 @@ const BetweenTextBlock = ({
     <div
       data-between-text-side={side}
       data-between-part={`text-${side}`}
-      className="min-w-0"
+      className="min-w-0 [overflow-wrap:anywhere]"
       style={{ ...style, maxWidth: "100%" }}
     >
       <SegmentedRichTextInner
@@ -57,8 +58,20 @@ const BetweenElement = ({
   hover,
   animationForElement,
   theme,
-  builderMode,
+  builderMode: builderModeProp,
+  device: deviceProp = "Desktop",
+  isSiteRuntime = false,
 }) => {
+  const storeDevice = useBuilderContextStore((state) => state.device);
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const device = isSiteRuntime
+    ? deviceProp
+    : storeDevice || deviceProp || "Desktop";
+  const builderMode = isSiteRuntime
+    ? builderModeProp
+    : storeBuilderMode || builderModeProp;
+  const isCompactDevice = device !== "Desktop";
+  const isMobile = device === "Mobile";
   const previewData = usePanelPreview("btw", elementData?.id);
   const data = mergeBetweenElement(previewData || elementData);
   const useLayoutSelectionFrame = builderMode === "Layout Mode" && selected;
@@ -106,12 +119,17 @@ const BetweenElement = ({
   const textFontFamily = setFont(theme?.text?.value) || undefined;
   const insetX = Math.max(0, Number(data.betweenInsetX) || 0);
   const insetY = Math.max(0, Number(data.betweenInsetY) || 0);
-  const innerPadX = data.betweenFrameEnabled ? Math.max(2, 32 - insetX) : 0;
-  const innerPadY = data.betweenFrameEnabled ? Math.max(2, 20 - insetY) : 0;
+  const innerPadX = data.betweenFrameEnabled
+    ? Math.max(2, (isMobile ? 20 : isCompactDevice ? 26 : 32) - insetX)
+    : 0;
+  const innerPadY = data.betweenFrameEnabled
+    ? Math.max(2, (isMobile ? 14 : isCompactDevice ? 16 : 20) - insetY)
+    : 0;
+  const iconBoxSize = Number(data.betweenIconCircleSize) || 36;
 
   return (
     <div
-      className={`w-full ${animationForElement || ""} ${
+      className={`w-full min-w-0 max-w-full ${animationForElement || ""} ${
         !useLayoutSelectionFrame && selected
           ? "rounded-md border border-dashed border-red-400 bg-red-300/10 p-2"
           : ""
@@ -120,17 +138,25 @@ const BetweenElement = ({
       onMouseEnter={() => hover?.({ id: data.id })}
       onMouseLeave={() => hover?.(false)}
     >
-      <div className={useLayoutSelectionFrame ? "relative px-0 py-2" : ""}>
+      <div
+        className={
+          useLayoutSelectionFrame
+            ? `relative min-w-0 px-0 ${isCompactDevice ? "py-1.5" : "py-2"}`
+            : "min-w-0"
+        }
+      >
         <div
           className={
             useLayoutSelectionFrame
-              ? "origin-center scale-[0.96] transform-gpu transition-transform duration-150"
-              : ""
+              ? `min-w-0 origin-center transform-gpu transition-transform duration-150 ${
+                  isCompactDevice ? "" : "scale-[0.96]"
+                }`
+              : "min-w-0"
           }
         >
       {isBoth ? (
         <div
-          className="grid w-full items-center rounded-[18px]"
+          className="grid w-full min-w-0 items-center rounded-[18px]"
           style={{
             gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)",
             columnGap: `${data.betweenLineGap}px`,
@@ -154,7 +180,7 @@ const BetweenElement = ({
               alignClass="text-left"
               style={{ flex: "0 1 auto", minWidth: 0 }}
             />
-            <div className="ml-2 h-0 min-w-0 flex-1 border-b" style={{
+            <div className={`${isCompactDevice ? "ml-1.5" : "ml-2"} h-0 min-w-0 flex-1 border-b`} style={{
               borderBottomStyle: data.betweenLineStyle,
               borderBottomWidth: `${data.betweenLineWidth}px`,
               borderBottomColor: lineColor,
@@ -162,12 +188,13 @@ const BetweenElement = ({
           </div>
 
           <div
-            className="inline-flex shrink-0 items-center justify-center"
+            className="inline-flex max-w-full shrink-0 items-center justify-center"
             data-between-icon-trigger="true"
             data-between-part="icon"
             style={{
-              width: `${data.betweenIconCircleSize}px`,
-              height: `${data.betweenIconCircleSize}px`,
+              width: `${iconBoxSize}px`,
+              height: `${iconBoxSize}px`,
+              maxWidth: "100%",
               backgroundColor: iconBgColor,
               borderRadius: iconBorderRadius,
             }}
@@ -180,7 +207,7 @@ const BetweenElement = ({
           </div>
 
           <div className="flex min-w-0 items-center">
-            <div className="mr-2 h-0 min-w-0 flex-1 border-b" style={{
+            <div className={`${isCompactDevice ? "mr-1.5" : "mr-2"} h-0 min-w-0 flex-1 border-b`} style={{
               borderBottomStyle: data.betweenLineStyle,
               borderBottomWidth: `${data.betweenLineWidth}px`,
               borderBottomColor: lineColor,
@@ -200,7 +227,7 @@ const BetweenElement = ({
         </div>
       ) : (
       <div
-        className="flex w-full items-center rounded-[18px]"
+        className="flex w-full min-w-0 items-center rounded-[18px]"
         style={{
           columnGap: `${data.betweenLineGap}px`,
           ...frameGlassStyle,
@@ -221,7 +248,7 @@ const BetweenElement = ({
             fontSize={data.betweenFontSize}
             fontWeight={data.betweenBold ? 700 : 500}
             alignClass="text-left"
-            style={{ flex: "0 0 auto" }}
+            style={{ flex: isCompactDevice ? "0 1 auto" : "0 0 auto", minWidth: 0 }}
           />
         ) : null}
 
@@ -239,12 +266,13 @@ const BetweenElement = ({
         ) : null}
 
         <div
-          className={`inline-flex shrink-0 items-center justify-center ${isLeftOnly ? "ml-auto" : ""}`}
+          className={`inline-flex max-w-full shrink-0 items-center justify-center ${isLeftOnly ? "ml-auto" : ""}`}
           data-between-icon-trigger="true"
           data-between-part="icon"
           style={{
-            width: `${data.betweenIconCircleSize}px`,
-            height: `${data.betweenIconCircleSize}px`,
+            width: `${iconBoxSize}px`,
+            height: `${iconBoxSize}px`,
+            maxWidth: "100%",
             backgroundColor: iconBgColor,
             borderRadius: iconBorderRadius,
           }}
@@ -279,7 +307,7 @@ const BetweenElement = ({
             fontSize={data.betweenFontSize}
             fontWeight={data.betweenBold ? 700 : 500}
             alignClass="text-right"
-            style={{ flex: "0 0 auto" }}
+            style={{ flex: isCompactDevice ? "0 1 auto" : "0 0 auto", minWidth: 0 }}
           />
         ) : null}
       </div>

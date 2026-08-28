@@ -146,7 +146,7 @@ const mergePostElement = (element) => {
     if (Number.isFinite(gapImage)) return gapImage;
     const gapContent = Number(base.postHeadingGapContent);
     if (Number.isFinite(gapContent)) return gapContent;
-    return base.postLayoutMode === "content_only" ? 10 : 18;
+    return 10;
   };
   const resolvePostMarginTop = () => {
     const margin = Number(base.postMarginTop);
@@ -185,7 +185,7 @@ const mergePostElement = (element) => {
       Math.min(96, Number(base.postHeadingFontSize) || 20)
     ),
     postHeadingGap: Math.max(
-      10,
+      5,
       Math.min(30, resolvePostGap())
     ),
     postHeadingDisplay: base.postHeadingDisplay === "horizontal" ? "horizontal" : "vertical",
@@ -426,7 +426,7 @@ const PostElementOffcanvas = ({
                   onClick={() =>
                     patch({
                       postLayoutMode: opt.value,
-                      postHeadingGap: opt.value === "content_only" ? 10 : 18,
+                      postHeadingGap: 10,
                     })
                   }
                 >
@@ -538,18 +538,18 @@ const PostElementOffcanvas = ({
                       <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     </div>
                     <Range
-                      min={10}
+                      min={5}
                       max={30}
                       step={1}
                       value={draft.postHeadingGap}
                       handleChange={(e) =>
                         updateRangeField(
                           "postHeadingGap",
-                          Math.max(10, Math.min(30, Number(e.target.value) || 10))
+                          Math.max(5, Math.min(30, Number(e.target.value) || 10))
                         )
                       }
                       onCommit={commitRangeField}
-                      pos={((draft.postHeadingGap - 10) / (30 - 10)) * 100}
+                      pos={((draft.postHeadingGap - 5) / (30 - 5)) * 100}
                       color={textColor}
                     />
                   </Box>

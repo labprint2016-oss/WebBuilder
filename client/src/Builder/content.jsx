@@ -240,22 +240,28 @@ const LAYOUT_ELEMENT_ID_PREFIX = {
 const CAROUSEL_MIN_COL_UNITS = 3;
 /** ความกว้างขั้นต่ำของ Between (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-3 */
 const BETWEEN_MIN_COL_UNITS = 3;
-/** ความกว้างขั้นต่ำของ Tabs (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-5 */
-const TABS_MIN_COL_UNITS = 5;
+/** ความกว้างขั้นต่ำของ Tabs (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-6 */
+const TABS_MIN_COL_UNITS = 6;
 /** ความกว้างขั้นต่ำของ Accordion (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-4 */
 const ACCORDION_MIN_COL_UNITS = 4;
 /** ความกว้างขั้นต่ำของ Image Hover (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-3 */
 const IMAGE_HOVER_MIN_COL_UNITS = 3;
 /** ความกว้างขั้นต่ำของ Carousel (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-4 */
 const CAROUSEL_STRICT_MIN_COL_UNITS = 4;
-/** ความกว้างขั้นต่ำของ List Images (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-3 */
-const LIST_IMAGE_MIN_COL_UNITS = 3;
+/** ความกว้างขั้นต่ำของ List Icons / Button Group (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-3 */
+const LIST_MIN_COL_UNITS = 3;
+/** ความกว้างขั้นต่ำของ List Items (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-4 */
+const LIST_ITEMS_MIN_COL_UNITS = 4;
+/** ความกว้างขั้นต่ำของ List Images (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-4 */
+const LIST_IMAGE_MIN_COL_UNITS = 4;
+/** ความกว้างขั้นต่ำของ List Box (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-4 */
+const LIST_BOX_MIN_COL_UNITS = 4;
 /** ความกว้างขั้นต่ำของ Data Table (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-4 */
 const TABLE_MIN_COL_UNITS = 4;
 /** ความกว้างขั้นต่ำของ Post (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-5 */
 const POST_MIN_COL_UNITS = 6;
-/** ความกว้างขั้นต่ำของ Data Slider (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-4 (ค่าเริ่มต้นคอลัมน์) */
-const DATA_SLIDER_MIN_COL_UNITS = 4;
+/** ความกว้างขั้นต่ำของ Data Slider (หน่วยแถว 12 คอลัมน์) — ต้อง ≥ Col-6 */
+const DATA_SLIDER_MIN_COL_UNITS = 6;
 const TOAST_VOICE_MESSAGES = {
   carousel: "ไม่สำเร็จ กรุณาเพิ่มความกว้างของคอลัมน์",
   listImage: "ไม่สำเร็จ กรุณาเพิ่มความกว้างของคอลัมน์",
@@ -304,10 +310,17 @@ const IMAGE_HOVER_BUTTON_PANEL_DEFAULT = {
 };
 
 function isListElementMinColConstrained(el) {
-  return (
-    el?.type === "list" &&
-    (el?.listImageElement === true || el?.listIconsElement === true)
-  );
+  return el?.type === "list" || el?.type === "lstb";
+}
+
+function getListMinColUnits(el) {
+  if (el?.type === "lstb") return LIST_BOX_MIN_COL_UNITS;
+  if (el?.type !== "list") return 0;
+  if (el?.listImageElement === true) return LIST_IMAGE_MIN_COL_UNITS;
+  if (el?.listIconsElement === true || el?.buttonMultiElement === true) {
+    return LIST_MIN_COL_UNITS;
+  }
+  return LIST_ITEMS_MIN_COL_UNITS;
 }
 
 /** ความกว้างเป้าหมาย (หน่วย 12 คอลัมน์) จาก indices — spnI/nestI เป็น undefined = คอลัมน์ตรงๆ */
@@ -365,9 +378,10 @@ function resolveLayoutElementByDragData(layouts, active) {
 
 function shouldBlockListImageDrop(layouts, active, destConI, destColI, destSpnI, destMspnI) {
   const el = resolveLayoutElementByDragData(layouts, active);
-  if (!isListElementMinColConstrained(el)) return false;
+  const minUnits = getListMinColUnits(el);
+  if (minUnits <= 0) return false;
   const w = getLayoutBucketWidthUnits(layouts, destConI, destColI, destSpnI, destMspnI);
-  return !Number.isFinite(w) || w < LIST_IMAGE_MIN_COL_UNITS;
+  return !Number.isFinite(w) || w < minUnits;
 }
 
 function shouldBlockCarouselDrop(layouts, active, destConI, destColI, destSpnI, destMspnI) {
@@ -522,14 +536,9 @@ function bucketHasDataSliderMinWidthElement(elements) {
   return false;
 }
 
-function hasListImageMinWidthElementDeep(el) {
-  if (!el || typeof el !== "object") return false;
-  if (
-    el.type === "list" &&
-    (el.listImageElement === true || el.listIconsElement === true)
-  ) {
-    return true;
-  }
+function getDeepListMinColUnits(el) {
+  if (!el || typeof el !== "object") return 0;
+  let required = getListMinColUnits(el);
   const nestedBuckets = [];
   if (Array.isArray(el.tabsItems)) {
     for (const item of el.tabsItems) nestedBuckets.push(item?.elements);
@@ -547,18 +556,19 @@ function hasListImageMinWidthElementDeep(el) {
   for (const bucket of nestedBuckets) {
     if (!Array.isArray(bucket)) continue;
     for (const child of bucket) {
-      if (hasListImageMinWidthElementDeep(child)) return true;
+      required = Math.max(required, getDeepListMinColUnits(child));
     }
   }
-  return false;
+  return required;
 }
 
-function bucketHasListImageMinWidthElement(elements) {
-  if (!Array.isArray(elements)) return false;
+function getBucketListMinColUnits(elements) {
+  if (!Array.isArray(elements)) return 0;
+  let required = 0;
   for (const el of elements) {
-    if (hasListImageMinWidthElementDeep(el)) return true;
+    required = Math.max(required, getDeepListMinColUnits(el));
   }
-  return false;
+  return required;
 }
 
 function hasCarouselMinWidthElementDeep(el) {
@@ -984,10 +994,8 @@ function canColumnSizeContainImageHoverMinWidthElements(column, targetColSize) {
 function canColumnSizeContainListImageMinWidthElements(column, targetColSize) {
   const colSize = Number(targetColSize);
   if (!Number.isFinite(colSize) || colSize <= 0) return true;
-  if (
-    bucketHasListImageMinWidthElement(column?.elements) &&
-    colSize < LIST_IMAGE_MIN_COL_UNITS
-  ) {
+  const colRequired = getBucketListMinColUnits(column?.elements);
+  if (colRequired > 0 && colSize < colRequired) {
     return false;
   }
   const spans = Array.isArray(column?.spans) ? column.spans : [];
@@ -995,9 +1003,10 @@ function canColumnSizeContainListImageMinWidthElements(column, targetColSize) {
     const rawSpanSize = Number(span?.size);
     const spanSize = Number.isFinite(rawSpanSize) && rawSpanSize > 0 ? rawSpanSize : 12;
     const spanUnits = (colSize * spanSize) / 12;
+    const spanRequired = getBucketListMinColUnits(span?.elements);
     if (
-      bucketHasListImageMinWidthElement(span?.elements) &&
-      (!Number.isFinite(spanUnits) || spanUnits < LIST_IMAGE_MIN_COL_UNITS)
+      spanRequired > 0 &&
+      (!Number.isFinite(spanUnits) || spanUnits < spanRequired)
     ) {
       return false;
     }
@@ -1006,9 +1015,10 @@ function canColumnSizeContainListImageMinWidthElements(column, targetColSize) {
       const rawMiniSize = Number(mini?.size);
       const miniSize = Number.isFinite(rawMiniSize) && rawMiniSize > 0 ? rawMiniSize : 12;
       const miniUnits = (colSize * spanSize * miniSize) / 144;
+      const miniRequired = getBucketListMinColUnits(mini?.elements);
       if (
-        bucketHasListImageMinWidthElement(mini?.elements) &&
-        (!Number.isFinite(miniUnits) || miniUnits < LIST_IMAGE_MIN_COL_UNITS)
+        miniRequired > 0 &&
+        (!Number.isFinite(miniUnits) || miniUnits < miniRequired)
       ) {
         return false;
       }
@@ -1233,6 +1243,27 @@ function inlineChunkRowFlexGapClass(chunk) {
   return "gap-2";
 }
 
+/** listRow: List iTems เรียงซ้อนบนมือถือ / แบ่งคอลัมน์บนแท็บเล็ต; List iCons เลื่อนแนวนอนทุกอุปกรณ์ */
+function inlineChunkRowWrapClass(chunk, { isDragging, device }) {
+  if (isDragging) return "flex-nowrap";
+  if (chunk.kind !== "listRow") return "flex-wrap";
+  const isCompact = device !== "Desktop";
+  const isMobile = device === "Mobile";
+  const onlyListItems = (chunk.items || []).every(
+    (el) => el?.listIconsElement !== true && el?.buttonMultiElement !== true
+  );
+  if (onlyListItems && isMobile) {
+    return "min-w-0 flex-wrap";
+  }
+  if (onlyListItems && isCompact) {
+    return "min-w-0 flex-nowrap";
+  }
+  if (onlyListItems) {
+    return "flex-wrap";
+  }
+  return "min-w-0 flex-nowrap overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden";
+}
+
 function inlineListRowItemTrailingClassName(chunk, localIdx) {
   if (chunk.kind !== "listRow") return "";
   const items = chunk.items || [];
@@ -1390,6 +1421,58 @@ function findDropElementNodeByEleId(eleId) {
   // Content ยังมี component ภายในอยู่หลายตัว จึงอาจ remount หลัง target เปลี่ยน
   dropElementNodeByIdCache = null;
   return ensureDropElementNodeCache().get(id) ?? null;
+}
+
+function findTabContentNodeByIds(tabEleID, tabId) {
+  const hostId = String(tabEleID || "");
+  const slideId = String(tabId || "");
+  if (!hostId || !slideId) return null;
+  const matches = (node) =>
+    String(node?.getAttribute?.("data-tab-element-id") || "") === hostId &&
+    String(node?.getAttribute?.("data-tab-id") || "") === slideId;
+  const hostNode = findDropElementNodeByEleId(hostId);
+  const scoped = hostNode?.querySelectorAll?.('[data-drop="TAB-CONTENT"]');
+  for (const node of scoped || []) {
+    if (matches(node)) return node;
+  }
+  const all = document.querySelectorAll('[data-drop="TAB-CONTENT"]');
+  for (let i = 0; i < all.length; i += 1) {
+    if (matches(all[i])) return all[i];
+  }
+  return null;
+}
+
+function getTabContentListParent(tabContent) {
+  if (!tabContent) return null;
+  return (
+    tabContent.querySelector(":scope > [data-tab-content-list='true']") ||
+    tabContent.querySelector("[data-tab-content-list='true']") ||
+    tabContent.querySelector(":scope > .space-y-0") ||
+    tabContent.querySelector(".space-y-0") ||
+    tabContent.firstElementChild ||
+    tabContent
+  );
+}
+
+function findTabNestedListAnchor(tabContent, eleId) {
+  const id = String(eleId || "");
+  if (!tabContent || !id) return null;
+  const nodes = tabContent.querySelectorAll("[data-tab-nested-id]");
+  let nested = null;
+  for (let i = 0; i < nodes.length; i += 1) {
+    if (String(nodes[i].getAttribute("data-tab-nested-id") || "") === id) {
+      nested = nodes[i];
+      break;
+    }
+  }
+  if (!nested) return null;
+  const listParent = getTabContentListParent(tabContent);
+  if (!listParent) return nested;
+  let node = nested;
+  while (node.parentElement && node.parentElement !== listParent) {
+    node = node.parentElement;
+  }
+  return node.parentElement === listParent ? node : nested;
 }
 
 /** กึ่งกลางแนวตั้งของก้อน list ต่อเนื่องทั้งก้อน (บนแถวแรก → ล่างแถวสุดท้าย) */
@@ -2420,14 +2503,7 @@ const TabNestedElementSelectionBoundary = React.memo(
     const selected = useElementSelectionSnapshot(ids);
     const renderersRef = React.useContext(InlineSortableRenderContext);
     renderersRef?.current?.onElementSelectionBoundaryRender?.();
-    return (
-      <div className="relative w-full">
-        {children}
-        {selected && (
-          <div className="pointer-events-none absolute inset-0 rounded border border-dashed border-red-400 bg-red-300/10" />
-        )}
-      </div>
-    );
+    return typeof children === "function" ? children(selected) : children;
   }
 );
 
@@ -8097,6 +8173,7 @@ const Content = ({
         findLayoutElementById(layouts, String(tabElement.id)) ?? tabElement;
       return (
         <TabNestedElementSelectionBoundary ids={selectionIds}>
+          {(selected) => (
           <div
             key={String(tabElement.id || `tab-nested-${tabElementIndex}`)}
             data-tabs-nested-edit-id={String(tabElement.id || "")}
@@ -8112,6 +8189,7 @@ const Content = ({
           >
           <Element
             element={tabElement}
+            selected={selected}
             openOffcavanas={openOffcavanas}
             onUpdate={(data) => patchTabsNestedElementById(tabsHostId, tabId, data)}
             onDelete={() =>
@@ -8231,6 +8309,7 @@ const Content = ({
             }
           />
           </div>
+          )}
         </TabNestedElementSelectionBoundary>
       );
     },
@@ -9048,6 +9127,33 @@ const Content = ({
       }
       setPostColToastOpen(false);
       postColWarnedRef.current = false;
+    }
+    if (element?.type === "tabs") {
+      const w = getLayoutBucketWidthUnits(layouts, conI, colI, spnI, nestI);
+      if (!Number.isFinite(w) || w < TABS_MIN_COL_UNITS) {
+        if (!postColWarnedRef.current) {
+          postColWarnedRef.current = true;
+          setPostColToastOpen(true);
+        }
+        clearGhost();
+        return;
+      }
+      setPostColToastOpen(false);
+      postColWarnedRef.current = false;
+    }
+    if (isListElementMinColConstrained(element)) {
+      const w = getLayoutBucketWidthUnits(layouts, conI, colI, spnI, nestI);
+      const minUnits = getListMinColUnits(element);
+      if (!Number.isFinite(w) || w < minUnits) {
+        if (!listImageColWarnedRef.current) {
+          listImageColWarnedRef.current = true;
+          setListImageColToastOpen(true);
+        }
+        clearGhost();
+        return;
+      }
+      setListImageColToastOpen(false);
+      listImageColWarnedRef.current = false;
     }
     if (!element.id) return;
     let id,latestEleID,data
@@ -10127,6 +10233,32 @@ const Content = ({
       0,
       Math.min(target.elements.length, Number(target.boundary) || 0)
     );
+    if (dropElement?.type === "TAB-ELEMENT") {
+      const tabContent = findTabContentNodeByIds(
+        dropElement.index?.tabEleID,
+        dropElement.index?.tabId
+      );
+      const listParent = getTabContentListParent(tabContent);
+      if (listParent) {
+        if (boundary >= target.elements.length) {
+          return { parent: listParent, referenceNode: null };
+        }
+        const beforeAnchor = findTabNestedListAnchor(
+          tabContent,
+          target.elements[boundary]?.id
+        );
+        if (beforeAnchor) {
+          return {
+            parent: beforeAnchor.parentElement || listParent,
+            referenceNode: beforeAnchor,
+          };
+        }
+        return {
+          parent: listParent,
+          referenceNode: boundary <= 0 ? listParent.firstChild || null : null,
+        };
+      }
+    }
     const chunks = chunkColumnElementsForInlineRows(target.elements);
     const resolveChunkNode = (chunk) => {
       if (!chunk) return null;
@@ -10168,27 +10300,6 @@ const Content = ({
     }
 
     const index = dropElement?.index;
-    if (dropElement?.type === "TAB-ELEMENT") {
-      const hostNode = findDropElementNodeByEleId(index?.tabEleID);
-      const tabContents = hostNode?.querySelectorAll?.(
-        '[data-drop="TAB-CONTENT"]'
-      );
-      for (const node of tabContents || []) {
-        if (
-          String(node.getAttribute("data-tab-element-id") || "") ===
-            String(index.tabEleID) &&
-          String(node.getAttribute("data-tab-id") || "") === String(index.tabId)
-        ) {
-          const parent = node.firstElementChild || node;
-          return {
-            parent,
-            referenceNode: parent.firstChild || null,
-          };
-        }
-      }
-      return null;
-    }
-
     const section = layoutsRef.current[index?.conI];
     const column = section?.columns?.[index?.colI];
     const span = Number.isInteger(index?.spnI)
@@ -11181,17 +11292,15 @@ const Content = ({
       }
     }
 
-    if (
-      element?.type === "list" &&
-      (element?.listImageElement === true || element?.listIconsElement === true)
-    ) {
+    if (isListElementMinColConstrained(element)) {
       const w = readCarouselTargetWidthUnits(
         conI,
         colI,
         overSpan,
         overMiniSpan
       );
-      if (!Number.isFinite(w) || w < LIST_IMAGE_MIN_COL_UNITS) {
+      const minUnits = getListMinColUnits(element);
+      if (!Number.isFinite(w) || w < minUnits) {
         blockedDropToastRef.current = "listImage";
         return null;
       }
@@ -11831,7 +11940,11 @@ const Content = ({
               Array.isArray(dropTargetRef.current.index.colI)) &&
             Number.isInteger(dropTargetRef.current.index.eleI));
       /** ลากจาก sidebar (ELEMENT) หรือ SECTION: ถ้ายังอยู่บน Ghost อย่าคำนวณซ้ำ — กัน elementFromPoint ไปโดน element ใต้ Ghost ทำให้สลับ index กระพริบ */
-      if (stillOnGhost && hasDropTarget) {
+      if (
+        stillOnGhost &&
+        hasDropTarget &&
+        dropTargetRef.current?.type !== "TAB-ELEMENT"
+      ) {
         return;
       }
     }
@@ -15546,6 +15659,16 @@ const Content = ({
       type === "list" &&
       typeof elementData?.listRowGroupId === "string" &&
       elementData.listRowGroupId.trim() !== "";
+    const listItemsRowOnMobile =
+      inListRowGroup &&
+      elementData?.listIconsElement !== true &&
+      elementData?.buttonMultiElement !== true &&
+      device === "Mobile";
+    const listItemsRowOnTablet =
+      inListRowGroup &&
+      elementData?.listIconsElement !== true &&
+      elementData?.buttonMultiElement !== true &&
+      device === "Tablet";
     const tightSortableWidth =
       ((type === "btn" || type === "btnG") &&
         !btnFullCol &&
@@ -15658,8 +15781,19 @@ const Content = ({
           ? "hidden"
           : "visible",
       willChange: "transform",
-      touchAction: "none",
-      cursor: isDragging ? "grabbing" : "grab",
+      touchAction:
+        type === "list" &&
+        (elementData?.listIconsElement === true ||
+          elementData?.buttonMultiElement === true)
+          ? "pan-x"
+          : "none",
+      cursor: isDragging
+        ? "grabbing"
+        : type === "list" &&
+            (elementData?.listIconsElement === true ||
+              elementData?.buttonMultiElement === true)
+          ? "pointer"
+          : "grab",
       position: "relative",
       zIndex:
         isDragging
@@ -15667,9 +15801,24 @@ const Content = ({
           : builderMode === "Layout Mode" && isDraggingLayout && curIx >= 0
             ? curIx + 1
             : undefined,
-      width: tightSortableWidth ? "auto" : "100%",
+      width: tightSortableWidth
+        ? listItemsRowOnMobile
+          ? "100%"
+          : "auto"
+        : "100%",
       maxWidth: tightSortableWidth ? "100%" : undefined,
-      flexShrink: tightSortableWidth ? 0 : undefined,
+      flexShrink: tightSortableWidth
+        ? listItemsRowOnMobile || listItemsRowOnTablet
+          ? 1
+          : 0
+        : undefined,
+      ...(listItemsRowOnTablet
+        ? {
+            flexGrow: 1,
+            flexBasis: 0,
+            minWidth: 0,
+          }
+        : {}),
       ...(inFormRowGroup
         ? {
             width: formRowWidthStyle,
@@ -15704,8 +15853,15 @@ const Content = ({
             border: undefined,
             overflow: undefined,
             pointerEvents: undefined,
-            minWidth: undefined,
-            flexBasis: inFormRowGroup ? formRowWidthStyle : undefined,
+            minWidth:
+              listItemsRowOnMobile || listItemsRowOnTablet ? 0 : undefined,
+            flexBasis: listItemsRowOnMobile
+              ? "100%"
+              : listItemsRowOnTablet
+                ? 0
+                : inFormRowGroup
+                  ? formRowWidthStyle
+                  : undefined,
           }),
     };
 
@@ -16027,9 +16183,7 @@ const Content = ({
           handleDuring(e);
         }}
         onMouseDownCapture={(e) => {
-          if (builderModeRef.current !== "Editor Mode") return;
           if (e.detail < 2) return;
-          if (type === "text") return;
           const rawTarget = e.target;
           const targetEl =
             rawTarget && typeof rawTarget === "object"
@@ -16043,7 +16197,7 @@ const Content = ({
             targetEl?.closest?.("input, textarea, [contenteditable='true']")
           );
           if (isNativeEditableTarget) return;
-          /* กัน selection ที่ลากไปโดนข้อความ element อื่นในคอลัมน์เดียวกัน */
+          /* กัน browser ไฮไลท์คำตอนดับเบิลคลิกใน Builder */
           e.preventDefault();
           const selection =
             typeof window !== "undefined" &&
@@ -16110,8 +16264,8 @@ const Content = ({
           const isNativeEditableTarget = Boolean(
             targetEl?.closest?.("input, textarea, [contenteditable='true']")
           );
-          if (builderModeRef.current === "Editor Mode" && !isNativeEditableTarget) {
-            /* กัน browser selection (ลากคลุมข้อความ/รูป) ตอนดับเบิลคลิกเปิดแผง */
+          if (!isNativeEditableTarget) {
+            /* กัน browser ไฮไลท์ข้อความตอนดับเบิลคลิกเปิดแผง / สลับแท็บ */
             e.preventDefault();
             const selection =
               typeof window !== "undefined" &&
@@ -20851,6 +21005,35 @@ const Content = ({
             ...(isPreview ? { width: "100%" } : canvasSize),
             ...mobileSkeletonStyle,
           }}
+          onMouseDownCapture={(e) => {
+            if (isPreview) return;
+            if (e.detail < 2) return;
+            const rawTarget = e.target;
+            const targetEl =
+              rawTarget && typeof rawTarget === "object"
+                ? rawTarget.nodeType === 1
+                  ? rawTarget
+                  : rawTarget.nodeType === 3
+                    ? rawTarget.parentElement
+                    : null
+                : null;
+            if (
+              targetEl?.closest?.(
+                "input, textarea, [contenteditable='true']"
+              )
+            ) {
+              return;
+            }
+            e.preventDefault();
+            const selection =
+              typeof window !== "undefined" &&
+              typeof window.getSelection === "function"
+                ? window.getSelection()
+                : null;
+            if (selection && selection.rangeCount > 0) {
+              selection.removeAllRanges();
+            }
+          }}
         >
           <CanvasLayoutModeFlag />
             {layouts.length > 0 ? (
@@ -20957,6 +21140,9 @@ const Content = ({
                     requiresDragTargetRender && targetRenderIndex === I;
                   const forceDragSourceRender =
                     elementCanvasDragRenderActive && sourceRenderIndex === I;
+                  const cacheDeviceMatches =
+                    cachedSection?.device === device &&
+                    cachedSection?.isPreview === isPreview;
                   if (
                     canReuseSectionCache &&
                     scopedLayoutCacheActive &&
@@ -20965,6 +21151,7 @@ const Content = ({
                     !forceDragSourceRender &&
                     cachedSection?.renderIndex !== I &&
                     cacheLayoutMatches &&
+                    cacheDeviceMatches &&
                     React.isValidElement(cachedSection?.element)
                   ) {
                     cacheStats.cacheHits += 1;
@@ -20975,6 +21162,8 @@ const Content = ({
                     canvasSectionRenderCacheRef.current.set(cacheKey, {
                       layouts: sectionLayoutRefs,
                       renderIndex: I,
+                      device,
+                      isPreview,
                       element: refreshedElement,
                     });
                     return refreshedElement;
@@ -20985,7 +21174,8 @@ const Content = ({
                     !forceDragSourceRender &&
                     sidebarPreviousTargetIndex !== I &&
                     cachedSection?.renderIndex === I &&
-                    cacheLayoutMatches
+                    cacheLayoutMatches &&
+                    cacheDeviceMatches
                   ) {
                     cacheStats.cacheHits += 1;
                     return cachedSection.element;
@@ -21206,7 +21396,7 @@ const Content = ({
                                                       ).map((chunk) => {
                                                         if (chunk.kind === "btnRow" || chunk.kind === "iconRow" || chunk.kind === "counterRow" || chunk.kind === "listRow" || chunk.kind === "formRow") {
                                                           return (
-                                                            <div key={`${chunk.kind}-${chunk.items[0].id}`} dir="ltr" className={`mb-2 flex w-full flex-row ${isDraggingLayout ? "flex-nowrap" : "flex-wrap"} ${chunk.kind === "formRow" ? "items-start" : "items-center"} ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`} style={{ justifyContent: inlineRowJustifyFromChunk(chunk) }}>
+                                                            <div key={`${chunk.kind}-${chunk.items[0].id}`} dir="ltr" className={`mb-2 flex w-full min-w-0 flex-row ${inlineChunkRowWrapClass(chunk, { isDragging: isDraggingLayout, device })} ${chunk.kind === "formRow" ? "items-start" : "items-center"} ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`} style={{ justifyContent: inlineRowJustifyFromChunk(chunk) }}>
                                                               {chunk.items.map((ele, localIdx) => {
                                                                 const eleI = chunk.startIndex + localIdx;
                                                                 return (
@@ -21702,7 +21892,7 @@ const Content = ({
                                                       <div
                                                         key={`${chunk.kind}-${chunk.items[0].id}`}
                                                         dir="ltr"
-                                                        className={`mb-2 flex w-full flex-row ${isDraggingLayout ? "flex-nowrap" : "flex-wrap"} ${chunk.kind === "formRow" ? "items-start" : "items-center"} ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`}
+                                                        className={`mb-2 flex w-full min-w-0 flex-row ${inlineChunkRowWrapClass(chunk, { isDragging: isDraggingLayout, device })} ${chunk.kind === "formRow" ? "items-start" : "items-center"} ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`}
                                                         onDragOver={(e) => {
                                                           if (
                                                             chunk.kind ===
@@ -22142,7 +22332,7 @@ const Content = ({
                                               <div
                                                 key={`${chunk.kind}-${chunk.items[0].id}`}
                                                 dir="ltr"
-                                                className={`mb-2 flex w-full flex-row ${isDraggingLayout ? "flex-nowrap" : "flex-wrap"} ${chunk.kind === "formRow" ? "items-start" : "items-center"} ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`}
+                                                className={`mb-2 flex w-full min-w-0 flex-row ${inlineChunkRowWrapClass(chunk, { isDragging: isDraggingLayout, device })} ${chunk.kind === "formRow" ? "items-start" : "items-center"} ${inlineChunkRowFlexGapClass(chunk)} last:mb-0`}
                                                 onDragOver={(e) => {
                                                   if (
                                                     chunk.kind === "listRow"
@@ -22573,6 +22763,8 @@ const Content = ({
                     canvasSectionRenderCacheRef.current.set(cacheKey, {
                       layouts: sectionLayoutRefs,
                       renderIndex: I,
+                      device,
+                      isPreview,
                       element: profiledSection,
                     });
                   }

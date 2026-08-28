@@ -27,6 +27,8 @@ export const TABLE_ELEMENT_DEFAULTS = {
   tableZebraBg: "#f8fafc",
   tableZebraBgOpacity: 255,
   tableHeaderBold: true,
+  /** ตรึงคอลัมน์แรก — เลื่อนตารางแล้วคอลัมน์แรกอยู่กับที่ */
+  tableStickyFirstColumn: false,
   tableFontSize: 14,
   tableCellPaddingX: 24,
   tableCellPaddingY: 10,
@@ -101,6 +103,7 @@ export function mergeTableElement(element) {
     tableOuterBorder: merged.tableOuterBorder === true,
     tableZebra: merged.tableZebra !== false,
     tableHeaderBold: merged.tableHeaderBold !== false,
+    tableStickyFirstColumn: merged.tableStickyFirstColumn === true,
     tableFontSize: Number.isFinite(tableFontSize) ? Math.max(11, Math.min(26, tableFontSize)) : 14,
     tableCellPaddingX: 24,
     tableCellPaddingY: Number.isFinite(tableCellPaddingY)

@@ -1744,7 +1744,6 @@ const Builder = ()=>{
       if (
         (offcanvas !== "Image" &&
           offcanvas !== "Image Hover" &&
-          offcanvas !== "Image Overlay" &&
           offcanvas !== "Lightbox" &&
           offcanvas !== "Video" &&
           offcanvas !== "Banner") ||
@@ -1778,6 +1777,21 @@ const Builder = ()=>{
       setElementData,
     ]);
 
+    /** Overlay: sync เฉพาะ src — ห้ามทับค่า preview ตอนเปิด panel ที่ยังไม่ commit */
+    useEffect(() => {
+      if (offcanvas !== "Overlay" || !elementData?.id) return;
+      const found = findLayoutElementById(layouts, elementData.id);
+      if (!found) return;
+      setElementData((prev) => {
+        if (!prev || String(prev.id) !== String(found.id)) return prev;
+        const foundSrc = typeof found.src === "string" ? found.src : "";
+        const prevSrc = typeof prev.src === "string" ? prev.src : "";
+        if (foundSrc === prevSrc) return prev;
+        if (!foundSrc && prevSrc) return prev;
+        return { ...prev, src: found.src };
+      });
+    }, [layouts, offcanvas, elementData?.id, setElementData]);
+
     const pickCarouselOffcanvasSync = (e) => ({
       id: e.id,
       type: e.type,
@@ -1809,6 +1823,7 @@ const Builder = ()=>{
       dataSliderPerViewTablet: e.dataSliderPerViewTablet,
       dataSliderPerViewMobile: e.dataSliderPerViewMobile,
       dataSliderGap: e.dataSliderGap,
+      dataSliderContentPadX: e.dataSliderContentPadX,
       dataSliderNavShape: e.dataSliderNavShape,
       dataSliderNavShowOnWebsite: e.dataSliderNavShowOnWebsite,
       dataSliderNavColor: e.dataSliderNavColor,
@@ -1834,6 +1849,7 @@ const Builder = ()=>{
       catagoriesPerViewMobile: e.catagoriesPerViewMobile,
       catagoriesGap: e.catagoriesGap,
       catagoriesItemGap: e.catagoriesItemGap,
+      catagoriesContentPadX: e.catagoriesContentPadX,
       catagoriesButtonFill: e.catagoriesButtonFill,
       catagoriesButtonFillOpacity: e.catagoriesButtonFillOpacity,
       catagoriesButtonBorderColor: e.catagoriesButtonBorderColor,
@@ -2226,6 +2242,7 @@ const Builder = ()=>{
       tableZebra: e.tableZebra,
       tableZebraBg: e.tableZebraBg,
       tableHeaderBold: e.tableHeaderBold,
+      tableStickyFirstColumn: e.tableStickyFirstColumn,
       tableFontSize: e.tableFontSize,
       tableCellPaddingX: e.tableCellPaddingX,
       tableCellPaddingY: e.tableCellPaddingY,

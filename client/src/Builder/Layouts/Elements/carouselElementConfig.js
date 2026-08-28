@@ -147,7 +147,7 @@ export function mergeCarouselElement(raw) {
       2,
       Math.max(1, Number(base.carouselPerViewMobile) || 1)
     ),
-    carouselGap: Math.max(0, Number(base.carouselGap) || 0),
+    carouselGap: Math.max(8, Number(base.carouselGap) || 8),
     carouselAutoplayDelayMs: Math.max(
       2000,
       Number(base.carouselAutoplayDelayMs) || 4500

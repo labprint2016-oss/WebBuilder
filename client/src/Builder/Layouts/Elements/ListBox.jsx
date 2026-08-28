@@ -24,6 +24,7 @@ import {
   mergeListBoxElement,
 } from "./listBoxElementConfig";
 import { usePanelPreview } from "../../panelPreviewStore";
+import { useBuilderContextStore } from "../../store/builderContextStore";
 
 function perViewForDevice(device, s) {
   if (device === "Mobile") return s.listBoxPerViewMobile;
@@ -140,7 +141,7 @@ function renderListBoxFramedIcon({
         )}px`;
   const centerFillInset = borderWidthPx / 2;
 
-  const wrapClass = "flex shrink-0 items-center justify-center";
+  const wrapClass = "flex max-w-full shrink-0 items-center justify-center";
 
   if (!hasBorder) {
     return (
@@ -259,8 +260,9 @@ const ListBox = ({
   elementData,
   selected,
   hover,
-  builderMode,
-  device = "Desktop",
+  builderMode: builderModeProp,
+  device: deviceProp = "Desktop",
+  isSiteRuntime = false,
   theme,
   onListBoxEditText,
   onListBoxEditIcon,
@@ -268,6 +270,16 @@ const ListBox = ({
   animationForElement = "transition-all duration-200 ease-in-out will-change-transform",
 }) => {
   const panelPreview = usePanelPreview("lstb", elementData?.id);
+  const storeDevice = useBuilderContextStore((state) => state.device);
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const device = isSiteRuntime
+    ? deviceProp
+    : storeDevice || deviceProp || "Desktop";
+  const builderMode = isSiteRuntime
+    ? builderModeProp
+    : storeBuilderMode || builderModeProp;
+  const isCompactDevice = device !== "Desktop";
+  const isMobile = device === "Mobile";
   const liveElementData = panelPreview
     ? { ...elementData, ...panelPreview }
     : elementData;
@@ -275,8 +287,20 @@ const ListBox = ({
   const items = s.listBoxItems || [];
   const pv = Math.max(1, perViewForDevice(device, s));
   const variant = s.listBoxVariant || "icon_text";
-  const iconBgW = Math.max(20, Math.min(160, Number(s.listBoxIconBgWidth) || 56));
-  const iconFontPx = Math.max(12, Math.min(96, Number(s.listBoxIconSize) || 26));
+  const iconBgW = Math.max(
+    20,
+    Math.min(
+      isMobile ? 72 : isCompactDevice ? 88 : 160,
+      Number(s.listBoxIconBgWidth) || 56
+    )
+  );
+  const iconFontPx = Math.max(
+    12,
+    Math.min(
+      isMobile ? 36 : isCompactDevice ? 48 : 96,
+      Number(s.listBoxIconSize) || 26
+    )
+  );
   const iconFrameOn = s.listBoxIconFrameEnabled !== false;
   const iconShapeRounded = (s.listBoxIconShape || "circle") === "rounded";
   const iconCornerPx = Math.max(
@@ -317,7 +341,11 @@ const ListBox = ({
 
   const gridTemplateStyle = {
     gridTemplateColumns: `repeat(${pv}, minmax(0, 1fr))`,
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
   };
+  const cellPadPx = variant === "text" ? undefined : isMobile ? 8 : isCompactDevice ? 10 : 12;
 
   const renderListCell = (it, i) => {
     const row = Math.floor(i / pv);
@@ -362,13 +390,17 @@ const ListBox = ({
     const cellMin =
       variant === "image" || variant === "image_text" || variant === "text"
         ? "min-h-0"
-        : "min-h-[132px]";
+        : isMobile
+          ? "min-h-0"
+          : isCompactDevice
+            ? "min-h-[96px]"
+            : "min-h-[132px]";
     const cellLayoutClass =
       variant === "text"
-        ? "self-start justify-start px-4 py-3"
+        ? `self-start justify-start ${isCompactDevice ? "px-2 py-2" : "px-4 py-3"}`
         : "justify-center";
 
-    const paddingStyle = variant === "text" ? {} : { padding: "12px" };
+    const paddingStyle = variant === "text" ? {} : { padding: `${cellPadPx}px` };
     const cellSegmentStyle = {};
     if (divStyle !== "none") {
       if (hasRightNeighbor) {
@@ -443,7 +475,7 @@ const ListBox = ({
           );
           return (
             <div
-              className="flex shrink-0 flex-col items-center"
+              className="flex max-w-full shrink-0 flex-col items-center"
               data-listbox-part="icon"
               data-listbox-item-index={i}
               style={
@@ -504,7 +536,7 @@ const ListBox = ({
               draggable={false}
             />
           ) : (
-            <div className="flex h-full min-h-[80px] w-full items-center justify-center">
+            <div className={`flex h-full w-full items-center justify-center ${isMobile ? "min-h-[56px]" : "min-h-[80px]"}`}>
               <ImageIcon
                 className="h-9 w-9 text-slate-400 dark:text-white/35"
                 strokeWidth={1.5}
@@ -599,9 +631,11 @@ const ListBox = ({
         {showTextBlock ? (
           <>
             <div
-              className={`w-full max-w-full text-center uppercase text-black dark:text-white ${
-                hasTitleRich ? "text-[14px] leading-[21px]" : "text-[13px] font-semibold tracking-[0.2em]"
-              } ${showIcon || showImage ? "mt-4" : ""}`}
+              className={`w-full min-w-0 max-w-full text-center uppercase text-black dark:text-white [overflow-wrap:anywhere] ${
+                hasTitleRich
+                  ? "text-[14px] leading-[21px]"
+                  : `text-[13px] font-semibold ${isCompactDevice ? "tracking-[0.08em]" : "tracking-[0.2em]"}`
+              } ${showIcon || showImage ? (isCompactDevice ? "mt-2" : "mt-4") : ""}`}
               style={
                 isEditorMode && onListBoxEditText ? { cursor: "pointer" } : undefined
               }
@@ -636,7 +670,7 @@ const ListBox = ({
             </div>
             {showSub ? (
               <div
-                className="mt-1 max-w-full truncate px-1 text-center text-[11px] text-slate-500 dark:text-white/55"
+                className="mt-1 min-w-0 max-w-full px-1 text-center text-[11px] text-slate-500 dark:text-white/55 [overflow-wrap:anywhere]"
                 style={
                   isEditorMode && onListBoxEditText ? { cursor: "pointer" } : undefined
                 }
@@ -663,7 +697,7 @@ const ListBox = ({
 
   return (
     <div
-      className={`w-full ${animationForElement} ${selectedCanvasClass}`.trim()}
+      className={`w-full min-w-0 max-w-full ${animationForElement} ${selectedCanvasClass}`.trim()}
       style={{
         marginTop: s.listBoxMarginTop,
         marginBottom: s.listBoxMarginBottom,
@@ -671,40 +705,48 @@ const ListBox = ({
       onMouseEnter={() => hover?.({ id: elementData.id })}
       onMouseLeave={() => hover?.(false)}
     >
-      <div className={useLayoutSelectionFrame ? "relative p-2" : ""}>
+      <div
+        className={
+          useLayoutSelectionFrame
+            ? "relative min-w-0 p-2"
+            : "min-w-0"
+        }
+      >
         <div
           className={
             useLayoutSelectionFrame
-              ? "origin-center scale-[0.85] transform-gpu transition-transform duration-150"
-              : ""
+              ? `min-w-0 origin-center transform-gpu transition-transform duration-150 ${
+                  isCompactDevice ? "" : "scale-[0.85]"
+                }`
+              : "min-w-0"
           }
         >
           {customLines ? (
             <div
-              className="box-border overflow-hidden rounded-md"
+              className="box-border min-w-0 overflow-hidden rounded-md"
               style={{
                 borderWidth: 1,
                 borderStyle: divStyle,
                 borderColor: dividerLineColor,
               }}
             >
-              <div className="grid w-full" style={gridTemplateStyle}>
+              <div className="grid w-full min-w-0" style={gridTemplateStyle}>
                 {items.map((it, i) => renderListCell(it, i))}
               </div>
             </div>
           ) : (
-            <div className="grid w-full" style={gridTemplateStyle}>
+            <div className="grid w-full min-w-0" style={gridTemplateStyle}>
               {items.map((it, i) => renderListCell(it, i))}
             </div>
           )}
         </div>
         {useLayoutSelectionFrame && (
           <>
-            <div className="pointer-events-none absolute left-[-7px] right-[-7px] top-[1px] bottom-[1px] rounded-md bg-red-300/10" />
-            <span className="pointer-events-none absolute left-[-4px] top-[2px] h-2.5 w-2.5 border-l-2 border-t-2 border-red-400" />
-            <span className="pointer-events-none absolute right-[-6px] top-[2px] h-2.5 w-2.5 border-r-2 border-t-2 border-red-400" />
-            <span className="pointer-events-none absolute bottom-[2px] left-[-4px] h-2.5 w-2.5 border-b-2 border-l-2 border-red-400" />
-            <span className="pointer-events-none absolute bottom-[2px] right-[-6px] h-2.5 w-2.5 border-b-2 border-r-2 border-red-400" />
+            <div className={`pointer-events-none absolute top-[1px] bottom-[1px] rounded-md bg-red-300/10 ${isCompactDevice ? "left-[-4px] right-[-4px]" : "left-[-7px] right-[-7px]"}`} />
+            <span className={`pointer-events-none absolute top-[2px] h-2.5 w-2.5 border-l-2 border-t-2 border-red-400 ${isCompactDevice ? "left-[-2px]" : "left-[-4px]"}`} />
+            <span className={`pointer-events-none absolute top-[2px] h-2.5 w-2.5 border-r-2 border-t-2 border-red-400 ${isCompactDevice ? "right-[-3px]" : "right-[-6px]"}`} />
+            <span className={`pointer-events-none absolute bottom-[2px] h-2.5 w-2.5 border-b-2 border-l-2 border-red-400 ${isCompactDevice ? "left-[-2px]" : "left-[-4px]"}`} />
+            <span className={`pointer-events-none absolute bottom-[2px] h-2.5 w-2.5 border-b-2 border-r-2 border-red-400 ${isCompactDevice ? "right-[-3px]" : "right-[-6px]"}`} />
           </>
         )}
       </div>

@@ -16,6 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { mergeCatagoriesElement } from "./catagoriesElementConfig";
 import { usePanelPreview } from "../../panelPreviewStore";
+import { useBuilderContextStore } from "../../store/builderContextStore";
 
 const catagoriesButtonStripScrollMemory = new Map();
 
@@ -232,8 +233,9 @@ const Catagories = ({
   elementData,
   selected,
   animationForElement,
-  builderMode,
-  device = "Desktop",
+  builderMode: builderModeProp,
+  device: deviceProp = "Desktop",
+  isSiteRuntime = false,
   onTabElementEdit,
   renderTabElement,
   onTabElementSelect,
@@ -244,6 +246,14 @@ const Catagories = ({
   theme,
 }) => {
   const panelPreview = usePanelPreview("ctg", elementData?.id);
+  const storeDevice = useBuilderContextStore((state) => state.device);
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const device = isSiteRuntime
+    ? deviceProp
+    : storeDevice || deviceProp || "Desktop";
+  const builderMode = isSiteRuntime
+    ? builderModeProp
+    : storeBuilderMode || builderModeProp;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
@@ -277,9 +287,19 @@ const Catagories = ({
       : device === "Tablet"
         ? data?.catagoriesPerViewTablet
         : data?.catagoriesPerViewDesktop;
-  const perView = Math.max(1, Number(perViewRaw) || 1);
+  const perView = Math.max(
+    1,
+    Math.min(items.length || 1, Number(perViewRaw) || 1)
+  );
+  const compactCategoryStrip = device !== "Desktop";
   const gap = Math.max(0, Number(data?.catagoriesGap) || 0);
-  const itemGridGap = Math.max(0, Number(data?.catagoriesItemGap) || 12);
+  const contentPadX = (() => {
+    const raw = Number(data?.catagoriesContentPadX);
+    if (Number.isFinite(raw)) return Math.max(8, Math.min(48, raw));
+    const legacy = Number(data?.catagoriesItemGap);
+    if (Number.isFinite(legacy)) return Math.max(8, Math.min(48, legacy));
+    return 12;
+  })();
   const marginTop = Math.max(0, Math.min(80, Number(data?.catagoriesMarginTop) || 8));
   const marginBottom = Math.max(
     0,
@@ -326,7 +346,25 @@ const Catagories = ({
     if (Number.isFinite(saved)) {
       node.scrollLeft = saved;
     }
-  }, [scrollMemoryKey, items.length]);
+  }, [scrollMemoryKey, items.length, tabs.length, compactCategoryStrip]);
+
+  useEffect(() => {
+    const node = buttonStripRef.current;
+    if (!node) return;
+    const activeBtn = node.querySelector("[data-ctg-tab-active='true']");
+    if (!activeBtn || typeof activeBtn.scrollIntoView !== "function") return;
+    const stripRect = node.getBoundingClientRect();
+    const btnRect = activeBtn.getBoundingClientRect();
+    const overflowLeft = btnRect.left < stripRect.left + 8;
+    const overflowRight = btnRect.right > stripRect.right - 8;
+    if (overflowLeft || overflowRight) {
+      activeBtn.scrollIntoView({
+        inline: "center",
+        block: "nearest",
+        behavior: "smooth",
+      });
+    }
+  }, [activeCategoryId, compactCategoryStrip]);
 
   useEffect(() => {
     const node = buttonStripRef.current;
@@ -338,11 +376,11 @@ const Catagories = ({
 
   return (
     <div
-      className={`w-full ${animationForElement || ""} ${
+      className={`w-full min-w-0 ${animationForElement || ""} ${
         selected && !useLayoutSelectionFrame
           ? "rounded-md border border-dashed border-red-400 bg-red-300/10 p-2"
           : useLayoutSelectionFrame
-            ? "relative rounded-md p-4"
+            ? `relative rounded-md ${compactCategoryStrip ? "p-3" : "p-4"}`
           : ""
       }`}
       style={{ marginTop, marginBottom }}
@@ -355,9 +393,10 @@ const Catagories = ({
               : ""
           }
         >
+          <div className="relative min-w-0">
           <div
             ref={buttonStripRef}
-            className="w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="w-full min-w-0 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             onScroll={(e) => {
               catagoriesButtonStripScrollMemory.set(
                 scrollMemoryKey,
@@ -365,7 +404,10 @@ const Catagories = ({
               );
             }}
           >
-            <div className="flex w-max min-w-full items-center" style={{ gap }}>
+            <div
+              className="flex w-max min-w-full flex-nowrap items-center"
+              style={{ gap }}
+            >
               {tabs.map((catTab, tabIndex) => {
                 const isActive = String(catTab?.id) === String(activeCategoryId);
                 const sourceItem = items[tabIndex];
@@ -426,6 +468,7 @@ const Catagories = ({
                   <button
                     key={String(catTab?.id || `ctg-tab-btn-${tabIndex}`)}
                     type="button"
+                    data-ctg-tab-active={isActive ? "true" : undefined}
                     className="inline-flex w-auto shrink-0 items-center justify-center text-center transition-opacity hover:opacity-90"
                     style={{
                       backgroundColor: fillColor,
@@ -459,11 +502,12 @@ const Catagories = ({
               })}
             </div>
           </div>
+          </div>
 
-          <div className="mt-3">
+          <div className="mt-3 min-w-0">
             <div
-              className="grid w-full"
-              style={{ gap: itemGridGap, gridTemplateColumns: `repeat(${Math.max(1, perView)}, minmax(0, 1fr))` }}
+              className="grid w-full min-w-0"
+              style={{ gap: 0, gridTemplateColumns: `repeat(${Math.max(1, perView)}, minmax(0, 1fr))` }}
             >
               {items.map((item, idx) => {
               const hasElements = Array.isArray(item?.elements) && item.elements.length > 0;
@@ -521,6 +565,11 @@ const Catagories = ({
                 // no-op: keep handler for parity
               };
 
+                const col = idx % Math.max(1, perView);
+                const row = Math.floor(idx / Math.max(1, perView));
+                const hideSharedLeftGuide = perView > 1 && col > 0;
+                const hideSharedTopGuide = row > 0;
+
                 return (
                   <div key={String(item?.id || `ctg-${idx}`)} className="min-w-0">
                   {(() => {
@@ -533,9 +582,17 @@ const Catagories = ({
                     const editorClass = "border border-transparent bg-transparent";
                       return (
                     <div
-                      className={`relative min-h-[72px] w-full px-3 py-2 text-[12px] transition-colors ${
+                      className={`relative min-h-[72px] w-full min-w-0 py-2 text-[12px] transition-colors ${
                         showAreaFrame ? areaClass : editorClass
+                      } ${
+                        showAreaFrame && hideSharedLeftGuide ? "border-l-0" : ""
+                      } ${
+                        showAreaFrame && hideSharedTopGuide ? "border-t-0" : ""
                       }`}
+                      style={{
+                        paddingLeft: contentPadX,
+                        paddingRight: contentPadX,
+                      }}
                       data-drop="TAB-CONTENT"
                       data-tab-element-id={String(elementData?.id || "")}
                       data-tab-id={String(item?.id || "")}
@@ -571,7 +628,7 @@ const Catagories = ({
                           onDragCancel={handleDragCancel}
                         >
                           <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-                            <div className="space-y-0">
+                            <div className="space-y-0" data-tab-content-list="true">
                               {chunkCatagoriesElementsForInlineRows(item?.elements || []).map(
                                 (chunk) => {
                                   if (chunk.kind === "btnRow") {
@@ -1600,7 +1657,10 @@ const Catagories = ({
                           </SortableContext>
                         </DndContext>
                       ) : (
-                        <div className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center">
+                        <div
+                          className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center"
+                          data-tab-content-list="true"
+                        >
                           {ghost?.ghostEl ? (
                             ghost.ghostEl
                           ) : ghost ? null : builderMode === "Layout Mode" ? (

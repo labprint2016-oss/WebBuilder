@@ -42,6 +42,7 @@ import {
   patchImageCornerRadius,
   applyImageCanvasPreview,
   applyImageBadgePreview,
+  applyOverlayContentOffsetPreview,
 } from "../Layouts/Elements/imageAspectConfig";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
@@ -579,12 +580,19 @@ const ImageElementOffcanvas = ({
   const scheduleLayoutSync = useCallback(
     (next, changedFields = []) => {
       const base = elementRef.current || {};
+      const liveSrc = dataRef.current?.src;
+      const nextSrc = next?.src;
       const merged = {
         ...base,
         ...next,
         type: next?.type ?? base?.type ?? layoutElementType,
         id: next?.id != null ? next.id : base?.id,
-        src: next?.src != null && next.src !== "" ? next.src : base?.src,
+        src:
+          nextSrc != null && nextSrc !== ""
+            ? nextSrc
+            : liveSrc != null && liveSrc !== ""
+              ? liveSrc
+              : base?.src,
       };
       const priorFields = pendingLayoutRef.current?.changedFields || [];
       pendingLayoutRef.current = {
@@ -702,6 +710,7 @@ const ImageElementOffcanvas = ({
   );
 
   const cornerRadiusLabelRef = useRef(null);
+  const overlayOffsetLabelRef = useRef(null);
   const radiusRangeRef = useRef(null);
   const panelPreviewImgRef = useRef(null);
 
@@ -709,15 +718,32 @@ const ImageElementOffcanvas = ({
   useEffect(() => {
     if (!element?.id) return;
     if (hasActiveSlider()) return;
+    if (String(dataRef.current?.id ?? "") !== String(element.id)) {
+      dataRef.current = element;
+      setData(element);
+      return;
+    }
     if (lodash.isEqual(dataRef.current, element)) {
       dataRef.current = element;
+      return;
+    }
+    // Overlay parent elementData syncs only src — do not clobber extras/offset.
+    if (layoutElementType === "imgo") {
+      const foundSrc = typeof element.src === "string" ? element.src : "";
+      const prevSrc =
+        typeof dataRef.current?.src === "string" ? dataRef.current.src : "";
+      if (foundSrc && foundSrc !== prevSrc) {
+        const next = { ...dataRef.current, src: element.src };
+        dataRef.current = next;
+        setData(next);
+      }
       return;
     }
     // Always sync latest element payload from parent so toggle-off state
     // (e.g. imageHoverExtras: []) is not kept stale in local offcanvas state.
     dataRef.current = element;
     setData(element);
-  }, [element]);
+  }, [element, layoutElementType]);
 
   useEffect(() => {
     setBadgeColorMode(BADGE_COLOR_MODES[0].value);
@@ -733,11 +759,10 @@ const ImageElementOffcanvas = ({
   };
 
   const handleSrcChange = (src) => {
-    setData((prev) => {
-      const next = { ...prev, src };
-      scheduleLayoutSync(next, ["src"]);
-      return next;
-    });
+    const next = { ...dataRef.current, src };
+    dataRef.current = next;
+    setData(next);
+    scheduleLayoutSync(next, ["src"]);
   };
 
   const handleAspectRatioChange = (aspectRatio) => {
@@ -952,6 +977,23 @@ const ImageElementOffcanvas = ({
     return next;
   };
 
+  const handleOverlayOffsetChange = (value) => {
+    const n = Math.max(0, Math.min(100, Number(value) || 0));
+    if (overlayOffsetLabelRef.current) {
+      overlayOffsetLabelRef.current.textContent = String(Math.round(n));
+    }
+    const next = { ...dataRef.current, imageHoverContentOffsetY: n };
+    dataRef.current = next;
+    sliderChangedFieldsRef.current = Array.from(
+      new Set([...sliderChangedFieldsRef.current, "imageHoverContentOffsetY"])
+    );
+    updateSlider(() => next, { setData: false, publish: false });
+    applyOverlayContentOffsetPreview(
+      next?.id ?? elementRef.current?.id,
+      n
+    );
+  };
+
   const handleLinkPatch = (patch) => {
     const changedFields = Object.keys(patch || {});
     const sliderOnly =
@@ -959,8 +1001,7 @@ const ImageElementOffcanvas = ({
       changedFields.every(
         (key) =>
           key === "imageMarginTop" ||
-          key === "imageMarginBottom" ||
-          key === "imageHoverContentOffsetY"
+          key === "imageMarginBottom"
       );
     if (sliderOnly) {
       patchSlider(patch, changedFields);
@@ -1177,6 +1218,7 @@ const ImageElementOffcanvas = ({
         }
 
         const n = { ...prev, imageHoverExtras: next };
+        dataRef.current = n;
         scheduleLayoutSync(n, ["imageHoverExtras"]);
         return n;
       }
@@ -1202,6 +1244,7 @@ const ImageElementOffcanvas = ({
       }
 
       const n = { ...prev, imageHoverExtras: next };
+      dataRef.current = n;
       scheduleLayoutSync(n, ["imageHoverExtras"]);
       return n;
     });
@@ -2101,21 +2144,21 @@ const ImageElementOffcanvas = ({
                       label="เลื่อนขึ้น - ลง"
                       mb={1}
                       value={imageHoverContentOffsetY}
+                      valueRef={overlayOffsetLabelRef}
                       textColor={textColor}
                     />
                     <div className="w-full dash-card rounded-md bg-white px-[5px] pb-[5px] pt-[2px] dark:bg-zinc-800">
-                      <Range
+                      <PanelRange
                         min={0}
                         max={100}
                         value={imageHoverContentOffsetY}
                         step={1}
+                        uncontrolled
                         handleChange={(e) =>
-                          handleLinkPatch({
-                            imageHoverContentOffsetY: Number(e.target.value) || 0,
-                          })
+                          handleOverlayOffsetChange(Number(e.target.value) || 0)
                         }
-                        pos={imageHoverContentOffsetY}
-                        textColor={textColor}
+                        onCommit={(_, reason) => commitSlider(reason)}
+                        color={textColor}
                       />
                     </div>
                   </Box>

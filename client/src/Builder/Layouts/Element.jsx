@@ -140,8 +140,8 @@ const Element = ({
 
     let wrapClass = isImageLike
       ? type === "ctn"
-        ? "relative block w-full self-start"
-        : "relative block w-full"
+        ? "relative block w-full min-w-0 max-w-full self-start"
+        : "relative block w-full min-w-0 max-w-full"
       : "relative inline-block w-full";
     if (isBtnOrG) {
       if (btnFullCol) {
@@ -201,6 +201,8 @@ const Element = ({
           animationForElement={animationForElement}
           theme={theme}
           builderMode={builderMode}
+          device={device}
+          isSiteRuntime={isSiteRuntime}
           isPanelOpen={isPanelOpen}
           isHoverLocked={isHoverLocked}
           prioritizeLoad={prioritizeImageLoad}
@@ -298,6 +300,8 @@ const Element = ({
               theme={theme}
               onEditIcon={onListEditIcon}
               onEditText={onListEditText}
+              device={device}
+              isSiteRuntime={isSiteRuntime}
             />
           )}
           {type === "crl" && (
@@ -307,6 +311,7 @@ const Element = ({
               selected={selected}
               hover={hover}
               device={device}
+              isSiteRuntime={isSiteRuntime}
               allowAutoplay={false}
               theme={theme}
               animationForElement={animationForElement}
@@ -320,6 +325,7 @@ const Element = ({
               selected={selected}
               hover={hover}
               device={device}
+              isSiteRuntime={isSiteRuntime}
               theme={theme}
               onListBoxEditText={onListBoxEditText}
               onListBoxEditIcon={onListBoxEditIcon}
@@ -354,6 +360,8 @@ const Element = ({
               onUpdate={onUpdate}
               onHostDoubleClick={onDataSliderDoubleClick}
               theme={theme}
+              device={device}
+              isSiteRuntime={isSiteRuntime}
             />
           )}
           {type === "dts" && (
@@ -389,6 +397,7 @@ const Element = ({
               tabGhostData={tabGhostData}
               tabSelectedElId={tabSelectedElId}
               theme={theme}
+              isSiteRuntime={isSiteRuntime}
             />
           )}
           {type === "acc" && (
@@ -397,6 +406,8 @@ const Element = ({
               selected={selected}
               animationForElement={animationForElement}
               builderMode={builderMode}
+              device={device}
+              isSiteRuntime={isSiteRuntime}
               onTabElementEdit={onTabElementEdit}
               renderTabElement={renderTabElement}
               onTabElementSelect={onTabElementSelect}
@@ -413,6 +424,8 @@ const Element = ({
               selected={selected}
               animationForElement={animationForElement}
               builderMode={builderMode}
+              device={device}
+              isSiteRuntime={isSiteRuntime}
               prioritizeImageLoad={prioritizeImageLoad}
               onTabElementEdit={onTabElementEdit}
               renderTabElement={renderTabElement}
@@ -430,6 +443,8 @@ const Element = ({
               hover={hover}
               animationForElement={animationForElement}
               builderMode={builderMode}
+              device={device}
+              isSiteRuntime={isSiteRuntime}
               onUpdate={onUpdate}
               theme={theme}
             />
@@ -441,6 +456,8 @@ const Element = ({
               hover={hover}
               animationForElement={animationForElement}
               builderMode={builderMode}
+              device={device}
+              isSiteRuntime={isSiteRuntime}
               theme={theme}
             />
           )}

@@ -743,152 +743,6 @@ const CarouselElementOffcanvas = ({
           <Box>
             <div className="mb-3 mt-1 flex items-center gap-2">
               <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
-                รูปแบบไอเทม
-              </span>
-              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
-            </div>
-            <ButtonGroup
-              fullWidth
-              variant="outlined"
-              disableElevation
-              color="inherit"
-              aria-label="รูปแบบไอเทม"
-              sx={sectionLayoutGroupRootSx}
-            >
-              {CAROUSEL_VARIANT_OPTIONS.map(({ value, label }) => {
-                const selected = draft.carouselVariant === value;
-                return (
-                  <Button
-                    key={value}
-                    color="inherit"
-                    sx={{
-                      ...sectionLayoutGroupButtonSx(selected, textColor),
-                      fontWeight: 400,
-                    }}
-                    onClick={() => {
-                      const next = { ...draft, carouselVariant: value };
-                      const m = mergeCarouselElement(next);
-                      setDraft(m);
-                      commit(m);
-                    }}
-                  >
-                    <Box
-                      component="span"
-                      sx={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "5px",
-                        fontWeight: 400,
-                      }}
-                    >
-                      {label}
-                    </Box>
-                  </Button>
-                );
-              })}
-            </ButtonGroup>
-          </Box>
-
-          <Box>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="mb-3 mt-1 flex items-center gap-2">
-                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
-                    จำนวนรายการ
-                  </span>
-                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
-                </div>
-                <NumericStepper
-                  value={draft.carouselItemCount}
-                  min={1}
-                  max={12}
-                  decLabel="ลดจำนวนไอเทม"
-                  incLabel="เพิ่มจำนวนไอเทม"
-                  onChange={(n) => {
-                    const next = { ...draft, carouselItemCount: n };
-                    const m = mergeCarouselElement(next);
-                    setDraft(m);
-                    commit(m);
-                  }}
-                />
-              </div>
-              <div>
-                <div className="mb-3 mt-1 flex items-center gap-2">
-                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
-                    ระยะห่าง
-                  </span>
-                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
-                </div>
-                <NumericStepper
-                  value={draft.carouselGap}
-                  min={0}
-                  max={48}
-                  decLabel="ลดระยะห่างระหว่างไอเทม"
-                  incLabel="เพิ่มระยะห่างระหว่างไอเทม"
-                  onChange={(n) => {
-                    const m = mergeCarouselElement({ ...draft, carouselGap: n });
-                    setDraft(m);
-                    commit(m);
-                  }}
-                />
-              </div>
-              <Box sx={{ minWidth: 0 }}>
-                <CarouselMarginLabel
-                  label="ระยะด้านบน"
-                  value={carouselMarginTop}
-                  mb={0.35}
-                />
-                <div className="min-w-0 px-[2px] pb-[2px] pt-[2px]">
-                  <CarouselMarginRange
-                    value={carouselMarginTop}
-                    textColor={textColor}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      const v = Number.isFinite(n)
-                        ? Math.max(0, Math.min(CAROUSEL_MARGIN_SLIDER_MAX, n))
-                        : marginTopDefault;
-                      const m = mergeCarouselElement({
-                        ...draft,
-                        carouselMarginTop: v,
-                      });
-                      setDraft(m);
-                      commit(m);
-                    }}
-                  />
-                </div>
-              </Box>
-              <Box sx={{ minWidth: 0 }}>
-                <CarouselMarginLabel
-                  label="ระยะด้านล่าง"
-                  value={carouselMarginBottom}
-                  mb={0.35}
-                />
-                <div className="min-w-0 px-[2px] pb-[2px] pt-[2px]">
-                  <CarouselMarginRange
-                    value={carouselMarginBottom}
-                    textColor={textColor}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      const v = Number.isFinite(n)
-                        ? Math.max(0, Math.min(CAROUSEL_MARGIN_SLIDER_MAX, n))
-                        : marginBottomDefault;
-                      const m = mergeCarouselElement({
-                        ...draft,
-                        carouselMarginBottom: v,
-                      });
-                      setDraft(m);
-                      commit(m);
-                    }}
-                  />
-                </div>
-              </Box>
-            </div>
-          </Box>
-
-          <Box>
-            <div className="mb-3 mt-1 flex items-center gap-2">
-              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
                 จำนวนไอเทมที่แสดง
               </span>
               <div className="dash-heading-rule min-w-0 flex-1 border-b" />
@@ -989,6 +843,151 @@ const CarouselElementOffcanvas = ({
             </Stack>
           </Box>
 
+          <Box>
+            <div className="mb-3 mt-1 flex items-center gap-2">
+              <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
+                รูปแบบไอเทม
+              </span>
+              <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+            </div>
+            <ButtonGroup
+              fullWidth
+              variant="outlined"
+              disableElevation
+              color="inherit"
+              aria-label="รูปแบบไอเทม"
+              sx={sectionLayoutGroupRootSx}
+            >
+              {CAROUSEL_VARIANT_OPTIONS.map(({ value, label }) => {
+                const selected = draft.carouselVariant === value;
+                return (
+                  <Button
+                    key={value}
+                    color="inherit"
+                    sx={{
+                      ...sectionLayoutGroupButtonSx(selected, textColor),
+                      fontWeight: 400,
+                    }}
+                    onClick={() => {
+                      const next = { ...draft, carouselVariant: value };
+                      const m = mergeCarouselElement(next);
+                      setDraft(m);
+                      commit(m);
+                    }}
+                  >
+                    <Box
+                      component="span"
+                      sx={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "5px",
+                        fontWeight: 400,
+                      }}
+                    >
+                      {label}
+                    </Box>
+                  </Button>
+                );
+              })}
+            </ButtonGroup>
+          </Box>
+
+          <Box>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="mb-3 mt-1 flex items-center gap-2">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
+                    จำนวนรายการ
+                  </span>
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                </div>
+                <NumericStepper
+                  value={draft.carouselItemCount}
+                  min={1}
+                  max={12}
+                  decLabel="ลดจำนวนไอเทม"
+                  incLabel="เพิ่มจำนวนไอเทม"
+                  onChange={(n) => {
+                    const next = { ...draft, carouselItemCount: n };
+                    const m = mergeCarouselElement(next);
+                    setDraft(m);
+                    commit(m);
+                  }}
+                />
+              </div>
+              <div>
+                <div className="mb-3 mt-1 flex items-center gap-2">
+                  <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
+                    ระยะห่าง
+                  </span>
+                  <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+                </div>
+                <NumericStepper
+                  value={draft.carouselGap}
+                  min={8}
+                  max={48}
+                  decLabel="ลดระยะห่างระหว่างไอเทม"
+                  incLabel="เพิ่มระยะห่างระหว่างไอเทม"
+                  onChange={(n) => {
+                    const m = mergeCarouselElement({ ...draft, carouselGap: n });
+                    setDraft(m);
+                    commit(m);
+                  }}
+                />
+              </div>
+              <Box sx={{ minWidth: 0 }}>
+                <CarouselMarginLabel
+                  label="ระยะด้านบน"
+                  value={carouselMarginTop}
+                  mb={0.35}
+                />
+                <div className="min-w-0 px-[2px] pb-[2px] pt-[2px]">
+                  <CarouselMarginRange
+                    value={carouselMarginTop}
+                    textColor={textColor}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const v = Number.isFinite(n)
+                        ? Math.max(0, Math.min(CAROUSEL_MARGIN_SLIDER_MAX, n))
+                        : marginTopDefault;
+                      const m = mergeCarouselElement({
+                        ...draft,
+                        carouselMarginTop: v,
+                      });
+                      setDraft(m);
+                      commit(m);
+                    }}
+                  />
+                </div>
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <CarouselMarginLabel
+                  label="ระยะด้านล่าง"
+                  value={carouselMarginBottom}
+                  mb={0.35}
+                />
+                <div className="min-w-0 px-[2px] pb-[2px] pt-[2px]">
+                  <CarouselMarginRange
+                    value={carouselMarginBottom}
+                    textColor={textColor}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const v = Number.isFinite(n)
+                        ? Math.max(0, Math.min(CAROUSEL_MARGIN_SLIDER_MAX, n))
+                        : marginBottomDefault;
+                      const m = mergeCarouselElement({
+                        ...draft,
+                        carouselMarginBottom: v,
+                      });
+                      setDraft(m);
+                      commit(m);
+                    }}
+                  />
+                </div>
+              </Box>
+            </div>
+          </Box>
 
           <Box>
             <div className="mb-3 mt-1 flex items-center gap-2">

@@ -625,17 +625,21 @@ const DataSliderElementOffcanvas = ({
               <div>
                 <div className="mb-3 mt-1 flex items-center gap-2">
                   <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
-                    ระยะห่าง
+                    ระยะด้านในซ้าย - ขวา
                   </span>
                   <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                 </div>
                 <NumericStepper
-                  value={Math.max(0, Number(data.dataSliderGap) || 0)}
-                  min={0}
+                  value={Math.max(8, Number(data.dataSliderContentPadX) || 12)}
+                  min={8}
                   max={48}
-                  decLabel="ลดระยะห่างระหว่างไอเทม"
-                  incLabel="เพิ่มระยะห่างระหว่างไอเทม"
-                  onChange={(n) => patch({ dataSliderGap: n })}
+                  decLabel="ลดระยะด้านในซ้าย - ขวา"
+                  incLabel="เพิ่มระยะด้านในซ้าย - ขวา"
+                  onChange={(n) =>
+                    patch({
+                      dataSliderContentPadX: Math.max(8, Math.min(48, n)),
+                    })
+                  }
                 />
               </div>
             </div>

@@ -74,7 +74,7 @@ const MainLabel = ({ label, value, valueText, mb = 0.5 }) => (
 );
 
 const LINE_STYLE_OPTIONS = [
-  { value: "solid", label: "ธรรมดา" },
+  { value: "solid", label: "เส้นตรง" },
   { value: "dashed", label: "เส้นประ" },
   { value: "dotted", label: "จุด" },
 ];

@@ -1054,17 +1054,22 @@ const CatagoriesElementOffcanvas = ({
               </div>
               <div className="min-w-0">
                 {(() => {
-                  const min = 0;
+                  const min = 8;
                   const max = 48;
+                  const raw = Number(data.catagoriesContentPadX);
+                  const legacy = Number(data.catagoriesItemGap);
                   const value = Math.max(
                     min,
-                    Math.min(max, Number(data.catagoriesItemGap) || 12)
+                    Math.min(
+                      max,
+                      Number.isFinite(raw) ? raw : Number.isFinite(legacy) ? legacy : 12
+                    )
                   );
                   const pos = ((value - min) / (max - min || 1)) * 100;
                   return (
                     <>
                       <MainLabel
-                        label="ระยะห่างรายการ"
+                        label="ระยะด้านในซ้าย - ขวา"
                         value={value}
                         mb={0.5}
                       />
@@ -1077,8 +1082,8 @@ const CatagoriesElementOffcanvas = ({
                         color={textColor}
                         handleChange={(e) =>
                           updateRangeField(
-                            "catagoriesItemGap",
-                            Number(e.target.value)
+                            "catagoriesContentPadX",
+                            Math.max(8, Math.min(48, Number(e.target.value) || 12))
                           )
                         }
                         onCommit={commitRangeField}
@@ -1307,10 +1312,10 @@ const CatagoriesElementOffcanvas = ({
                       {
                         id: `ctg-tab-${Date.now()}-${idx}`,
                         label: `Categories ${idx}`,
-                        itemCount: 6,
+                        itemCount: 3,
                         activeItemId: "cat-1",
                         themeActiveItemId: "cat-1",
-                        items: Array.from({ length: 6 }, (_, i) => ({
+                        items: Array.from({ length: 3 }, (_, i) => ({
                           id: `cat-${i + 1}`,
                           label: `Catagory ${i + 1}`,
                           disabled: false,

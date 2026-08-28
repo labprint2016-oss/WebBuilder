@@ -1,4 +1,4 @@
-import { useMemo, useCallback, Fragment, memo } from "react";
+import { useMemo, useCallback, Fragment, memo, useEffect, useRef } from "react";
 import { Sparkles } from "lucide-react";
 import { setColor, setFont } from "../../../../function";
 import IconAwsome from "../../IconAwsome";
@@ -15,6 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { usePanelPreview } from "../../panelPreviewStore";
+import { useBuilderContextStore } from "../../store/builderContextStore";
 
 const TABS_DEFAULTS = {
   tabsAlign: "start",
@@ -91,7 +92,10 @@ const TabsNestedElementList = memo(function TabsNestedElementList({
 
   if (!hasElements) {
     return (
-      <div className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center">
+      <div
+        className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center"
+        data-tab-content-list="true"
+      >
         {ghost ? (
           ghost.ghostEl
         ) : (
@@ -110,7 +114,7 @@ const TabsNestedElementList = memo(function TabsNestedElementList({
       onDragEnd={onDragEnd}
     >
       <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-        <div className="space-y-0">
+        <div className="space-y-0" data-tab-content-list="true">
           {elements.map((el, i) => (
             <Fragment key={String(el?.id || `tab-el-${i}`)}>
               {ghost && !ghost.isLast && ghost.insertAt === i && ghost.ghostEl}
@@ -211,7 +215,9 @@ const Tabs = ({
   elementData: rawElementData,
   selected,
   animationForElement,
-  builderMode,
+  builderMode: builderModeProp,
+  device: deviceProp = "Desktop",
+  isSiteRuntime = false,
   onTabElementEdit,
   renderTabElement,
   onTabElementSelect,
@@ -221,6 +227,14 @@ const Tabs = ({
   onUpdate,
   theme,
 }) => {
+  const storeDevice = useBuilderContextStore((state) => state.device);
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const device = isSiteRuntime
+    ? deviceProp
+    : storeDevice || deviceProp || "Desktop";
+  const builderMode = isSiteRuntime
+    ? builderModeProp
+    : storeBuilderMode || builderModeProp;
   const panelPreview = usePanelPreview("tabs", rawElementData?.id);
   const elementData = panelPreview
     ? {
@@ -257,7 +271,13 @@ const Tabs = ({
       : elementData?.tabsAlign === "end"
         ? "justify-end"
         : "justify-start";
-  const isVertical = elementData?.tabsLayoutAxis === "vertical";
+  const isVertical =
+    elementData?.tabsLayoutAxis === "vertical" && device !== "Mobile";
+  const compactTabStrip = !isVertical;
+  const tabStripRef = useRef(null);
+  const verticalRailWidthClass = "min-w-[10.5rem] w-[11.5rem] max-w-[14rem]";
+  const verticalPaneHClass =
+    device === "Tablet" ? "h-80 max-h-80" : "h-96 max-h-96";
   const tabBarEdgeInset =
     elementData?.tabsAlign === "center"
       ? ""
@@ -518,15 +538,16 @@ const Tabs = ({
     const contentGapTopClass = hasElements ? "mt-0" : "mt-3";
     const contentMinHeightClass = hasElements ? "min-h-0" : "min-h-[60px]";
     if (isVertical) {
+      const verticalScrollClass = `${verticalPaneHClass} overflow-y-auto overscroll-y-contain`;
       if (isClassic && hasElements) {
-        return `${contentGapTopClass} flex ${contentMinHeightClass} min-w-0 flex-1 flex-col px-3 ${contentPadYClass} text-[12px] transition-colors`;
+        return `mt-0 flex min-h-0 min-w-0 flex-1 flex-col px-3 ${contentPadYClass} ${verticalScrollClass} text-[12px] transition-colors`;
       }
-      return `${contentGapTopClass} flex ${contentMinHeightClass} min-w-0 flex-1 flex-col rounded-md px-3 ${contentPadYClass} text-[12px] transition-colors`;
+      return `mt-0 flex min-h-0 min-w-0 flex-1 flex-col rounded-md px-3 ${contentPadYClass} ${verticalScrollClass} text-[12px] transition-colors`;
     }
     if (isClassic && hasElements) {
-      return `${contentGapTopClass} ${contentMinHeightClass} px-3 ${contentPadYClass} text-[12px] transition-colors`;
+      return `${contentGapTopClass} ${contentMinHeightClass} min-w-0 px-3 ${contentPadYClass} text-[12px] transition-colors`;
     }
-    return `${contentGapTopClass} ${contentMinHeightClass} rounded-md px-3 ${contentPadYClass} text-[12px] transition-colors`;
+    return `${contentGapTopClass} ${contentMinHeightClass} min-w-0 rounded-md px-3 ${contentPadYClass} text-[12px] transition-colors`;
   })();
 
   const tabContentClassName = `${tabContentLayoutClass} ${tabContentSurfaceClass} text-slate-500 dark:text-slate-300`;
@@ -538,23 +559,23 @@ const Tabs = ({
     (styleMode === "line" || styleMode === "pill" || styleMode === "classic") &&
     tabsLineSubtleBorderColor != null;
 
+  const verticalRailWrapClass = `relative shrink-0 self-stretch ${verticalRailWidthClass} ${verticalPaneHClass} ${
+    styleMode === "classic"
+      ? "border-r border-slate-200 dark:border-slate-600"
+      : styleMode === "button"
+        ? ""
+        : "border-r border-slate-200 dark:border-white/15"
+  }`;
+
   const tabStripClassName = isVertical
-    ? `flex min-w-[10.5rem] max-w-[14rem] shrink-0 flex-col items-stretch ${
-        styleMode === "line"
-          ? tabStripSubtleFromTabColor
-            ? "divide-y divide-solid [&>button+button]:border-t-[color:var(--tabs-line-subtle-border)] "
-            : "divide-y divide-slate-200 dark:divide-slate-600 "
-          : ""
+    ? `flex h-full max-h-full flex-col items-stretch overflow-x-hidden overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${tabBarEdgeInset}`
+    : `flex ${
+        compactTabStrip
+          ? "min-w-0 flex-nowrap overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden "
+          : "flex-wrap "
       }${tabBarEdgeInset} ${
         styleMode === "classic"
-          ? "border-r border-slate-200 dark:border-slate-600"
-          : styleMode === "button"
-            ? ""
-            : "border-r border-slate-200 dark:border-white/15"
-      } ${align}`
-    : `flex flex-wrap ${tabBarEdgeInset} ${
-        styleMode === "classic"
-          ? "items-end relative overflow-hidden border-b-0 "
+          ? `items-end relative border-b-0 ${compactTabStrip ? "" : "overflow-hidden "}`
           : styleMode === "button"
             ? "items-center border-b-0 "
             : `border-b ${
@@ -567,112 +588,123 @@ const Tabs = ({
       } ${align}`;
   const useLayoutSelectionFrame = builderMode === "Layout Mode" && selected;
 
-  return (
-    <div
-      className={`w-full ${animationForElement || ""} ${
-        selected && !useLayoutSelectionFrame
-          ? "rounded-md border border-dashed border-red-400 bg-red-300/10 p-2"
-          : useLayoutSelectionFrame
-            ? "relative rounded-md px-4 py-6"
-            : ""
-      }`}
-      style={{ marginTop, marginBottom, fontFamily: textFontFamily }}
-    >
+  useEffect(() => {
+    const node = tabStripRef.current;
+    if (!node) return;
+    const activeBtn = node.querySelector("[data-tabs-tab-active='true']");
+    if (!activeBtn || typeof activeBtn.scrollIntoView !== "function") return;
+    const stripRect = node.getBoundingClientRect();
+    const btnRect = activeBtn.getBoundingClientRect();
+    const outOfView = isVertical
+      ? btnRect.top < stripRect.top + 8 || btnRect.bottom > stripRect.bottom - 8
+      : btnRect.left < stripRect.left + 8 || btnRect.right > stripRect.right - 8;
+    if (!outOfView) return;
+    activeBtn.scrollIntoView({
+      inline: isVertical ? "nearest" : "center",
+      block: isVertical ? "center" : "nearest",
+      behavior: "smooth",
+    });
+  }, [activeId, isVertical]);
+
+  const renderTabHeader = (tab) => {
+    const active = tab.id === activeId;
+    const baseClass =
+      "inline-flex relative items-center transition-colors appearance-none shadow-none outline-none";
+    const lineClass = isVertical
+      ? active
+        ? "bg-transparent border-r-[6px] border-r-[#333333] text-[#333333] dark:border-r-[#333333] dark:text-[#333333]"
+        : "bg-transparent border-r-0 text-slate-500 dark:text-slate-300"
+      : active
+        ? "bg-transparent border-b-[4px] border-b-[#333333] text-[#333333] dark:border-b-[#333333] dark:text-[#333333]"
+        : "bg-transparent border-b-[4px] border-b-transparent text-slate-500 dark:text-slate-300";
+    const pillClass = active
+      ? "bg-slate-800 text-white dark:bg-white dark:text-slate-900"
+      : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-200";
+    const buttonClass = active
+      ? "border-0 rounded-full bg-slate-800 font-semibold text-white shadow-sm dark:bg-white dark:text-slate-900"
+      : "border-0 rounded-full bg-slate-100 font-normal text-slate-600 shadow-none dark:bg-white/10 dark:text-slate-200";
+    const classicClass = isVertical
+      ? active
+        ? "z-[2] border border-[#333333] bg-white font-semibold text-[#333333] dark:border-[#333333] dark:bg-slate-900 dark:text-white"
+        : "z-0 border border-r-0 border-slate-200 bg-white font-normal text-slate-500 dark:border-slate-600 dark:border-r-0 dark:bg-slate-900 dark:text-slate-400"
+      : active
+        ? "z-[2] -mb-px overflow-hidden border border-[#333333] border-b-0 bg-white font-semibold text-[#333333] dark:border-[#333333] dark:border-b-0 dark:bg-slate-900 dark:text-white"
+        : "z-0 -mb-px overflow-hidden border border-slate-200 border-b-0 bg-white font-normal text-slate-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400";
+    const tabLookClass =
+      styleMode === "pill"
+        ? pillClass
+        : styleMode === "button"
+          ? buttonClass
+          : styleMode === "classic"
+            ? classicClass
+            : lineClass;
+    return (
       <div
+        key={tab.id}
+        data-tabs-part="tab-header"
+        data-tabs-tab-id={tab.id}
+        data-tabs-tab-active={active ? "true" : undefined}
         className={
           isVertical
-            ? "flex w-full flex-row items-stretch gap-3"
-            : "flex flex-col"
+            ? "w-full min-w-0 shrink-0 bg-transparent"
+            : compactTabStrip
+              ? "shrink-0 bg-transparent"
+              : "bg-transparent"
         }
       >
-      {/* Tab headers */}
-      <div
-        className={tabStripClassName}
-        style={{
-          gap: stripGap,
-          ...(tabStripSubtleFromTabColor
-            ? {
-                ...(isVertical
-                  ? {
-                      borderRightColor: tabsLineSubtleBorderColor,
-                    }
-                  : isClassicHorizontal
-                    ? {}
-                    : {
-                        borderBottomColor: tabsLineSubtleBorderColor,
-                      }),
-                ...(isVertical && styleMode === "line"
-                  ? { "--tabs-line-subtle-border": tabsLineSubtleBorderColor }
-                  : {}),
-              }
-            : {}),
-        }}
-      >
-        {items.map((tab) => {
-          const active = tab.id === activeId;
-          const baseClass = "inline-flex relative items-center transition-colors";
-          const lineClass = isVertical
-            ? active
-              ? "border-r-[6px] border-r-[#333333] text-[#333333] dark:border-r-[#333333] dark:text-[#333333]"
-              : "border-r-0 text-slate-500 dark:text-slate-300"
-            : active
-              ? "border-b-[4px] border-b-[#333333] text-[#333333] dark:border-b-[#333333] dark:text-[#333333]"
-              : "border-b-[4px] border-b-transparent text-slate-500 dark:text-slate-300";
-          const pillClass = active
-            ? "bg-slate-800 text-white dark:bg-white dark:text-slate-900"
-            : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-200";
-          const buttonClass = active
-            ? "border-0 rounded-full bg-slate-800 font-semibold text-white shadow-sm dark:bg-white dark:text-slate-900"
-            : "border-0 rounded-full bg-slate-100 font-normal text-slate-600 shadow-none dark:bg-white/10 dark:text-slate-200";
-          const classicClass = isVertical
-            ? active
-              ? "z-[2] border border-[#333333] bg-white font-semibold text-[#333333] dark:border-[#333333] dark:bg-slate-900 dark:text-white"
-              : "z-0 border border-r-0 border-slate-200 bg-white font-normal text-slate-500 dark:border-slate-600 dark:border-r-0 dark:bg-slate-900 dark:text-slate-400"
-            : active
-              ? "z-[2] -mb-px overflow-hidden border border-[#333333] border-b-0 bg-white font-semibold text-[#333333] dark:border-[#333333] dark:border-b-0 dark:bg-slate-900 dark:text-white"
-              : "z-0 -mb-px overflow-hidden border border-slate-200 border-b-0 bg-white font-normal text-slate-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400";
-          const tabLookClass =
-            styleMode === "pill"
-              ? pillClass
-              : styleMode === "button"
-                ? buttonClass
-                : styleMode === "classic"
-                  ? classicClass
-                  : lineClass;
-          return (
-            <div
-              key={tab.id}
-              data-tabs-part="tab-header"
-              data-tabs-tab-id={tab.id}
-            >
-            <button
-              type="button"
-              className={`${baseClass} ${tabLookClass} ${
-                tabsTabLabelStyle === "iconText" ? "gap-1.5" : ""
-              } ${isVertical ? "w-full justify-start" : ""}`}
-              onMouseDown={(e) => {
-                // กันการลาก/เลือก element host ตอนคลิกสลับแท็บ
-                if (builderMode === "Layout Mode" || builderMode === "Editor Mode") {
-                  e.stopPropagation();
+        <button
+          type="button"
+          className={`${baseClass} ${tabLookClass} ${
+            tabsTabLabelStyle === "iconText" ? "gap-1.5" : ""
+          } ${isVertical ? "w-full min-w-0 justify-start" : compactTabStrip ? "shrink-0" : ""}`}
+          onMouseDown={(e) => {
+            if (builderMode === "Layout Mode" || builderMode === "Editor Mode") {
+              e.stopPropagation();
+            }
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (tab.disabled) return;
+            if (String(tab.id) === String(activeId)) return;
+            onUpdate?.({
+              ...elementData,
+              tabsActiveId: tab.id,
+            });
+          }}
+          style={{
+            fontSize: labelFontSize,
+            paddingLeft: effPadX,
+            paddingRight: effPadX,
+            paddingTop: effPadY,
+            paddingBottom: effPadY,
+            WebkitAppearance: "none",
+            appearance: "none",
+            ...(styleMode === "line"
+              ? {
+                  backgroundColor: "transparent",
+                  backgroundImage: "none",
                 }
-              }}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (tab.disabled) return;
-                if (String(tab.id) === String(activeId)) return;
-                onUpdate?.({
-                  ...elementData,
-                  tabsActiveId: tab.id,
-                });
-              }}
-              style={{
-                fontSize: labelFontSize,
-                paddingLeft: effPadX,
-                paddingRight: effPadX,
-                paddingTop: effPadY,
-                paddingBottom: effPadY,
-                ...(styleMode === "pill"
+              : {}),
+            ...(styleMode === "pill"
+              ? isVertical
+                ? {
+                    borderRadius: 0,
+                    borderTopLeftRadius: radius,
+                    borderBottomLeftRadius: radius,
+                  }
+                : {
+                    borderRadius: 0,
+                    borderTopLeftRadius: radius,
+                    borderTopRightRadius: radius,
+                  }
+              : styleMode === "button"
+                ? {
+                    borderRadius: "9999px",
+                    border: "none",
+                    borderWidth: 0,
+                  }
+                : styleMode === "classic"
                   ? isVertical
                     ? {
                         borderRadius: 0,
@@ -684,114 +716,165 @@ const Tabs = ({
                         borderTopLeftRadius: radius,
                         borderTopRightRadius: radius,
                       }
-                  : styleMode === "button"
-                    ? {
-                        /* แคปซูล: ปลายมนเต็ม (ไม่ผูกกับ tabsItemRadius) */
-                        borderRadius: "9999px",
-                        border: "none",
-                        borderWidth: 0,
-                      }
-                    : styleMode === "classic"
-                      ? isVertical
-                        ? {
-                            borderRadius: 0,
-                            borderTopLeftRadius: radius,
-                            borderBottomLeftRadius: radius,
-                          }
-                        : {
-                            borderRadius: 0,
-                            borderTopLeftRadius: radius,
-                            borderTopRightRadius: radius,
-                          }
-                      : { borderRadius: 0 }),
-                ...(styleMode === "classic" && isVertical && active && !tabsActiveTabColorResolved
-                  ? {
-                      borderRightWidth: 6,
-                      borderRightStyle: "solid",
-                      borderRightColor: "#333333",
-                    }
-                  : {}),
-                ...(active && tabsActiveTabColorResolved
-                  ? styleMode === "line"
-                    ? isVertical
-                      ? { borderRightColor: tabsActiveTabColorResolved }
-                      : { borderBottomColor: tabsActiveTabColorResolved }
-                    : styleMode === "classic"
-                      ? isVertical
-                        ? {
-                            borderColor: tabsActiveTabColorResolved,
-                            borderRightWidth: 6,
-                            borderRightStyle: "solid",
-                            borderRightColor: tabsActiveTabColorResolved,
-                          }
-                        : { borderColor: tabsActiveTabColorResolved }
-                      : styleMode === "button"
-                        ? { backgroundColor: tabsActiveTabColorResolved }
-                        : { backgroundColor: tabsActiveTabColorResolved }
-                  : {}),
-                ...(styleMode === "classic" && !active && !isVertical && tabsInactiveTabColorResolved
-                  ? {
-                      borderColor: tabsInactiveTabColorResolved,
-                      borderBottomWidth: 0,
-                      borderBottomStyle: "none",
-                    }
-                  : {}),
-                ...(styleMode === "classic" && !active && isVertical && tabsInactiveTabColorResolved
-                  ? { borderColor: tabsInactiveTabColorResolved }
-                  : {}),
-                ...(!active &&
-                (styleMode === "pill" || styleMode === "button") &&
-                tabsInactiveTabColorResolved
-                  ? { backgroundColor: tabsInactiveTabColorResolved }
-                  : {}),
-                opacity: tab.disabled ? 0.45 : 1,
-              }}
-            >
-              {tabsTabLabelStyle === "iconText" && (() => {
-                const fa = normalizeTabFaIcon(tab.faIcon);
-                const iconColorStyle =
-                  active && tabsActiveIconColorResolved
-                    ? { color: tabsActiveIconColorResolved }
-                    : !active && tabsInactiveIconColorResolved
-                      ? { color: tabsInactiveIconColorResolved }
-                      : undefined;
-                return fa.name && fa.type ? (
-                  <IconAwsome
-                    iconName={fa.name}
-                    iconType={fa.type}
-                    style={{
-                      fontSize: tabHeaderIconPx,
-                      opacity: 0.85,
-                      ...iconColorStyle,
-                    }}
-                  />
-                ) : (
-                  <Sparkles
-                    className="shrink-0 opacity-85"
-                    size={tabHeaderIconPx}
-                    strokeWidth={2}
-                    aria-hidden
-                    style={iconColorStyle}
-                  />
-                );
-              })()}
-              <span
-                data-tabs-tab-name-trigger="true"
-                className="min-w-0 cursor-pointer truncate"
-                style={
-                  active && tabsLabelColorResolved
-                    ? { color: tabsLabelColorResolved }
-                    : !active && tabsInactiveLabelColorResolved
-                      ? { color: tabsInactiveLabelColorResolved }
-                      : undefined
+                  : { borderRadius: 0 }),
+            ...(styleMode === "classic" && isVertical && active && !tabsActiveTabColorResolved
+              ? {
+                  borderRightWidth: 6,
+                  borderRightStyle: "solid",
+                  borderRightColor: "#333333",
                 }
-              >
-                {tab.label}
-              </span>
-            </button>
-            </div>
-          );
-        })}
+              : {}),
+            ...(active && tabsActiveTabColorResolved
+              ? styleMode === "line"
+                ? isVertical
+                  ? { borderRightColor: tabsActiveTabColorResolved }
+                  : { borderBottomColor: tabsActiveTabColorResolved }
+                : styleMode === "classic"
+                  ? isVertical
+                    ? {
+                        borderColor: tabsActiveTabColorResolved,
+                        borderRightWidth: 6,
+                        borderRightStyle: "solid",
+                        borderRightColor: tabsActiveTabColorResolved,
+                      }
+                    : { borderColor: tabsActiveTabColorResolved }
+                  : { backgroundColor: tabsActiveTabColorResolved }
+              : {}),
+            ...(styleMode === "classic" && !active && !isVertical && tabsInactiveTabColorResolved
+              ? {
+                  borderColor: tabsInactiveTabColorResolved,
+                  borderBottomWidth: 0,
+                  borderBottomStyle: "none",
+                }
+              : {}),
+            ...(styleMode === "classic" && !active && isVertical && tabsInactiveTabColorResolved
+              ? { borderColor: tabsInactiveTabColorResolved }
+              : {}),
+            ...(!active &&
+            (styleMode === "pill" || styleMode === "button") &&
+            tabsInactiveTabColorResolved
+              ? { backgroundColor: tabsInactiveTabColorResolved }
+              : {}),
+            opacity: tab.disabled ? 0.45 : 1,
+          }}
+        >
+          {tabsTabLabelStyle === "iconText" &&
+            (() => {
+              const fa = normalizeTabFaIcon(tab.faIcon);
+              const iconColorStyle =
+                active && tabsActiveIconColorResolved
+                  ? { color: tabsActiveIconColorResolved }
+                  : !active && tabsInactiveIconColorResolved
+                    ? { color: tabsInactiveIconColorResolved }
+                    : undefined;
+              return fa.name && fa.type ? (
+                <IconAwsome
+                  iconName={fa.name}
+                  iconType={fa.type}
+                  style={{
+                    fontSize: tabHeaderIconPx,
+                    opacity: 0.85,
+                    ...iconColorStyle,
+                  }}
+                />
+              ) : (
+                <Sparkles
+                  className="shrink-0 opacity-85"
+                  size={tabHeaderIconPx}
+                  strokeWidth={2}
+                  aria-hidden
+                  style={iconColorStyle}
+                />
+              );
+            })()}
+          <span
+            data-tabs-tab-name-trigger="true"
+            className="min-w-0 cursor-pointer truncate bg-transparent"
+            title={tab.label}
+            style={
+              active && tabsLabelColorResolved
+                ? { color: tabsLabelColorResolved }
+                : !active && tabsInactiveLabelColorResolved
+                  ? { color: tabsInactiveLabelColorResolved }
+                  : undefined
+            }
+          >
+            {tab.label}
+          </span>
+        </button>
+      </div>
+    );
+  };
+
+  return (
+    <div
+      className={`w-full min-w-0 ${animationForElement || ""} ${
+        selected && !useLayoutSelectionFrame
+          ? "rounded-md border border-dashed border-red-400 bg-red-300/10 p-2"
+          : useLayoutSelectionFrame
+            ? `relative rounded-md ${device !== "Desktop" ? "px-3 py-5" : "px-4 py-6"}`
+            : ""
+      }`}
+      style={{ marginTop, marginBottom, fontFamily: textFontFamily }}
+    >
+      <div
+        className={
+          isVertical
+            ? "flex w-full min-w-0 flex-row items-stretch gap-3"
+            : "flex min-w-0 flex-col"
+        }
+      >
+      {/* Tab headers */}
+      <div
+        className={isVertical ? verticalRailWrapClass : "relative min-w-0"}
+        style={
+          isVertical && tabStripSubtleFromTabColor && styleMode !== "button"
+            ? { borderRightColor: tabsLineSubtleBorderColor }
+            : undefined
+        }
+      >
+      <div
+        ref={tabStripRef}
+        className={tabStripClassName}
+        style={{
+          ...(tabStripSubtleFromTabColor
+            ? {
+                ...(isVertical
+                  ? styleMode === "line"
+                    ? { "--tabs-line-subtle-border": tabsLineSubtleBorderColor }
+                    : {}
+                  : isClassicHorizontal
+                    ? {}
+                    : {
+                        borderBottomColor: tabsLineSubtleBorderColor,
+                      }),
+              }
+            : {}),
+        }}
+      >
+        {isVertical ? (
+          <div
+            className={`flex min-h-full w-full flex-col items-stretch bg-transparent ${align} ${
+              styleMode === "line"
+                ? tabStripSubtleFromTabColor
+                  ? "divide-y divide-solid [&>*+*]:border-t-[color:var(--tabs-line-subtle-border)]"
+                  : "divide-y divide-slate-200 dark:divide-slate-600"
+                : ""
+            }`}
+            style={{ gap: stripGap }}
+          >
+            {items.map((tab) => renderTabHeader(tab))}
+          </div>
+        ) : (
+          <div
+            className={`flex w-max min-w-full flex-nowrap bg-transparent ${
+              styleMode === "button" ? "items-center" : "items-end"
+            }`}
+            style={{ gap: stripGap }}
+          >
+            {items.map((tab) => renderTabHeader(tab))}
+          </div>
+        )}
         {isClassicHorizontal ? (
           <div
             aria-hidden
@@ -805,6 +888,7 @@ const Tabs = ({
             }
           />
         ) : null}
+      </div>
       </div>
 
       {/* Tab content drop zone */}

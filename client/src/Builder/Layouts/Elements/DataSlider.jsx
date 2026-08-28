@@ -15,6 +15,7 @@ import {
 import { mergeDataSliderElement } from "./dataSliderElementConfig";
 import { isButtonFullWidthEnabled } from "./buttonElementConfig";
 import { usePanelPreview } from "../../panelPreviewStore";
+import { useBuilderContextStore } from "../../store/builderContextStore";
 
 const SortableDataSliderItem = ({
   id,
@@ -225,6 +226,14 @@ const DataSlider = ({
   isSiteRuntime = false,
 }) => {
   const panelPreview = usePanelPreview("dts", elementData?.id);
+  const storeDevice = useBuilderContextStore((state) => state.device);
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const viewDevice = isSiteRuntime
+    ? device
+    : storeDevice || device || "Desktop";
+  const viewBuilderMode = isSiteRuntime
+    ? builderMode
+    : storeBuilderMode || builderMode;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
@@ -243,16 +252,19 @@ const DataSlider = ({
     items.findIndex((it) => it.id === activeId)
   );
   const perViewRaw =
-    device === "Mobile"
+    viewDevice === "Mobile"
       ? data?.dataSliderPerViewMobile
-      : device === "Tablet"
+      : viewDevice === "Tablet"
         ? data?.dataSliderPerViewTablet
         : data?.dataSliderPerViewDesktop;
   const perView = Math.max(
     1,
     Math.min(items.length || 1, Number(perViewRaw) || 1)
   );
-  const gap = Math.max(0, Number(data?.dataSliderGap) || 0);
+  const contentPadX = (() => {
+    const raw = Number(data?.dataSliderContentPadX);
+    return Number.isFinite(raw) ? Math.max(8, Math.min(48, raw)) : 12;
+  })();
   const pageCount = Math.max(1, Math.ceil((items.length || 0) / Math.max(1, perView)));
   /** จัดหน้าตาม perView — ไม่เลื่อนหน้าต่างเริ่มจากรายการที่เลือก (กันหายรายการอื่นในหน้า) */
   const activePage = Math.min(
@@ -293,23 +305,24 @@ const DataSlider = ({
     pageCount > 1 &&
     (!isSiteRuntime || data?.dataSliderNavShowOnWebsite !== false);
   const imageLikeTypeSet = new Set(["img", "imgh", "imgo", "bnr", "lbx", "vid"]);
-  const showAreaGuides = builderMode === "Layout Mode";
+  const showAreaGuides = viewBuilderMode === "Layout Mode";
+  const isCompactDevice = viewDevice !== "Desktop";
 
   return (
     <div
-      className={`w-full ${animationForElement || ""} ${
-        selected ? "relative rounded-md p-4" : ""
+      className={`w-full min-w-0 ${animationForElement || ""} ${
+        selected ? `relative rounded-md ${isCompactDevice ? "p-3" : "p-4"}` : ""
       }`}
       style={{ marginTop, marginBottom }}
       onMouseDownCapture={(e) => {
-        if (builderMode !== "Layout Mode") return;
+        if (viewBuilderMode !== "Layout Mode") return;
         if (e.detail !== 2) return;
         e.preventDefault();
         e.stopPropagation();
         onHostDoubleClick?.();
       }}
       onClickCapture={(e) => {
-        if (builderMode !== "Layout Mode") return;
+        if (viewBuilderMode !== "Layout Mode") return;
         if (e.detail === 2) {
           e.preventDefault();
           e.stopPropagation();
@@ -324,7 +337,7 @@ const DataSlider = ({
         onTabElementSelect?.(null, String(activeId || ""));
       }}
       onDoubleClickCapture={(e) => {
-        if (builderMode !== "Layout Mode") return;
+        if (viewBuilderMode !== "Layout Mode") return;
         e.preventDefault();
         e.stopPropagation();
         onHostDoubleClick?.();
@@ -333,8 +346,8 @@ const DataSlider = ({
       {selected && (
         <div className="pointer-events-none absolute inset-[1px] rounded-md bg-red-300/10" />
       )}
-      <div className="relative">
-        <div className="grid w-full" style={{ gap, gridTemplateColumns: `repeat(${Math.max(1, visibleItems.length)}, minmax(0, 1fr))` }}>
+      <div className="relative min-w-0">
+        <div className="grid w-full min-w-0" style={{ gridTemplateColumns: `repeat(${Math.max(1, visibleItems.length)}, minmax(0, 1fr))` }}>
           {visibleItems.map((slide, slideIndex) => {
           const hasElements =
             Array.isArray(slide?.elements) && slide.elements.length > 0;
@@ -357,23 +370,30 @@ const DataSlider = ({
             }
           };
 
+          const hideSharedLeftGuide =
+            showAreaGuides && visibleItems.length > 1 && slideIndex > 0;
+
           return (
             <div key={String(slide?.id || `dts-slide-${slideIndex}`)} className="min-w-0">
               <div
-                className={`relative min-h-[72px] w-full px-3 py-2 text-[12px] transition-colors ${
+                className={`relative box-border min-h-[72px] w-full overflow-visible py-2 text-[12px] transition-colors ${
                   !showAreaGuides
                     ? "border border-transparent bg-transparent"
                     : isThisSlideHovered
-                    ? "border border-dashed border-slate-300/40 bg-slate-50/40 dark:border-slate-400/40 dark:bg-white/5"
+                    ? "border border-dashed border-slate-400/50 bg-slate-50/40 dark:border-slate-400/50 dark:bg-white/5"
                     : hasElements
-                      ? "border border-dashed border-slate-300/40 bg-transparent dark:border-slate-400/40"
-                      : "border border-dashed border-slate-300/40 bg-slate-50/30 dark:border-slate-400/40 dark:bg-white/5"
-                }`}
+                      ? "border border-dashed border-slate-400/50 bg-transparent dark:border-slate-400/50"
+                      : "border border-dashed border-slate-400/50 bg-slate-50/30 dark:border-slate-400/50 dark:bg-white/5"
+                } ${hideSharedLeftGuide ? "border-l-0" : ""}`}
+                style={{
+                  paddingLeft: contentPadX,
+                  paddingRight: contentPadX,
+                }}
                 data-drop="TAB-CONTENT"
                 data-tab-element-id={String(elementData?.id || "")}
                 data-tab-id={String(slide?.id || "")}
                 onDoubleClickCapture={(e) => {
-                  if (builderMode !== "Editor Mode") return;
+                  if (viewBuilderMode !== "Editor Mode") return;
                   const nestedDiv = e.target?.closest?.("[data-tab-nested-id]");
                   if (!nestedDiv) return;
                   const nestedId = nestedDiv.dataset?.tabNestedId;
@@ -395,7 +415,7 @@ const DataSlider = ({
                     onDragEnd={handleDragEnd}
                   >
                     <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-                      <div className="space-y-0">
+                      <div className="min-w-0 space-y-0" data-tab-content-list="true">
                         {chunkDataSliderElementsForInlineRows(slide?.elements || []).map(
                           (chunk, chunkIndex) => {
                             if (
@@ -450,7 +470,11 @@ const DataSlider = ({
                                     chunk.items?.[0]?.id ||
                                       `dts-btn-row-${slideIndex}-${chunkIndex}`
                                   )}
-                                  className="mb-0 flex w-full flex-row flex-wrap items-center gap-y-2"
+                                  className={`mb-0 flex w-full min-w-0 flex-row flex-nowrap items-center ${
+                                    isCompactDevice
+                                      ? "overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                                      : ""
+                                  }`}
                                   style={{
                                     justifyContent: rowAlign,
                                     columnGap:
@@ -527,7 +551,7 @@ const DataSlider = ({
                                             ghost.ghostEl}
                                           {(() => {
                                           const isSelectedInLayoutMode =
-                                            builderMode === "Layout Mode" &&
+                                            viewBuilderMode === "Layout Mode" &&
                                             tabSelectedElId === el?.id;
                                           const isImageLike = imageLikeTypeSet.has(
                                             String(el?.type || "")
@@ -547,9 +571,9 @@ const DataSlider = ({
                                               id={String(
                                                 el?.id || `dts-el-${slideIndex}-${i}`
                                               )}
-                                              builderMode={builderMode}
+                                              builderMode={viewBuilderMode}
                                               onClick={(e) => {
-                                                if (builderMode !== "Layout Mode") return;
+                                                if (viewBuilderMode !== "Layout Mode") return;
                                                 if (e.detail === 2) {
                                                   return;
                                                 }
@@ -727,7 +751,7 @@ const DataSlider = ({
                                 {ghost && !ghost.isLast && ghost.insertAt === i && ghost.ghostEl}
                                 {(() => {
                               const isSelectedInLayoutMode =
-                                builderMode === "Layout Mode" && tabSelectedElId === el?.id;
+                                viewBuilderMode === "Layout Mode" && tabSelectedElId === el?.id;
                               const isImageLike = imageLikeTypeSet.has(String(el?.type || ""));
                               const isDivider = String(el?.type || "") === "divider";
                               const isIcon = String(el?.type || "") === "icon";
@@ -741,9 +765,9 @@ const DataSlider = ({
                               return (
                             <SortableDataSliderItem
                               id={String(el?.id || `dts-el-${slideIndex}-${i}`)}
-                              builderMode={builderMode}
+                              builderMode={viewBuilderMode}
                               onClick={(e) => {
-                                if (builderMode !== "Layout Mode") return;
+                                if (viewBuilderMode !== "Layout Mode") return;
                                 if (e.detail === 2) {
                                   return;
                                 }
@@ -872,10 +896,13 @@ const DataSlider = ({
                     </SortableContext>
                   </DndContext>
                 ) : (
-                  <div className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center">
+                  <div
+                    className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center"
+                    data-tab-content-list="true"
+                  >
                     {ghost?.ghostEl ? (
                       ghost.ghostEl
-                    ) : ghost ? null : builderMode === "Layout Mode" ? (
+                    ) : ghost ? null : viewBuilderMode === "Layout Mode" ? (
                       <span className="pointer-events-none text-[11px] text-slate-400 dark:text-slate-500">
                         ลาก Element มาวางที่นี่
                       </span>
@@ -888,7 +915,7 @@ const DataSlider = ({
           })}
         </div>
         {showNavDots && (
-          <div className="mt-3 flex flex-wrap justify-center gap-2">
+          <div className="mt-3 flex min-w-0 flex-nowrap justify-center gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {Array.from({ length: pageCount }, (_, pageIndex) => {
               const active = pageIndex === activePage;
               return (
@@ -904,12 +931,12 @@ const DataSlider = ({
                   }
                   style={{ backgroundColor: active ? activeDotColor : inactiveDotColor }}
                   onMouseDown={(e) => {
-                    if (builderMode === "Layout Mode" && e.detail === 2) return;
+                    if (viewBuilderMode === "Layout Mode" && e.detail === 2) return;
                     e.preventDefault();
                     e.stopPropagation();
                   }}
                   onClick={(e) => {
-                    if (builderMode === "Layout Mode" && e.detail === 2) return;
+                    if (viewBuilderMode === "Layout Mode" && e.detail === 2) return;
                     e.preventDefault();
                     e.stopPropagation();
                     const targetIndex = Math.max(

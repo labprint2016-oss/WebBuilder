@@ -496,3 +496,34 @@ export function clearImageCanvasPreview(elementId) {
     node.style.removeProperty("object-fit");
   });
 }
+
+export function overlayContentTopPx(frameHeight, contentHeight, offsetY, insetPx = 5) {
+  const inset = Math.max(0, Number(insetPx) || 5);
+  const minTop = inset;
+  const maxTop = Math.max(minTop, Number(frameHeight) - Number(contentHeight) - inset);
+  const ratio = Math.max(0, Math.min(100, Number(offsetY) || 0)) / 100;
+  return minTop + (maxTop - minTop) * ratio;
+}
+
+/** Live preview ตำแหน่งข้อความ Overlay — ไม่ re-render แผงตอนลากสไลเดอร์ */
+export function applyOverlayContentOffsetPreview(elementId, offsetY) {
+  const id = String(elementId ?? "");
+  if (!id) return;
+  queryImagePreviewNodes(id, "data-overlay-frame-id").forEach((frame) => {
+    const content =
+      frame.querySelector(`[data-overlay-content-id="${escapeAttrSelector(id)}"]`) ||
+      null;
+    if (!content) return;
+    const frameHeight = Number(frame.clientHeight) || 0;
+    const contentHeight =
+      Number(content.offsetHeight) || Number(content.scrollHeight) || 0;
+    if (frameHeight <= 0 || contentHeight <= 0) return;
+    const inset = Number(frame.getAttribute("data-overlay-inset"));
+    content.style.top = `${overlayContentTopPx(
+      frameHeight,
+      contentHeight,
+      offsetY,
+      Number.isFinite(inset) ? inset : 5
+    )}px`;
+  });
+}

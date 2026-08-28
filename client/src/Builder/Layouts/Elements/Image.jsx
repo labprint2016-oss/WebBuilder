@@ -5,6 +5,7 @@ import {
   IMAGE_MARGIN_BOTTOM_DEFAULT,
   imageBrightnessFilterStyle,
   imageCornerRadiusStyle,
+  overlayContentTopPx,
   resolveImageLinkAttrs,
 } from "./imageAspectConfig";
 import {
@@ -37,6 +38,7 @@ import IconAwsome from "../../IconAwsome";
 import { SegmentedRichTextInner } from "../../richText/SegmentedRichText";
 import { migrateLabelToParagraph } from "../../richText/richTextParagraphModel";
 import { usePanelPreview } from "../../panelPreviewStore";
+import { useBuilderContextStore } from "../../store/builderContextStore";
 
 const hasImageSrc = (s) => typeof s === "string" && s.trim() !== "";
 const DEFAULT_IMAGE_HOVER_TEXT =
@@ -56,11 +58,23 @@ const Image = ({
   disableLink = false,
   placeholderIconPosition = "center",
   /** ส่งจาก Element — ใช้กัน <img>/<a> ดักโฟกัส/ลิงก์ใน Layout Mode ให้คลิกไปที่กล่องเลือก + คีย์ลัด */
-  builderMode,
+  builderMode: builderModeProp,
+  device: deviceProp = "Desktop",
+  isSiteRuntime = false,
   isPanelOpen = false,
   isHoverLocked = false,
   prioritizeLoad = false,
 }) => {
+  const storeDevice = useBuilderContextStore((state) => state.device);
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const device = isSiteRuntime
+    ? deviceProp
+    : storeDevice || deviceProp || "Desktop";
+  const builderMode = isSiteRuntime
+    ? builderModeProp
+    : storeBuilderMode || builderModeProp;
+  const isCompactDevice = device !== "Desktop";
+  const isMobile = device === "Mobile";
   const previewType =
     committedElementData?.type === "imgo"
       ? "imgo"
@@ -292,6 +306,13 @@ const Image = ({
   const imageHoverMetricsRef = useRef({ frameHeight: 0, contentHeight: 0 });
   const imageHoverLastTopPxRef = useRef(5);
   const [imageHoverMetricsTick, setImageHoverMetricsTick] = useState(0);
+  const overlayContentInset = isImageOverlay
+    ? isMobile
+      ? 12
+      : isCompactDevice
+        ? 8
+        : 5
+    : 5;
   const isBuilderLayoutMode = builderMode === "Layout Mode";
   const isBuilderEditorMode = builderMode === "Editor Mode";
   const disableHoverPreviewInBuilder =
@@ -352,6 +373,7 @@ const Image = ({
     imageHoverText,
     showImageHoverIcon,
     showImageHoverButton,
+    device,
   ]);
   const imageHoverContentTopPx = useMemo(() => {
     void imageHoverMetricsTick;
@@ -360,13 +382,22 @@ const Image = ({
     if (frameHeight <= 0 || contentHeight <= 0) {
       return imageHoverLastTopPxRef.current;
     }
-    const minTop = 5;
-    const maxTop = Math.max(minTop, frameHeight - contentHeight - 5);
-    const ratio = isImageOverlay ? imageHoverContentOffsetY / 100 : 0.5;
-    const nextTop = minTop + (maxTop - minTop) * ratio;
+    const nextTop = isImageOverlay
+      ? overlayContentTopPx(
+          frameHeight,
+          contentHeight,
+          imageHoverContentOffsetY,
+          overlayContentInset
+        )
+      : overlayContentTopPx(frameHeight, contentHeight, 50);
     imageHoverLastTopPxRef.current = nextTop;
     return nextTop;
-  }, [imageHoverContentOffsetY, imageHoverMetricsTick, isImageOverlay]);
+  }, [
+    imageHoverContentOffsetY,
+    imageHoverMetricsTick,
+    isImageOverlay,
+    overlayContentInset,
+  ]);
   const badgeHoverEnabled =
     !isBanner && Boolean(elementData?.badge?.hover);
   const badgeLabelRaw =
@@ -546,7 +577,7 @@ const Image = ({
     <div
       data-image-wrap-id={id}
       data-image-radius-id={id}
-      className={`relative block w-full ${
+      className={`relative block w-full min-w-0 max-w-full ${
         bannerHorizontalCaptionOverflowVisible
           ? "overflow-visible"
           : "overflow-hidden"
@@ -622,10 +653,28 @@ const Image = ({
               ...imageHoverOverlayBackgroundStyle,
             }}
           />
-          <div ref={imageHoverFrameRef} className="relative h-full w-full px-5">
+          <div
+            ref={imageHoverFrameRef}
+            data-overlay-frame-id={id}
+            data-overlay-inset={overlayContentInset}
+            className={`relative h-full w-full min-w-0 ${
+              isMobile ? "px-3" : isCompactDevice ? "px-4" : "px-5"
+            }`}
+          >
             <div
               ref={imageHoverContentRef}
-              className={`absolute flex w-[92%] max-w-[92%] flex-col items-center gap-1.5 text-center ${
+              data-overlay-content-id={id}
+              className={`absolute flex min-w-0 flex-col items-center gap-1.5 text-center ${
+                isImageOverlay
+                  ? isMobile
+                    ? "w-full max-w-full"
+                    : isCompactDevice
+                      ? "w-[94%] max-w-[94%]"
+                      : "w-[92%] max-w-[92%]"
+                  : isMobile
+                    ? "w-[96%] max-w-[96%]"
+                    : "w-[92%] max-w-[92%]"
+              } ${
                 disableImageHoverMotion
                   ? "transition-none"
                   : "transition-all duration-550 ease-[cubic-bezier(0.22,1,0.36,1)]"
@@ -638,17 +687,18 @@ const Image = ({
                 left: "50%",
                 top: `${imageHoverContentTopPx}px`,
                 transform: "translateX(-50%)",
-                maxHeight: "calc(100% - 10px)",
+                maxHeight: `calc(100% - ${overlayContentInset * 2}px)`,
                 overflow: "hidden",
               }}
             >
               {showImageHoverIcon ? (
                 <div
                   data-image-hover-part="icon"
-                  className="grid place-items-center"
+                  className="grid max-w-full place-items-center"
                   style={{
                     width: imageHoverDefaultContainerSize,
-                    height: imageHoverDefaultContainerSize,
+                    maxWidth: "100%",
+                    aspectRatio: "1 / 1",
                     backgroundColor: imageHoverDefaultIconBg,
                     borderRadius: imageHoverIconBorderRadius,
                     marginTop: imageHoverIconMarginTop,
@@ -669,7 +719,7 @@ const Image = ({
               ) : null}
               <div
                 data-image-hover-part="text"
-                className="w-full"
+                className="w-full min-w-0 [overflow-wrap:anywhere]"
                 style={{
                   color: "#ffffff",
                 }}
@@ -688,8 +738,10 @@ const Image = ({
               {showImageHoverButton ? (
                 <div
                   data-image-hover-part="button"
+                  className="max-w-full min-w-0"
                   style={{
                     width: imageHoverButtonFullWidth ? "100%" : "auto",
+                    maxWidth: "100%",
                     alignSelf: imageHoverButtonFullWidth ? "stretch" : "center",
                     marginTop: imageHoverButtonMarginTop,
                     marginBottom: imageHoverButtonMarginBottom,
@@ -700,6 +752,8 @@ const Image = ({
                     disableElevation
                     sx={{
                       ...imageHoverButtonSx,
+                      maxWidth: "100%",
+                      minWidth: 0,
                       fontFamily: setFont(theme?.text?.value) || undefined,
                       pointerEvents: "none",
                     }}

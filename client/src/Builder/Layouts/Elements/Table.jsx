@@ -2,6 +2,7 @@ import { memo, useRef } from "react";
 import { mergeTableElement } from "./tableElementConfig";
 import { setFont } from "../../../../function";
 import { usePanelPreview } from "../../panelPreviewStore";
+import { useBuilderContextStore } from "../../store/builderContextStore";
 
 const alignClass = (align) => {
   if (align === "center") return "text-center";
@@ -29,10 +30,22 @@ const TableElement = ({
   selected,
   hover,
   animationForElement,
-  builderMode,
+  builderMode: builderModeProp,
+  device: deviceProp = "Desktop",
+  isSiteRuntime = false,
   onUpdate,
   theme,
 }) => {
+  const storeDevice = useBuilderContextStore((state) => state.device);
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const device = isSiteRuntime
+    ? deviceProp
+    : storeDevice || deviceProp || "Desktop";
+  const builderMode = isSiteRuntime
+    ? builderModeProp
+    : storeBuilderMode || builderModeProp;
+  const isCompactDevice = device !== "Desktop";
+  const isMobile = device === "Mobile";
   const panelPreview = usePanelPreview("tbl", rawElementData?.id);
   const elementData = panelPreview
     ? { ...rawElementData, ...panelPreview }
@@ -62,6 +75,7 @@ const TableElement = ({
     tableZebraBgOpacity,
     tableBorderStyle,
     tableOuterBorder,
+    tableStickyFirstColumn,
   } = data;
 
   const resolvedHeaderBg     = hexWithOpacity(tableHeaderBg,     tableHeaderBgOpacity);
@@ -74,6 +88,20 @@ const TableElement = ({
 
   const canInlineEdit = builderMode === "Editor Mode" && typeof onUpdate === "function";
   const useLayoutSelectionFrame = builderMode === "Layout Mode" && selected;
+  const displayPadX = isMobile ? 10 : isCompactDevice ? 14 : tableCellPaddingX;
+  const columnsWidthSum = tableColumns.reduce(
+    (sum, col) => sum + (Number(col.width) || 180),
+    0
+  );
+  const compactTableMinWidth = Math.max(
+    columnsWidthSum,
+    Number(data.tableMinWidth) || 0
+  );
+  const enableStickyFirstColumn = tableStickyFirstColumn === true;
+  const tableScrollMinWidth =
+    isCompactDevice || enableStickyFirstColumn
+      ? compactTableMinWidth
+      : undefined;
   const originalRef = useRef({});
   // Tracks the latest typed innerText per cell — updated on every input event.
   const draftRef = useRef({});
@@ -155,7 +183,7 @@ const TableElement = ({
 
   return (
     <div
-      className={`w-full ${animationForElement || ""} ${
+      className={`w-full min-w-0 max-w-full ${animationForElement || ""} ${
         !useLayoutSelectionFrame && selected
           ? "rounded-md border border-dashed border-red-400 bg-red-300/10 p-2"
           : ""
@@ -164,16 +192,28 @@ const TableElement = ({
       onMouseEnter={() => hover?.({ id: data.id })}
       onMouseLeave={handleMouseLeaveTable}
     >
-      <div className={useLayoutSelectionFrame ? "relative px-0 py-2" : ""}>
+      <div
+        className={
+          useLayoutSelectionFrame
+            ? `relative min-w-0 px-0 ${isCompactDevice ? "py-1.5" : "py-2"}`
+            : "min-w-0"
+        }
+      >
         <div
           className={
             useLayoutSelectionFrame
-              ? "origin-center scale-[0.96] transform-gpu transition-transform duration-150"
-              : ""
+              ? `min-w-0 origin-center transform-gpu transition-transform duration-150 ${
+                  isCompactDevice ? "" : "scale-[0.96]"
+                }`
+              : "min-w-0"
           }
         >
           <div
-            className={`w-full overflow-x-auto rounded-md${tableOuterBorder ? " border" : ""}`}
+            className={`w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-md${
+              isCompactDevice
+                ? " [scrollbar-width:thin]"
+                : ""
+            }${tableOuterBorder ? " border" : ""}`}
             style={tableOuterBorder ? { borderColor: resolvedBorderColor, borderStyle: tableBorderStyle } : undefined}
           >
             <table
@@ -181,11 +221,14 @@ const TableElement = ({
               style={{
                 tableLayout: "fixed",
                 width: "100%",
+                minWidth: tableScrollMinWidth
+                  ? `${tableScrollMinWidth}px`
+                  : undefined,
               }}
             >
               <thead>
                 <tr style={{ backgroundColor: resolvedHeaderBg }}>
-                  {tableColumns.map((col) => (
+                  {tableColumns.map((col, colIndex) => (
                     <th
                       key={col.id}
                       className={`${alignClass(col.align)} border-b`}
@@ -197,10 +240,26 @@ const TableElement = ({
                         fontSize: `${tableFontSize}px`,
                         fontFamily: textFontFamily,
                         width: `${col.width}px`,
-                        padding: `${tableCellPaddingY}px ${tableCellPaddingX}px`,
+                        minWidth:
+                          isCompactDevice || enableStickyFirstColumn
+                            ? `${col.width}px`
+                            : undefined,
+                        padding: `${tableCellPaddingY}px ${displayPadX}px`,
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
+                        ...(enableStickyFirstColumn && colIndex === 0
+                          ? {
+                              position: "sticky",
+                              left: 0,
+                              zIndex: 3,
+                              backgroundColor: resolvedHeaderBg,
+                              borderRightWidth: tableBorderStyle === "none" ? 0 : 1,
+                              borderRightStyle:
+                                tableBorderStyle === "none" ? "none" : tableBorderStyle,
+                              borderRightColor: resolvedBorderColor,
+                            }
+                          : {}),
                       }}
                     >
                       {col.label}
@@ -227,12 +286,31 @@ const TableElement = ({
                           borderStyle: tableBorderStyle === "none" ? "none" : tableBorderStyle,
                           fontSize: `${tableFontSize}px`,
                           fontFamily: textFontFamily,
-                          padding: `${tableCellPaddingY}px ${tableCellPaddingX}px`,
+                          padding: `${tableCellPaddingY}px ${displayPadX}px`,
+                          minWidth:
+                            isCompactDevice || enableStickyFirstColumn
+                              ? `${col.width}px`
+                              : undefined,
                           cursor: canInlineEdit ? "text" : "default",
                           outline: "none",
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
+                          ...(enableStickyFirstColumn && colIndex === 0
+                            ? {
+                                position: "sticky",
+                                left: 0,
+                                zIndex: 2,
+                                backgroundColor:
+                                  tableZebra && rowIndex % 2 === 1
+                                    ? resolvedZebraBg
+                                    : resolvedRowBg,
+                                borderRightWidth: tableBorderStyle === "none" ? 0 : 1,
+                                borderRightStyle:
+                                  tableBorderStyle === "none" ? "none" : tableBorderStyle,
+                                borderRightColor: resolvedBorderColor,
+                              }
+                            : {}),
                         }}
                         contentEditable={canInlineEdit}
                         suppressContentEditableWarning

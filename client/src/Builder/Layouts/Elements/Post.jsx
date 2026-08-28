@@ -23,6 +23,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { usePanelPreview } from "../../panelPreviewStore";
+import { useBuilderContextStore } from "../../store/builderContextStore";
 
 const SORTABLE_GHOST_CLASS =
   "pointer-events-none absolute -inset-x-3 inset-y-0 rounded border border-dashed border-red-400 bg-red-300/10";
@@ -59,7 +60,9 @@ const PostElement = ({
   elementData: rawElementData,
   selected,
   animationForElement,
-  builderMode,
+  builderMode: builderModeProp,
+  device: deviceProp = "Desktop",
+  isSiteRuntime = false,
   prioritizeImageLoad = false,
   onTabElementEdit,
   renderTabElement,
@@ -69,6 +72,16 @@ const PostElement = ({
   tabSelectedElId,
   theme,
 }) => {
+  const storeDevice = useBuilderContextStore((state) => state.device);
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const device = isSiteRuntime
+    ? deviceProp
+    : storeDevice || deviceProp || "Desktop";
+  const builderMode = isSiteRuntime
+    ? builderModeProp
+    : storeBuilderMode || builderModeProp;
+  const isMobile = device === "Mobile";
+  const isCompactDevice = device !== "Desktop";
   const panelPreview = usePanelPreview("post", rawElementData?.id);
   const elementData = panelPreview
     ? { ...rawElementData, ...panelPreview }
@@ -101,13 +114,13 @@ const PostElement = ({
     if (Number.isFinite(gapImage)) return gapImage;
     const gapContent = Number(elementData?.postHeadingGapContent);
     if (Number.isFinite(gapContent)) return gapContent;
-    return 18;
+    return 10;
   };
   const headingGap = Math.max(
-    10,
+    5,
     Math.min(30, resolveHeadingGap())
   );
-  const horizontalHeadingGap = Math.max(10, Math.min(30, headingGap));
+  const horizontalHeadingGap = Math.max(5, Math.min(30, headingGap));
   const align =
     elementData?.postAlign === "start" || elementData?.postAlign === "end"
       ? elementData.postAlign
@@ -205,16 +218,48 @@ const PostElement = ({
     align === "center" ? "items-center text-center" : align === "end" ? "items-end text-right" : "items-start text-left";
   const verticalHeadingAlignMode = align === "center" ? "center" : align === "end" ? "end" : "start";
   const contentOnlyVerticalHeading = !showImagePane && headingEnabled && !isHorizontalHeading;
-  const matchImageHeight = showImagePane;
-  const imagePaneMinHeight = postImageIsFixedAspect ? undefined : 220;
+  const stackImageAbove = isMobile && showImagePane;
+  const matchImageHeight = showImagePane && !isMobile;
+  const imagePaneMinHeight = postImageIsFixedAspect ? undefined : isMobile ? 160 : 220;
+  const gridColsClass = (() => {
+    if (stackImageAbove) return "grid-cols-1";
+    if (isCompactDevice) {
+      if (showImagePane) {
+        return isHorizontalHeading || headingDisabled
+          ? "grid-cols-[minmax(0,36%)_minmax(0,1fr)]"
+          : "grid-cols-[minmax(0,36%)_auto_minmax(0,1fr)]";
+      }
+      return headingEnabled && !isHorizontalHeading
+        ? "grid-cols-[auto_minmax(0,1fr)]"
+        : "grid-cols-[minmax(0,1fr)]";
+    }
+    if (showImagePane) {
+      return isHorizontalHeading || headingDisabled
+        ? "grid-cols-[minmax(180px,36%)_minmax(260px,1fr)]"
+        : "grid-cols-[minmax(180px,36%)_auto_minmax(260px,1fr)]";
+    }
+    return headingEnabled && !isHorizontalHeading
+      ? "grid-cols-[auto_minmax(260px,1fr)]"
+      : "grid-cols-[minmax(260px,1fr)]";
+  })();
   const contentOnlyMinHeight = !showImagePane && headingEnabled
     ? isHorizontalHeading
       ? Math.max(44, Math.round(headingFontSize) + 16)
       : undefined
     : undefined;
-  const gridColumnGap = headingDisabled && showImagePane ? 10 : contentOnlyVerticalHeading ? headingGap : 0;
-  const verticalHeadingPadLeft = showImagePane ? headingGap : 0;
-  const verticalHeadingPadRight = showImagePane ? headingGap : 0;
+  const gridColumnGap = (() => {
+    const base =
+      headingDisabled && showImagePane
+        ? 10
+        : contentOnlyVerticalHeading
+          ? headingGap
+          : 0;
+    if (stackImageAbove) return 0;
+    if (isCompactDevice && showImagePane) return Math.max(base, 8);
+    return base;
+  })();
+  const verticalHeadingPadLeft = showImagePane && !stackImageAbove ? headingGap : 0;
+  const verticalHeadingPadRight = showImagePane && !stackImageAbove ? headingGap : 0;
   const selectedEmptyContentInsetY =
     matchImageHeight || !(useLayoutSelectionFrame && !hasElements) ? 0 : 10;
   const contentMarginTop = matchImageHeight
@@ -246,7 +291,7 @@ const PostElement = ({
   const dropBody = hasElements ? (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-        <div className="w-full space-y-1">
+        <div className="w-full min-w-0 space-y-1" data-tab-content-list="true">
           {postElements.map((el, i) => (
             <Fragment key={String(el?.id || `post-el-${i}`)}>
               {ghost && !ghost.isLast && ghost.insertAt === i && ghost.ghostEl}
@@ -303,6 +348,7 @@ const PostElement = ({
           : "min-h-[44px]"
       }`}
       style={contentOnlyMinHeight ? { minHeight: contentOnlyMinHeight } : undefined}
+      data-tab-content-list="true"
     >
       {ghost ? (
         ghost.ghostEl
@@ -316,27 +362,19 @@ const PostElement = ({
 
   return (
     <div
-      className={`w-full ${animationForElement || ""}`}
+      className={`w-full min-w-0 ${animationForElement || ""}`}
       style={{ marginTop, marginBottom, fontFamily: textFontFamily }}
     >
-      <div className={useLayoutSelectionFrame ? "relative px-0 py-0" : ""}>
+      <div className={useLayoutSelectionFrame ? "relative min-w-0 px-0 py-0" : "min-w-0"}>
         <div
           className={
             useLayoutSelectionFrame
-              ? "origin-center scale-[0.97] transform-gpu transition-transform duration-150"
-              : ""
+              ? "min-w-0 origin-center scale-[0.97] transform-gpu transition-transform duration-150"
+              : "min-w-0"
           }
         >
           <div
-            className={`grid w-full items-stretch ${
-          showImagePane
-            ? isHorizontalHeading || headingDisabled
-              ? "grid-cols-[minmax(180px,36%)_minmax(260px,1fr)]"
-              : "grid-cols-[minmax(180px,36%)_auto_minmax(260px,1fr)]"
-            : headingEnabled && !isHorizontalHeading
-              ? "grid-cols-[auto_minmax(260px,1fr)]"
-              : "grid-cols-[minmax(260px,1fr)]"
-            }`}
+            className={`grid w-full min-w-0 items-stretch ${gridColsClass}`}
             style={{
               columnGap: gridColumnGap,
               ...(matchImageHeight
@@ -349,7 +387,9 @@ const PostElement = ({
           >
         {showImagePane && (
           <div
-            className="relative w-full overflow-hidden rounded-sm bg-gray-100"
+            className={`relative w-full min-w-0 overflow-hidden rounded-sm ${
+              postImageSrc ? "bg-transparent" : "bg-gray-100"
+            }`}
             data-post-part="image"
             data-post-image-pane="true"
             style={{
@@ -362,13 +402,17 @@ const PostElement = ({
                   }),
               ...(postImageIsFixedAspect
                 ? { aspectRatio: postPreviewReservedAspectRatio }
-                : { minHeight: imagePaneMinHeight }),
+                : postImageSrc
+                  ? matchImageHeight
+                    ? { height: "100%", minHeight: 0 }
+                    : {}
+                  : { minHeight: imagePaneMinHeight }),
             }}
             onMouseEnter={() => setIsPostImageHover(true)}
             onMouseLeave={() => setIsPostImageHover(false)}
           >
             {postImageSrc ? (
-              postImageIsFixedAspect ? (
+              postImageIsFixedAspect || matchImageHeight ? (
                 <img
                   src={postImageSrc}
                   alt=""
@@ -408,9 +452,21 @@ const PostElement = ({
           </div>
         )}
 
+        <div
+          className={
+            stackImageAbove && headingEnabled && !isHorizontalHeading
+              ? "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-stretch"
+              : "contents"
+          }
+          style={
+            stackImageAbove && headingEnabled && !isHorizontalHeading
+              ? { columnGap: headingGap }
+              : undefined
+          }
+        >
         {headingEnabled && !isHorizontalHeading && (
           <div
-            className="relative h-full"
+            className="relative h-full min-w-0"
             data-post-part="heading"
             style={{
               paddingLeft: verticalHeadingPadLeft,
@@ -516,15 +572,15 @@ const PostElement = ({
             <div
               className={
                 matchImageHeight
-                  ? "flex h-full min-h-0 w-full flex-col"
-                  : "flex min-h-0 w-full flex-col self-stretch"
+                  ? "flex h-full min-h-0 w-full min-w-0 flex-col"
+                  : "flex min-h-0 w-full min-w-0 flex-col self-stretch"
               }
             >
           {headingEnabled && isHorizontalHeading && (
-            <div className="pointer-events-none flex items-center justify-center px-2" data-post-part="heading">
+            <div className="pointer-events-none flex min-w-0 items-center justify-center px-2" data-post-part="heading">
               {dividerEnabled && (
                 <span
-                  className="h-0 min-w-8 flex-1 border-t"
+                  className="h-0 min-w-4 flex-1 border-t sm:min-w-8"
                   style={{
                     borderTopStyle: dividerStyle,
                     borderTopColor: dividerColor,
@@ -533,14 +589,14 @@ const PostElement = ({
                 />
               )}
               <span
-                className={`mx-3 px-1 ${
+                className={`mx-3 min-w-0 px-1 ${
                   headingBold ? "font-bold" : "font-medium"
-                }`}
+                } ${isMobile ? "text-center" : ""}`}
                 style={{
                   fontFamily: headingFontFamily,
                   fontSize: headingFontSize,
                   color: headingTextColor,
-                  whiteSpace: "nowrap",
+                  whiteSpace: isMobile ? "normal" : "nowrap",
                   writingMode: "horizontal-tb",
                   textOrientation: "mixed",
                 }}
@@ -549,7 +605,7 @@ const PostElement = ({
               </span>
               {dividerEnabled && (
                 <span
-                  className="h-0 min-w-8 flex-1 border-t"
+                  className="h-0 min-w-4 flex-1 border-t sm:min-w-8"
                   style={{
                     borderTopStyle: dividerStyle,
                     borderTopColor: dividerColor,
@@ -560,7 +616,7 @@ const PostElement = ({
             </div>
           )}
           <div
-            className={`relative flex w-full flex-col rounded-sm ${
+            className={`relative flex w-full min-w-0 flex-col rounded-sm ${
               useLayoutSelectionFrame ? "px-0" : "px-2"
             } ${
               matchImageHeight && !isHorizontalHeading
@@ -598,6 +654,7 @@ const PostElement = ({
           >
             {dropBody}
           </div>
+        </div>
         </div>
           </div>
         </div>

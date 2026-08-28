@@ -2732,6 +2732,7 @@ const ListElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =>
 
               {/* Item list — List Images: Stack spacing={3} (24px) ลดเหลือ 6px */}
               <Box
+                className={draft.listImageElement === true ? "pb-5" : "pb-8"}
                 sx={{
                   pb: 4,
                   ...(draft.listImageElement === true

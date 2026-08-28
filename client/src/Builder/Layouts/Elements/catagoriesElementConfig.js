@@ -51,6 +51,7 @@ export const CATAGORIES_ELEMENT_DEFAULTS = {
   catagoriesPerViewMobile: 1,
   catagoriesGap: 8,
   catagoriesItemGap: 12,
+  catagoriesContentPadX: 12,
   catagoriesButtonFill: { type: "mainColor", index: 0 },
   catagoriesButtonFillOpacity: 255,
   catagoriesButtonBorderColor: "#ffffff",
@@ -291,6 +292,13 @@ export function mergeCatagoriesElement(raw) {
     ),
     catagoriesGap: Math.max(0, Number(base.catagoriesGap) || 0),
     catagoriesItemGap: Math.max(0, Number(base.catagoriesItemGap) || 12),
+    catagoriesContentPadX: (() => {
+      const raw = Number(base.catagoriesContentPadX);
+      if (Number.isFinite(raw)) return Math.max(8, Math.min(48, raw));
+      const legacy = Number(base.catagoriesItemGap);
+      if (Number.isFinite(legacy)) return Math.max(8, Math.min(48, legacy));
+      return 12;
+    })(),
     catagoriesButtonFillOpacity: clamp255(base.catagoriesButtonFillOpacity),
     catagoriesButtonBorderOpacity: clamp255(base.catagoriesButtonBorderOpacity),
     catagoriesButtonTextOpacity: clamp255(base.catagoriesButtonTextOpacity),

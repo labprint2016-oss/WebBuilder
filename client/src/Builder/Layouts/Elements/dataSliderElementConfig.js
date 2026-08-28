@@ -17,6 +17,7 @@ export const DATA_SLIDER_ELEMENT_DEFAULTS = {
   dataSliderPerViewTablet: 2,
   dataSliderPerViewMobile: 1,
   dataSliderGap: 0,
+  dataSliderContentPadX: 12,
   dataSliderNavShape: "square",
   /** แสดงปุ่มเลื่อนบนหน้าเว็บ — หน้า Builder แสดงเสมอ */
   dataSliderNavShowOnWebsite: true,
@@ -84,6 +85,10 @@ export function mergeDataSliderElement(raw) {
       Math.max(1, Number(base.dataSliderPerViewMobile) || 1)
     ),
     dataSliderGap: Math.max(0, Number(base.dataSliderGap) || 0),
+    dataSliderContentPadX: (() => {
+      const raw = Number(base.dataSliderContentPadX);
+      return Number.isFinite(raw) ? Math.max(8, Math.min(48, raw)) : 12;
+    })(),
     dataSliderAutoplayDelayMs: Math.max(
       2000,
       Number(base.dataSliderAutoplayDelayMs) || 4500

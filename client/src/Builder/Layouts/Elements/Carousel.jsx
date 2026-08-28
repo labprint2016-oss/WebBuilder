@@ -19,6 +19,7 @@ import {
   sliceSlideIconForPanel,
 } from "./carouselElementConfig";
 import { usePanelPreview } from "../../panelPreviewStore";
+import { useBuilderContextStore } from "../../store/builderContextStore";
 
 /** ข้อความ placeholder จากค่าเริ่มต้นรายการไอเทม — แสดงบนแคนวาสเป็น demo caption แทน */
 const ITEM_CAPTION_PLACEHOLDER_RE = /^iTem\s*-\s*\d+$/i;
@@ -119,8 +120,9 @@ const Carousel = ({
   elementData: rawElementData,
   selected,
   hover,
-  builderMode,
-  device = "Desktop",
+  builderMode: builderModeProp,
+  device: deviceProp = "Desktop",
+  isSiteRuntime = false,
   /** false = แคนวาส builder — ไม่เล่น autoplay; หน้าเผยแพร่ส่ง true เมื่อต้องการ autoplay */
   allowAutoplay = false,
   theme,
@@ -128,6 +130,16 @@ const Carousel = ({
   editorHoverMeta,
 }) => {
   const panelPreview = usePanelPreview("crl", rawElementData?.id);
+  const storeDevice = useBuilderContextStore((state) => state.device);
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const device = isSiteRuntime
+    ? deviceProp
+    : storeDevice || deviceProp || "Desktop";
+  const builderMode = isSiteRuntime
+    ? builderModeProp
+    : storeBuilderMode || builderModeProp;
+  const isCompactDevice = device !== "Desktop";
+  const isMobile = device === "Mobile";
   const elementData = panelPreview
     ? { ...rawElementData, ...panelPreview }
     : rawElementData;
@@ -274,8 +286,8 @@ const Carousel = ({
 
   const navBtnClass =
     s.carouselNavShape === "circle"
-      ? "rounded-full h-9 w-9 p-0"
-      : "rounded-md h-9 min-w-[2.25rem] px-2";
+      ? `rounded-full p-0 ${isMobile ? "h-8 w-8" : "h-9 w-9"}`
+      : `rounded-md ${isMobile ? "h-8 min-w-[2rem] px-1.5" : "h-9 min-w-[2.25rem] px-2"}`;
 
   const captionCanvasBlock =
     isLayoutMode ? "pointer-events-none select-none" : "";
@@ -311,7 +323,7 @@ const Carousel = ({
 
   return (
     <div
-      className="w-full"
+      className="w-full min-w-0 max-w-full"
       style={{
         marginTop: s.carouselMarginTop,
         marginBottom: s.carouselMarginBottom,
@@ -319,16 +331,24 @@ const Carousel = ({
       onMouseEnter={() => hover?.({ id: elementData.id })}
       onMouseLeave={() => hover?.(false)}
     >
-      <div className={useLayoutSelectionFrame ? "relative px-0 py-2" : ""}>
+      <div
+        className={
+          useLayoutSelectionFrame
+            ? `relative min-w-0 px-0 ${isCompactDevice ? "py-1.5" : "py-2"}`
+            : "min-w-0"
+        }
+      >
         <div
           className={
             useLayoutSelectionFrame
-              ? "origin-center scale-[0.96] transform-gpu transition-transform duration-150"
-              : ""
+              ? `min-w-0 origin-center transform-gpu transition-transform duration-150 ${
+                  isCompactDevice ? "" : "scale-[0.96]"
+                }`
+              : "min-w-0"
           }
         >
-          <div className="relative">
-            <div className="overflow-hidden" ref={emblaRef}>
+          <div className="relative min-w-0">
+            <div className="min-w-0 overflow-hidden" ref={emblaRef}>
               <div className="flex touch-pan-y items-start" style={{ marginLeft: 0 }}>
                 {slides.map((slide, i) => {
               const captionDisplayParagraph = captionParagraphForCanvasDisplay(
@@ -435,7 +455,7 @@ const Carousel = ({
                           aria-label={`สไลด์ ${i + 1} — ยังไม่มีรูป`}
                         >
                           <ImageIcon
-                            className={`${slide.slideLinkMode === "lightbox" || slide.slideLinkMode === "video" ? "absolute right-[15px] top-[15px] z-[4] h-8 w-8" : "h-10 w-10"} text-slate-400 dark:text-white/35`}
+                            className={`${slide.slideLinkMode === "lightbox" || slide.slideLinkMode === "video" ? `absolute right-[15px] top-[15px] z-[4] ${isMobile ? "h-6 w-6" : "h-8 w-8"}` : isMobile ? "h-8 w-8" : "h-10 w-10"} text-slate-400 dark:text-white/35`}
                             strokeWidth={1.5}
                             aria-hidden
                           />
@@ -485,7 +505,7 @@ const Carousel = ({
                   })()}
                   {variant === "icon_text" && (
                     <div
-                      className={`relative flex w-full items-center justify-center ${
+                      className={`relative flex w-full min-w-0 max-w-full items-center justify-center ${
                         canClickSlideIcon ? "cursor-pointer" : ""
                       }`}
                       data-carousel-part="icon"
@@ -507,8 +527,10 @@ const Carousel = ({
                   )}
                   {(variant === "image_text" || variant === "icon_text") && (
                     <div
-                      className={`flex flex-col justify-start px-4 pb-3 text-center ${
-                        variant === "icon_text" ? "pt-0" : "pt-[11px]"
+                      className={`flex min-w-0 flex-col justify-start text-center [overflow-wrap:anywhere] ${
+                        isCompactDevice ? "px-2 pb-2" : "px-4 pb-3"
+                      } ${
+                        variant === "icon_text" ? "pt-0" : isCompactDevice ? "pt-2" : "pt-[11px]"
                       } ${captionCanvasBlock || ""}`}
                       data-carousel-part="caption"
                       style={captionBottomRadiusStyle}
@@ -532,7 +554,9 @@ const Carousel = ({
                   )}
                   {variant === "text" && (
                     <div
-                      className={`space-y-1 px-3 py-3 text-left ${layoutDeleteTextChrome}`}
+                      className={`min-w-0 space-y-1 text-left [overflow-wrap:anywhere] ${
+                        isCompactDevice ? "px-2 py-2" : "px-3 py-3"
+                      } ${layoutDeleteTextChrome}`}
                     >
                       {slide.title ? (
                         <div className="text-sm font-semibold text-slate-800 dark:text-white/90">
@@ -599,8 +623,18 @@ const Carousel = ({
 
           {pageCount > 1 && (
             <div
-              className={`flex flex-wrap justify-center gap-2 ${
-                variant === "image" ? "mt-5" : "mt-3"
+              className={`flex min-w-0 justify-center ${
+                isCompactDevice
+                  ? "flex-nowrap gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                  : "flex-wrap gap-2"
+              } ${
+                variant === "image"
+                  ? isCompactDevice
+                    ? "mt-3"
+                    : "mt-5"
+                  : isCompactDevice
+                    ? "mt-2"
+                    : "mt-3"
               }`}
             >
               {Array.from({ length: pageCount }, (_, pageIdx) => {

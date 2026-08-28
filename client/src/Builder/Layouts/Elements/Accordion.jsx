@@ -16,6 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { usePanelPreview } from "../../panelPreviewStore";
+import { useBuilderContextStore } from "../../store/builderContextStore";
 
 const ACCORDION_DEFAULTS = {
   accordionAlign: "start",
@@ -297,7 +298,9 @@ const AccordionElement = ({
   elementData: rawElementData,
   selected,
   animationForElement,
-  builderMode,
+  builderMode: builderModeProp,
+  device: deviceProp = "Desktop",
+  isSiteRuntime = false,
   onTabElementEdit,
   renderTabElement,
   onTabElementSelect,
@@ -307,6 +310,15 @@ const AccordionElement = ({
   onUpdate,
   theme,
 }) => {
+  const storeDevice = useBuilderContextStore((state) => state.device);
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const device = isSiteRuntime
+    ? deviceProp
+    : storeDevice || deviceProp || "Desktop";
+  const builderMode = isSiteRuntime
+    ? builderModeProp
+    : storeBuilderMode || builderModeProp;
+  const isCompactDevice = device !== "Desktop";
   const panelPreview = usePanelPreview("acc", rawElementData?.id);
   const elementData = panelPreview
     ? {
@@ -527,16 +539,16 @@ const AccordionElement = ({
 
   return (
     <div
-      className={`w-full ${animationForElement || ""} ${
+      className={`w-full min-w-0 ${animationForElement || ""} ${
         selected && !useLayoutSelectionFrame
           ? "rounded-md border border-dashed border-red-400 bg-red-300/10 p-2"
           : useLayoutSelectionFrame
-            ? "relative rounded-md px-4 py-6"
+            ? `relative rounded-md ${isCompactDevice ? "px-3 py-5" : "px-4 py-6"}`
             : ""
       }`}
       style={{ marginTop, marginBottom, fontFamily: textFontFamily }}
     >
-      <div className="flex w-full flex-col" style={{ gap }}>
+      <div className="flex w-full min-w-0 flex-col" style={{ gap }}>
         {items.map((item) => {
           const isActive = item.id === activeId;
           const titleColor = isActive ? activeTextColor : inactiveTextColor;
@@ -547,14 +559,16 @@ const AccordionElement = ({
           return (
             <div
               key={item.id}
-              className="w-full"
+              className="w-full min-w-0"
               style={{ boxShadow: "none" }}
             >
-              <div data-accordion-tab-trigger="true">
+              <div data-accordion-tab-trigger="true" className="min-w-0">
                 <button
                   type="button"
                   data-accordion-tab-trigger="true"
-                  className="flex w-full cursor-pointer items-center gap-2 px-4"
+                  className={`flex w-full min-w-0 cursor-pointer items-center gap-2 appearance-none shadow-none outline-none ${
+                    isCompactDevice ? "px-3" : "px-4"
+                  }`}
                   onMouseDown={(e) => {
                     if (builderMode === "Layout Mode" || builderMode === "Editor Mode") {
                       e.stopPropagation();
@@ -581,6 +595,8 @@ const AccordionElement = ({
                     borderColor: rowBorder || "#d8d8d8",
                     borderRadius: radius,
                     boxShadow: "none",
+                    WebkitAppearance: "none",
+                    appearance: "none",
                     opacity: item.disabled ? 0.45 : 1,
                   }}
                 >
@@ -607,6 +623,7 @@ const AccordionElement = ({
                   )}
                   <span
                     className="min-w-0 flex-1 truncate"
+                    title={item.label}
                     style={{ fontSize: labelFontSize, textAlign }}
                   >
                     {item.label}
@@ -622,7 +639,7 @@ const AccordionElement = ({
               </div>
               {isActive ? (
                 <div
-                  className={`${hasElements ? "mt-0" : "mt-3"} px-4 ${hasElements ? "py-0" : "py-3"} text-[13px] text-slate-500 transition-colors dark:text-slate-300 ${
+                  className={`${hasElements ? "mt-0" : "mt-3"} min-w-0 ${isCompactDevice ? "px-3" : "px-4"} ${hasElements ? "py-0" : "py-3"} text-[13px] text-slate-500 transition-colors dark:text-slate-300 ${
                     !showAreaGuides
                       ? "border border-transparent bg-transparent"
                       : isThisItemHovered
@@ -662,7 +679,7 @@ const AccordionElement = ({
                       onDragEnd={handleDragEnd}
                     >
                       <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-                        <div className="space-y-0">
+                        <div className="min-w-0 space-y-0" data-tab-content-list="true">
                           {chunkAccordionElementsForInlineRows(activeItem.elements).map(
                             (chunk, chunkIndex) => {
                               if (
@@ -705,7 +722,11 @@ const AccordionElement = ({
                                             ? `acc-counter-row-${chunkIndex}`
                                           : `acc-btn-row-${chunkIndex}`)
                                     )}
-                                    className="mb-0 flex w-full flex-row flex-wrap items-center"
+                                    className={`mb-0 flex w-full min-w-0 flex-row flex-nowrap items-center ${
+                                      isCompactDevice
+                                        ? "overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                                        : ""
+                                    }`}
                                     style={{
                                       justifyContent: rowAlign,
                                       columnGap:
@@ -1181,7 +1202,10 @@ const AccordionElement = ({
                       </SortableContext>
                     </DndContext>
                   ) : (
-                    <div className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center">
+                    <div
+                      className="flex h-full min-h-[44px] flex-col items-center justify-center gap-1 text-center"
+                      data-tab-content-list="true"
+                    >
                       {ghost ? (
                         ghost.ghostEl
                       ) : (

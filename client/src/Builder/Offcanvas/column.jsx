@@ -38,6 +38,7 @@ const columnPanelPerfEnabled =
   new URLSearchParams(window.location.search).get("structurePerf") === "1";
 
 const COLUMN_PADDING_MAX = 200;
+const COLUMN_PADDING_X_MIN = 8;
 const THEME_RANGE_SLIDER_CLASS = `
                     w-full cursor-pointer appearance-none h-2 rounded-full
                     bg-zinc-200
@@ -233,12 +234,17 @@ const ColumnOffcanvas = ({
         if (next === "") return;
         next = Number(next);
         if (Number.isNaN(next) || next < 0) return;
+        if (field === "paddingX") next = Math.max(COLUMN_PADDING_X_MIN, next);
         const nextData = { ...data, [field]: next };
         setData(nextData);
         commitData(nextData);
       };
       const handleSliderPadding = (field, value) => {
-        updateSlider((prev) => ({ ...prev, [field]: value }));
+        const next =
+          field === "paddingX"
+            ? Math.max(COLUMN_PADDING_X_MIN, Number(value) || 0)
+            : value;
+        updateSlider((prev) => ({ ...prev, [field]: next }));
       };
       const handleColor = (field,value,index=null) => {
         const nextData = { ...data };
@@ -370,27 +376,37 @@ const ColumnOffcanvas = ({
               
              {/* Padding */}
              <div className="grid grid-cols-2 gap-x-3">
-              {paddings.map((item, i) => (
+              {paddings.map((item, i) => {
+                const min = item.type === "paddingX" ? COLUMN_PADDING_X_MIN : 0;
+                const raw = Number(item.data);
+                const value = Number.isFinite(raw)
+                  ? Math.max(min, raw)
+                  : min;
+                const max = columnPaddingSliderMax(value);
+                const pos =
+                  max > min ? ((value - min) / (max - min)) * 100 : 0;
+                return (
                 <div className="col col-span-1 ml-[5px] mr-[5px]" key={i}>
-                  <MainLabel label={item.label} value={Number(item.data) || 0} />
+                  <MainLabel label={item.label} value={value} />
                   <div className="min-w-0 px-[2px] pb-[2px] pt-[2px]">
                     <input
                       type="range"
-                      min={0}
-                      max={columnPaddingSliderMax(item.data)}
+                      min={min}
+                      max={max}
                       step={1}
-                      value={Number(item.data) || 0}
-                      onChange={(e) => handleSliderPadding(item.type, Number(e.target.value) || 0)}
+                      value={value}
+                      onChange={(e) => handleSliderPadding(item.type, Number(e.target.value) || min)}
                       {...sliderCommitProps}
                       className={THEME_RANGE_SLIDER_CLASS}
                       style={{
-                        ["--pos"]: `${((Number(item.data) || 0) / columnPaddingSliderMax(item.data)) * 100}%`,
+                        ["--pos"]: `${pos}%`,
                         ["--fill"]: textColor,
                       }}
                     />
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
               <div className="flex flex-col">
               {/* Border Color */}

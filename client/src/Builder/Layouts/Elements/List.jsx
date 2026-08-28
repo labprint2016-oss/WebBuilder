@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Image as ImagePlaceholderIcon, ScanEye } from "lucide-react";
 import {
   Typography,
@@ -42,6 +42,7 @@ import {
   listIconsFallbackIconSize,
 } from "./listElementConfig";
 import { usePanelPreview } from "../../panelPreviewStore";
+import { useBuilderContextStore } from "../../store/builderContextStore";
 import { BUTTON_STYLE_DEFAULTS } from "./buttonElementConfig";
 
 
@@ -63,6 +64,12 @@ const LIST_TEXT_GAP_BASE_PX = 14;
 /** List iTems — ความกว้างกล่องไอคอน (รวม listItemIconBgWidth) */
 function resolveListItemsRowIconContainer(item, sharedData) {
   if (sharedData?.listImageElement) {
+    if (
+      sharedData?.listImageSizePreviewActive === true &&
+      Number.isFinite(Number(sharedData?.containerSize))
+    ) {
+      return Math.max(28, Number(sharedData.containerSize));
+    }
     return Number.isFinite(Number(item?.containerSize))
       ? Math.max(28, Number(item.containerSize))
       : LIST_IMAGE_DEFAULT_CONTAINER_SIZE;
@@ -165,8 +172,12 @@ function ListItemRow({
   onEditText,
   isLayoutMode,
   showInlineDividerAfter,
+  isCompactDevice = false,
+  isMobile = false,
 }) {
   const isListImage = sharedData?.listImageElement === true;
+  /** List iMage บนมือถือ: รูปอยู่บน ข้อความ+ประกอบอยู่ล่าง — Tablet/Desktop คงแนวนอน */
+  const isListImageStack = isListImage && isMobile;
   const listTextColor = setColor(
     theme,
     sharedData?.listTextColor ?? LIST_ELEMENT_DEFAULTS.listTextColor,
@@ -179,12 +190,6 @@ function ListItemRow({
     : LIST_ELEMENT_DEFAULTS.listTextSize;
 
   const iconContainer = resolveListItemsRowIconContainer(item, sharedData);
-  const listImagePreviewScale =
-    isListImage &&
-    sharedData?.listImageSizePreviewActive === true &&
-    Number.isFinite(Number(sharedData?.containerSize))
-      ? Math.max(28, Number(sharedData.containerSize)) / iconContainer
-      : 1;
 
   const listTextGapAdjust = Number.isFinite(Number(sharedData?.listTextGapAdjust))
     ? Number(sharedData.listTextGapAdjust)
@@ -250,11 +255,12 @@ function ListItemRow({
       : LIST_ELEMENT_DEFAULTS.listDividerOpacity
   );
 
-  /** List iTems + List iMage — ซ่อนเส้นคั่นแนวนอนเมื่อใช้เส้นแนวตั้ง (และเส้นคั่นหลักยังเปิด) */
+  /** List iTems + List iMage — ซ่อนเส้นคั่นแนวนอนเมื่อใช้เส้นแนวตั้ง; Mobile ของ List iMage ใช้แนวนอนแทน */
   const verticalTimelineDivider =
     sharedData?.listVerticalTimelineDivider === true &&
     !sharedData?.listIconsElement &&
-    dividerEnabled;
+    dividerEnabled &&
+    !isListImageStack;
 
   const listItemsIconAlignRaw =
     sharedData?.listIconsElement !== true ? sharedData?.listItemsIconAlign : undefined;
@@ -300,6 +306,9 @@ function ListItemRow({
   const listItemRichBlockRight =
     sharedData?.listIconsElement !== true &&
     (listItemsIconAlign === "end" || listImageSplitTextFarRight);
+
+  /** ข้อความประกอบบน Tablet/Mobile: ขึ้นบรรทัดใหม่ ไม่เบียดรูปกับหัวข้อในแถวเดียว */
+  const listImageAsideWraps = showListImageAside && isCompactDevice;
 
   const showListIconsVerticalDivider =
     Boolean(showInlineDividerAfter) &&
@@ -352,10 +361,11 @@ function ListItemRow({
         WebkitBackdropFilter: `blur(${rowFrameBlurPx}px) saturate(${rowFrameSaturatePct}%)`,
       }
     : undefined;
-  const rowFramePadX = rowFrameEnabled ? 12 : 0;
+  const rowFramePadX = rowFrameEnabled ? (isCompactDevice ? 8 : 12) : 0;
   const timelineGapInsetPx = isListImage ? 3 : borderEnabled ? 0 : 5;
-  const timelineSegmentLeft =
-    listItemsIconAlign === "end" || listItemsIconAlign === "split"
+  const timelineSegmentLeft = isListImageStack
+    ? "50%"
+    : listItemsIconAlign === "end" || listItemsIconAlign === "split"
       ? `calc(100% - ${rowFramePadX + iconRenderBoxSize / 2}px)`
       : `${rowFramePadX + iconRenderBoxSize / 2}px`;
 
@@ -407,10 +417,13 @@ function ListItemRow({
           flexDirection: "row",
           alignItems: "stretch",
           width: "100%",
+          maxWidth: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
           mt: `${itemRowGap}px`,
           mb: `${itemRowGap}px`,
-          px: rowFrameEnabled ? "12px" : 0,
-          py: rowFrameEnabled ? "8px" : 0,
+          px: rowFrameEnabled ? (isCompactDevice ? "8px" : "12px") : 0,
+          py: rowFrameEnabled ? (isCompactDevice ? "6px" : "8px") : 0,
           ...(verticalTimelineDivider ? { position: "relative", zIndex: 1 } : {}),
           ...(showListIconsVerticalDivider
             ? {
@@ -422,11 +435,13 @@ function ListItemRow({
         }}
         style={rowFrameInlineStyle}
       >
-        <Box sx={{ flex: "1 1 auto", minWidth: 0 }}>
+        <Box sx={{ flex: "1 1 auto", minWidth: 0, maxWidth: "100%" }}>
           <List
             dense
             sx={{
               width: "100%",
+              maxWidth: "100%",
+              minWidth: 0,
               py: 0,
               mt: 0,
               mb: 0,
@@ -436,20 +451,45 @@ function ListItemRow({
               disablePadding
               sx={{
                 display: "flex",
-                flexDirection: listItemRowReverse ? "row-reverse" : "row",
-                justifyContent: listItemSplitMode ? "space-between" : undefined,
+                flexDirection: isListImageStack
+                  ? "column"
+                  : listItemRowReverse
+                    ? "row-reverse"
+                    : "row",
+                justifyContent:
+                  isListImageStack
+                    ? undefined
+                    : listItemSplitMode
+                      ? "space-between"
+                      : undefined,
                 alignItems: "center",
-                columnGap: listItemSplitMode ? 0 : `${textColumnGap}px`,
+                columnGap: isListImageStack
+                  ? 0
+                  : listItemSplitMode
+                    ? 0
+                    : `${textColumnGap}px`,
+                rowGap: isListImageStack ? `${textColumnGap}px` : undefined,
                 py: `${LIST_DIVIDER_GAP_PX}px`,
                 minHeight: `${rowCoreHeight + LIST_DIVIDER_GAP_PX * 2}px`,
+                width: "100%",
+                maxWidth: "100%",
+                minWidth: 0,
+                boxSizing: "border-box",
               }}
             >
               <ListItemAvatar
                 sx={{
-                  minWidth: `${iconRenderBoxSize}px`,
-                  width: `${iconRenderBoxSize}px`,
+                  minWidth: isListImage && isCompactDevice ? 0 : `${iconRenderBoxSize}px`,
+                  width: isListImage && isCompactDevice ? "auto" : `${iconRenderBoxSize}px`,
+                  maxWidth: isListImageStack
+                    ? "100%"
+                    : isListImage && isCompactDevice
+                      ? `min(${iconRenderBoxSize}px, 42%)`
+                      : `${iconRenderBoxSize}px`,
                   m: 0,
                   p: 0,
+                  flexShrink: isListImage && isCompactDevice ? 1 : 0,
+                  alignSelf: isListImageStack ? "center" : undefined,
                 }}
               >
                 {isListImage ? (
@@ -460,17 +500,12 @@ function ListItemRow({
                     style={{
                       /* ไม่ใช้ iconBoxPad — ระยะห่างในไอเทมควบคุมแค่ columnGap กับข้อความ ไม่หดขนาดรูป */
                       padding: 0,
-                      width: iconContainer,
-                      height: iconContainer,
-                      minWidth: iconContainer,
-                      minHeight: iconContainer,
-                      transform:
-                        listImagePreviewScale !== 1
-                          ? `scale(${listImagePreviewScale})`
-                          : undefined,
-                      transformOrigin: "left center",
-                      willChange:
-                        listImagePreviewScale !== 1 ? "transform" : undefined,
+                      width: `${iconContainer}px`,
+                      maxWidth: "100%",
+                      aspectRatio: "1 / 1",
+                      height: "auto",
+                      minWidth: isCompactDevice ? 28 : iconContainer,
+                      boxSizing: "border-box",
                       ...listImageCornerStyle,
                       backgroundColor: listImageSrc ? "transparent" : "#e5e7eb",
                       cursor: isLayoutMode ? "default" : "pointer",
@@ -586,10 +621,15 @@ function ListItemRow({
               <Box
                 sx={{
                   display: "flex",
-                  flexDirection: listImageInnerAsideReverseRow ? "row-reverse" : "row",
+                  flexDirection: isListImageStack
+                    ? "column"
+                    : listImageInnerAsideReverseRow
+                      ? "row-reverse"
+                      : "row",
                   /* split รูปซ้าย: กลุ่มชิดขวา | List iMage ชิดขวา+ประกอบ: ประกอบซ้ายสุด ข้อความขวาสุด */
-                  justifyContent:
-                    listImageSplitTextFarRight && listImageSplitMirrorTextAsideRow
+                  justifyContent: isListImageStack
+                    ? "center"
+                    : listImageSplitTextFarRight && listImageSplitMirrorTextAsideRow
                       ? "flex-start"
                       : listImageSplitTextFarRight
                         ? "flex-end"
@@ -599,9 +639,18 @@ function ListItemRow({
                   alignItems: "center",
                   flex: "1 1 auto",
                   minWidth: 0,
-                  maxWidth: listItemSplitMode
-                    ? `calc(100% - ${iconRenderBoxSize}px - ${textColumnGap}px)`
-                    : undefined,
+                  width: isListImageStack ? "100%" : undefined,
+                  flexWrap:
+                    listImageAsideWraps || isListImageStack
+                      ? "wrap"
+                      : "nowrap",
+                  maxWidth: isListImageStack
+                    ? "100%"
+                    : isListImage && isCompactDevice
+                      ? "100%"
+                      : listItemSplitMode
+                        ? `calc(100% - ${iconRenderBoxSize}px - ${textColumnGap}px)`
+                        : undefined,
                   columnGap: showListImageAside ? 1 : 0,
                 }}
               >
@@ -610,14 +659,25 @@ function ListItemRow({
                     cursor: isLayoutMode ? "default" : "pointer",
                     m: 0,
                     pl: 0,
-                    flex: showListImageAside ? "1 1 0%" : "1 1 auto",
+                    flex: isListImageStack
+                      ? "0 0 auto"
+                      : showListImageAside
+                        ? "1 1 0%"
+                        : "1 1 auto",
                     minWidth: 0,
-                    textAlign: listItemRichBlockRight ? "right" : "left",
+                    width: isListImageStack ? "100%" : undefined,
+                    textAlign: isListImageStack
+                      ? "center"
+                      : listItemRichBlockRight
+                        ? "right"
+                        : "left",
                     "& .MuiListItemText-primary": {
                       margin: 0,
-                      ...(listItemRichBlockRight
-                        ? { width: "100%", textAlign: "right" }
-                        : {}),
+                      ...(isListImageStack
+                        ? { width: "100%", textAlign: "center" }
+                        : listItemRichBlockRight
+                          ? { width: "100%", textAlign: "right" }
+                          : {}),
                     },
                   }}
                   onDoubleClick={
@@ -645,13 +705,26 @@ function ListItemRow({
                             }
                       }
                       sx={
-                        listItemRichBlockRight
+                        isListImageStack
                           ? {
                               width: "100%",
                               minWidth: 0,
-                              "& > div": { textAlign: "right !important" },
+                              overflowWrap: "anywhere",
+                              textAlign: "center",
+                              "& > div": { textAlign: "center !important" },
                             }
-                          : { width: "100%", minWidth: 0 }
+                          : listItemRichBlockRight
+                            ? {
+                                width: "100%",
+                                minWidth: 0,
+                                overflowWrap: "anywhere",
+                                "& > div": { textAlign: "right !important" },
+                              }
+                            : {
+                                width: "100%",
+                                minWidth: 0,
+                                overflowWrap: "anywhere",
+                              }
                       }
                     >
                       <SegmentedRichText
@@ -677,18 +750,25 @@ function ListItemRow({
                     data-list-part="aside"
                     data-list-item-index={itemIndex}
                     sx={{
-                      flexShrink: 0,
-                      maxWidth: "42%",
+                      flexShrink: listImageAsideWraps ? 1 : 0,
+                      flexBasis: listImageAsideWraps ? "100%" : undefined,
+                      maxWidth: listImageAsideWraps ? "100%" : "42%",
+                      minWidth: 0,
                       alignSelf: "center",
                       fontFamily: setFont(theme?.textHeading?.value),
                       fontWeight: 700,
                       fontSize: `${asideFontSize}px`,
                       lineHeight: 1.25,
                       color: asideCaptionColor,
-                      textAlign: listImageInnerAsideReverseRow ? "left" : "right",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
+                      textAlign: isListImageStack
+                        ? "center"
+                        : listImageInnerAsideReverseRow
+                          ? "left"
+                          : "right",
+                      whiteSpace: listImageAsideWraps ? "normal" : "nowrap",
+                      overflow: listImageAsideWraps ? "visible" : "hidden",
+                      textOverflow: listImageAsideWraps ? "clip" : "ellipsis",
+                      overflowWrap: listImageAsideWraps ? "anywhere" : undefined,
                       transform: `translateY(${asideOffsetY}px)`,
                     }}
                   >
@@ -788,8 +868,20 @@ const ListElement = ({
   onEditIcon,
   onEditText,
   /** Layout Mode: ให้คลิก/คีย์ลัดคัดลอก–วางเหมือน Text (กันโฟกัส rich text) */
-  builderMode,
+  builderMode: builderModeProp,
+  device: deviceProp = "Desktop",
+  isSiteRuntime = false,
 })=>{
+  const storeDevice = useBuilderContextStore((state) => state.device);
+  const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
+  const device = isSiteRuntime
+    ? deviceProp
+    : storeDevice || deviceProp || "Desktop";
+  const builderMode = isSiteRuntime
+    ? builderModeProp
+    : storeBuilderMode || builderModeProp;
+  const isCompactDevice = device !== "Desktop";
+  const isMobile = device === "Mobile";
   const panelPreview = usePanelPreview("list", rawElementData?.id);
   const elementData = panelPreview
     ? { ...rawElementData, ...panelPreview }
@@ -811,6 +903,69 @@ const ListElement = ({
   const isLegacyOrIcons = !Array.isArray(elementData?.listItems);
   const isCompoundIcons =
     !isLegacyOrIcons && elementData?.listIconsElement === true;
+  const isButtonMulti = elementData?.buttonMultiElement === true;
+  const isListStrip = isCompoundIcons || isButtonMulti;
+  const iconsStripRef = useRef(null);
+  const iconsItemCount = Array.isArray(elementData?.listItems)
+    ? elementData.listItems.length
+    : 0;
+
+  useEffect(() => {
+    const node = iconsStripRef.current;
+    if (!node || !isListStrip) return undefined;
+
+    const overflowX = () => node.scrollWidth - node.clientWidth;
+    const onWheel = (e) => {
+      const max = overflowX();
+      if (max <= 2) return;
+      const dx =
+        Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (dx === 0) return;
+      const next = Math.max(0, Math.min(max, node.scrollLeft + dx));
+      if (next === node.scrollLeft) return;
+      node.scrollLeft = next;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    let drag = null;
+    const onPointerDown = (e) => {
+      if (overflowX() <= 2) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      drag = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startScroll: node.scrollLeft,
+        moved: false,
+      };
+    };
+    const onPointerMove = (e) => {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      const dx = e.clientX - drag.startX;
+      if (!drag.moved && Math.abs(dx) < 6) return;
+      drag.moved = true;
+      e.preventDefault();
+      e.stopPropagation();
+      node.scrollLeft = drag.startScroll - dx;
+    };
+    const endDrag = (e) => {
+      if (!drag || (e && e.pointerId !== drag.pointerId)) return;
+      drag = null;
+    };
+
+    node.addEventListener("wheel", onWheel, { passive: false });
+    node.addEventListener("pointerdown", onPointerDown);
+    node.addEventListener("pointermove", onPointerMove, true);
+    node.addEventListener("pointerup", endDrag, true);
+    node.addEventListener("pointercancel", endDrag, true);
+    return () => {
+      node.removeEventListener("wheel", onWheel);
+      node.removeEventListener("pointerdown", onPointerDown);
+      node.removeEventListener("pointermove", onPointerMove, true);
+      node.removeEventListener("pointerup", endDrag, true);
+      node.removeEventListener("pointercancel", endDrag, true);
+    };
+  }, [isListStrip, iconsItemCount, device]);
 
   /* shared display values (ใช้ทั้ง legacy และ compound) */
   const legacyListMarginDefault =
@@ -833,7 +988,6 @@ const ListElement = ({
   const layoutCanvasBlock =
     isLayoutMode ? "pointer-events-none select-none" : "";
 
-  const isButtonMulti = elementData?.buttonMultiElement === true;
   if (isButtonMulti) {
     const merged = mergeListElement(elementData);
     const items = Array.isArray(merged?.listItems) ? merged.listItems : [];
@@ -977,22 +1131,42 @@ const ListElement = ({
         onMouseEnter={() => hover({ id })}
         onMouseLeave={() => hover(false)}
       >
-        <div className={layoutCanvasBlock || undefined}>
+        <div
+          className={`${isLayoutMode ? "select-none" : ""} min-w-0`.trim() || undefined}
+          style={{ minWidth: 0, maxWidth: "100%" }}
+        >
           <Box
             sx={{
               width: "100%",
+              maxWidth: "100%",
+              minWidth: 0,
               display: "flex",
               justifyContent,
             }}
           >
-            <Box className="relative block w-fit max-w-full">
+            <Box className="relative min-w-0 w-full max-w-full">
               <Box
+                ref={iconsStripRef}
                 data-list-part="button"
                 sx={{
-                  display: "inline-flex",
+                  display: "flex",
                   alignItems: "center",
-                  flexWrap: "wrap",
+                  flexWrap: "nowrap",
                   px: 0,
+                  pointerEvents: "auto",
+                  touchAction: "pan-x",
+                  cursor: "pointer",
+                  "& *": { cursor: "pointer" },
+                  overflowX: "auto",
+                  overflowY: "hidden",
+                  overscrollBehaviorX: "contain",
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                  "&::-webkit-scrollbar": { display: "none" },
+                  width: "100%",
+                  maxWidth: "100%",
+                  minWidth: 0,
+                  justifyContent,
                   ...(useLayoutSelectionFrame
                     ? {
                         transform: "scale(0.94)",
@@ -1000,13 +1174,8 @@ const ListElement = ({
                         transition: "transform 150ms",
                       }
                     : {}),
-                  rowGap: `${Math.max(
-                    0,
-                    Math.min(32, Number(merged?.listItemRowGap) || 0)
-                  )}px`,
+                  rowGap: 0,
                   columnGap: dividerEnabled ? 0 : `${interItemGapPx}px`,
-                  overflow: "hidden",
-                  maxWidth: "100%",
                 }}
               >
                 {buttonItems.map((item, idx) => {
@@ -1095,12 +1264,6 @@ const ListElement = ({
               const itemBorderWidth = Number.isFinite(Number(item?.buttonBorderWidth))
                 ? Math.max(0, Math.min(12, Number(item.buttonBorderWidth)))
                 : borderWidth;
-              const itemFullWidth =
-                item?.buttonFullWidth === true
-                  ? true
-                  : item?.buttonFullWidth === false
-                    ? false
-                    : merged?.buttonFullWidth === true;
               const itemFontWeight = item?.buttonBold === false ? 500 : item?.buttonBold === true ? 600 : fontWeight;
                   return (
                     <React.Fragment key={`btn-multi-${idx}`}>
@@ -1118,14 +1281,8 @@ const ListElement = ({
                             borderWidth: itemBorderWidth,
                             fontWeight: itemFontWeight,
                           }),
-                          width:
-                            itemFullWidth
-                              ? "100%"
-                              : "auto",
-                          minWidth:
-                            itemFullWidth
-                              ? undefined
-                              : `${equalButtonWidthCh}ch`,
+                          width: "auto",
+                          minWidth: `${equalButtonWidthCh}ch`,
                           boxShadow: "none",
                           flexShrink: 0,
                         }}
@@ -1573,7 +1730,7 @@ const ListElement = ({
     my: 0,
     boxSizing: "border-box",
     ...(isLayoutMode && selected
-      ? { px: "5px", py: 0 }
+      ? { px: isCompactDevice ? "3px" : "5px", py: 0 }
       : { px: 0, py: 0 }),
     ...selectedBoxSx,
     borderRadius: 2,
@@ -1656,8 +1813,8 @@ const ListElement = ({
       ? {
           borderRadius: `${iconsRowFrameRadius}px`,
           backgroundColor: iconsRowFrameBgColor,
-          px: "14px",
-          py: "10px",
+          px: isCompactDevice ? "10px" : "14px",
+          py: isCompactDevice ? "8px" : "10px",
         }
       : null;
     const iconsRowFrameInlineStyle = iconsRowFrameEnabled
@@ -1678,19 +1835,30 @@ const ListElement = ({
         onMouseLeave={() => hover(false)}
       >
         <div
-          className={layoutCanvasBlock || undefined}
-          style={{ minWidth: 0, maxWidth: "100%" }}
+          className={`${isLayoutMode ? "select-none" : ""} min-w-0`.trim() || undefined}
+          style={{ position: "relative", minWidth: 0, maxWidth: "100%" }}
         >
+          <div className="relative min-w-0">
           <Box
+            ref={iconsStripRef}
             sx={{
               display: "flex",
               flexDirection: "row",
-              flexWrap: "wrap",
+              flexWrap: "nowrap",
               alignItems: "center",
-              /* overflow: hidden ทำให้ divider ของเซลล์สุดท้ายในแถว (ที่ขยายถึงขอบ) ถูก clip อัตโนมัติ */
-              overflow: "hidden",
+              /* ทุกอุปกรณ์: แถวเดียวเลื่อนแนวนอน (ไม่ใช้ mask-image — Safari เป็นกล่องเทา) */
+              pointerEvents: "auto",
+              touchAction: "pan-x",
+              cursor: "pointer",
+              "& *": { cursor: "pointer" },
+              overflowX: "auto",
+              overflowY: "hidden",
+              overscrollBehaviorX: "contain",
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+              "&::-webkit-scrollbar": { display: "none" },
               columnGap: `${listIconsDividerOuterGapPx * 2}px`,
-              rowGap: "8px",
+              rowGap: 0,
               justifyContent:
                 merged?.listIconsAlign === "center" ? "center"
                 : merged?.listIconsAlign === "flex-end" ? "flex-end"
@@ -1745,20 +1913,38 @@ const ListElement = ({
                     sx={{
                       position: "relative",
                       flex: "0 0 auto",
+                      flexShrink: 0,
                       boxSizing: "border-box",
                       display: "flex",
                       flexDirection: isColLayout ? "column" : "row",
                       alignItems: "center",
+                      minWidth: 0,
                       ...(isColLayout
                         ? {
                             rowGap: `${textColumnGap}px`,
-                            py: borderEnabled ? "6px" : "0px",
-                            px: borderEnabled ? "6px" : "0px",
+                            py: borderEnabled
+                              ? isCompactDevice
+                                ? "4px"
+                                : "6px"
+                              : "0px",
+                            px: borderEnabled
+                              ? isCompactDevice
+                                ? "4px"
+                                : "6px"
+                              : "0px",
                           }
                         : {
                             columnGap: `${textColumnGap}px`,
-                            py: borderEnabled ? "6px" : "0px",
-                            px: borderEnabled ? "4px" : "0px",
+                            py: borderEnabled
+                              ? isCompactDevice
+                                ? "4px"
+                                : "6px"
+                              : "0px",
+                            px: borderEnabled
+                              ? isCompactDevice
+                                ? "2px"
+                                : "4px"
+                              : "0px",
                           }),
                     }}
                   >
@@ -1791,7 +1977,7 @@ const ListElement = ({
                               )}px`
                             : "50%",
                         backgroundColor: borderEnabled ? iconBg : "transparent",
-                        cursor: isLayoutMode ? "default" : "pointer",
+                        cursor: "pointer",
                       }}
                       onDoubleClick={
                         isLayoutMode
@@ -1821,11 +2007,18 @@ const ListElement = ({
                         data-list-item-index={i}
                         style={{
                           minWidth: 0,
-                          flex: "1 1 auto",
-                          maxWidth: "100%",
-                          overflowWrap: "anywhere",
-                          wordBreak: "break-word",
-                          cursor: isLayoutMode ? "default" : "pointer",
+                          flex: isColLayout ? "1 1 auto" : "0 0 auto",
+                          maxWidth: isColLayout
+                            ? Math.max(
+                                iconRenderBoxSize + 8,
+                                isMobile ? 72 : 88
+                              )
+                            : "100%",
+                          overflowWrap: isColLayout ? "anywhere" : "normal",
+                          wordBreak: isColLayout ? "break-word" : "normal",
+                          whiteSpace: isColLayout ? undefined : "nowrap",
+                          textAlign: isColLayout ? "center" : undefined,
+                          cursor: "pointer",
                         }}
                         onDoubleClick={
                           isLayoutMode
@@ -1869,14 +2062,15 @@ const ListElement = ({
               );
             })}
           </Box>
+          </div>
         </div>
         {useLayoutSelectionFrame && (
           <>
-            <div className="pointer-events-none absolute left-[-7px] right-[-7px] top-[1px] bottom-[1px] rounded-md bg-red-300/10" />
-            <span className="pointer-events-none absolute left-[-4px] top-[2px] h-2.5 w-2.5 border-l-2 border-t-2 border-red-400" />
-            <span className="pointer-events-none absolute right-[-6px] top-[2px] h-2.5 w-2.5 border-r-2 border-t-2 border-red-400" />
-            <span className="pointer-events-none absolute bottom-[2px] left-[-4px] h-2.5 w-2.5 border-b-2 border-l-2 border-red-400" />
-            <span className="pointer-events-none absolute bottom-[2px] right-[-6px] h-2.5 w-2.5 border-b-2 border-r-2 border-red-400" />
+            <div className={`pointer-events-none absolute top-[1px] bottom-[1px] rounded-md bg-red-300/10 ${isCompactDevice ? "left-[-4px] right-[-4px]" : "left-[-7px] right-[-7px]"}`} />
+            <span className={`pointer-events-none absolute top-[2px] h-2.5 w-2.5 border-l-2 border-t-2 border-red-400 ${isCompactDevice ? "left-[-2px]" : "left-[-4px]"}`} />
+            <span className={`pointer-events-none absolute top-[2px] h-2.5 w-2.5 border-r-2 border-t-2 border-red-400 ${isCompactDevice ? "right-[-3px]" : "right-[-6px]"}`} />
+            <span className={`pointer-events-none absolute bottom-[2px] h-2.5 w-2.5 border-b-2 border-l-2 border-red-400 ${isCompactDevice ? "left-[-2px]" : "left-[-4px]"}`} />
+            <span className={`pointer-events-none absolute bottom-[2px] h-2.5 w-2.5 border-b-2 border-r-2 border-red-400 ${isCompactDevice ? "right-[-3px]" : "right-[-6px]"}`} />
           </>
         )}
       </Box>
@@ -1895,14 +2089,16 @@ const ListElement = ({
       onMouseLeave={() => hover(false)}
     >
       <div
-        className={layoutCanvasBlock || undefined}
-        style={{ position: "relative", minWidth: 0 }}
+        className={`${layoutCanvasBlock} min-w-0`.trim() || undefined}
+        style={{ position: "relative", minWidth: 0, maxWidth: "100%" }}
       >
         {/* display:flex ป้องกัน margin collapse ระหว่างแถว — สำคัญมากสำหรับสูตร timeline */}
         <List
           dense
           sx={{
             width: "100%",
+            maxWidth: "100%",
+            minWidth: 0,
             py: 0,
             mt: 0,
             mb: 0,
@@ -1922,17 +2118,19 @@ const ListElement = ({
               onEditText={onEditText}
               isLayoutMode={isLayoutMode}
               showInlineDividerAfter={i === items.length - 1 && listInlineDividerAfter}
+              isCompactDevice={isCompactDevice}
+              isMobile={isMobile}
             />
           ))}
         </List>
       </div>
       {useLayoutSelectionFrame && (
         <>
-          <div className="pointer-events-none absolute left-[-7px] right-[-7px] top-[1px] bottom-[1px] rounded-md bg-red-300/10" />
-          <span className="pointer-events-none absolute left-[-4px] top-[2px] h-2.5 w-2.5 border-l-2 border-t-2 border-red-400" />
-          <span className="pointer-events-none absolute right-[-6px] top-[2px] h-2.5 w-2.5 border-r-2 border-t-2 border-red-400" />
-          <span className="pointer-events-none absolute bottom-[2px] left-[-4px] h-2.5 w-2.5 border-b-2 border-l-2 border-red-400" />
-          <span className="pointer-events-none absolute bottom-[2px] right-[-6px] h-2.5 w-2.5 border-b-2 border-r-2 border-red-400" />
+          <div className={`pointer-events-none absolute top-[1px] bottom-[1px] rounded-md bg-red-300/10 ${isCompactDevice ? "left-[-4px] right-[-4px]" : "left-[-7px] right-[-7px]"}`} />
+          <span className={`pointer-events-none absolute top-[2px] h-2.5 w-2.5 border-l-2 border-t-2 border-red-400 ${isCompactDevice ? "left-[-2px]" : "left-[-4px]"}`} />
+          <span className={`pointer-events-none absolute top-[2px] h-2.5 w-2.5 border-r-2 border-t-2 border-red-400 ${isCompactDevice ? "right-[-3px]" : "right-[-6px]"}`} />
+          <span className={`pointer-events-none absolute bottom-[2px] h-2.5 w-2.5 border-b-2 border-l-2 border-red-400 ${isCompactDevice ? "left-[-2px]" : "left-[-4px]"}`} />
+          <span className={`pointer-events-none absolute bottom-[2px] h-2.5 w-2.5 border-b-2 border-r-2 border-red-400 ${isCompactDevice ? "right-[-3px]" : "right-[-6px]"}`} />
         </>
       )}
     </Box>

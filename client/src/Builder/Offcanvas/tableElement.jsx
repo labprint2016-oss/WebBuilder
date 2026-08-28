@@ -538,7 +538,7 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
                       onChange={(e) => patchColumn(idx, { label: e.target.value })}
                       placeholder={`Column - ${idx + 1}`}
                       maxLength={80}
-                      className="min-w-0 w-[130px] rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[13px] text-slate-800 outline-none transition hover:border-slate-200 focus:border-slate-300 focus:bg-white dark:text-white/90 dark:hover:border-white/10 dark:focus:border-white/20 dark:focus:bg-white/[0.04] placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                      className="min-w-0 w-[130px] rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[12px] text-slate-800 outline-none transition hover:border-slate-200 focus:border-slate-300 focus:bg-white dark:text-white/90 dark:hover:border-white/10 dark:focus:border-white/20 dark:focus:bg-white/[0.04] placeholder:text-slate-400 dark:placeholder:text-slate-500"
                     />
 
                     {/* Width input */}
@@ -584,6 +584,22 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
                 ))}
 
               </div>
+            </Box>
+          </li>
+
+          {/* ── คอลัมน์แรก ── */}
+          <li>
+            <Box sx={{ width: "100%", px: 0.25, pt: 0.5 }}>
+              <MainLabel
+                label="คอลัมน์แรก"
+                color={accent}
+                mb={0}
+                checked={Boolean(merged.tableStickyFirstColumn)}
+                handleSwitch={(e) =>
+                  patch({ tableStickyFirstColumn: e.target.checked })
+                }
+                typography="คงที่"
+              />
             </Box>
           </li>
 

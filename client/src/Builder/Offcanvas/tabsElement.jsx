@@ -27,6 +27,7 @@ import {
   markBuilderPanelMounted,
   usePanelSliderPreview,
 } from "../panelPreviewStore";
+import { useBuilderContextStore } from "../store/builderContextStore";
 
 const tabsPanelPerfEnabled =
   typeof window !== "undefined" &&
@@ -316,6 +317,7 @@ const TabsElementOffcanvas = ({
   const pendingLayoutRef = useRef(null);
   const elementRef = useRef(element);
   elementRef.current = element;
+  const device = useBuilderContextStore((state) => state.device);
 
   const scheduleLayoutSync = useCallback(
     (next) => {
@@ -770,6 +772,11 @@ const TabsElementOffcanvas = ({
                 );
               })}
             </ButtonGroup>
+            {device === "Mobile" ? (
+              <p className="mt-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                โหมด Mobile แสดงเป็นแนวนอนเสมอ ค่าแนวตั้งยังใช้บน Desktop และ Tablet
+              </p>
+            ) : null}
           </li>
 
           <li>
