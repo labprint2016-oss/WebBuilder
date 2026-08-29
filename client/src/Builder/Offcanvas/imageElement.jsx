@@ -33,6 +33,7 @@ import {
   IMAGE_BADGE_VARIANTS,
   IMAGE_BADGE_OPACITY_DEFAULT,
   IMAGE_BRIGHTNESS_DEFAULT,
+  imageBrightnessFilterStyle,
   IMAGE_MARGIN_TOP_DEFAULT,
   IMAGE_MARGIN_BOTTOM_DEFAULT,
   IMAGE_CORNER_RADIUS_MAX_PX,
@@ -665,6 +666,11 @@ const ImageElementOffcanvas = ({
     );
     updateSlider(() => next, { setData: false, publish: false });
     applyImageCanvasPreview(next?.id ?? elementRef.current?.id, next);
+    if (next?.__tableFirstColumnImageEdit && panelPreviewImgRef.current) {
+      panelPreviewImgRef.current.style.filter = imageBrightnessFilterStyle(
+        next.brightness
+      ).filter;
+    }
     return next;
   };
 
@@ -709,6 +715,7 @@ const ImageElementOffcanvas = ({
     [layoutElementType, badgeMerged.variant]
   );
 
+  const brightnessLabelRef = useRef(null);
   const cornerRadiusLabelRef = useRef(null);
   const overlayOffsetLabelRef = useRef(null);
   const radiusRangeRef = useRef(null);
@@ -775,6 +782,12 @@ const ImageElementOffcanvas = ({
   };
 
   const handleBrightnessChange = (value) => {
+    if (brightnessLabelRef.current) {
+      const n = Number(value);
+      brightnessLabelRef.current.textContent = String(
+        Math.round(Number.isFinite(n) ? n : IMAGE_BRIGHTNESS_DEFAULT)
+      );
+    }
     patchSlider({ brightness: value }, ["brightness"]);
   };
 
@@ -1119,8 +1132,11 @@ const ImageElementOffcanvas = ({
   const isCarouselSlideEdit = Boolean(element?.__carouselSlideEdit);
   const isListItemImageEdit = Boolean(data?.__listItemImageEdit);
   const isListBoxItemImageEdit = Boolean(data?.__listBoxItemImageEdit);
+  const isTableFirstColumnImageEdit = Boolean(
+    data?.__tableFirstColumnImageEdit || element?.__tableFirstColumnImageEdit
+  );
   const isCompoundListImageEdit =
-    isListItemImageEdit || isListBoxItemImageEdit;
+    isListItemImageEdit || isListBoxItemImageEdit || isTableFirstColumnImageEdit;
   const _csl = element?.__carouselSlideEdit;
   const _perView = Number(_csl?.perViewDesktop) || 1;
   const _colSize = Number(_csl?.colSize) || 12;
@@ -1421,7 +1437,9 @@ const ImageElementOffcanvas = ({
                       objectFit: "cover",
                       display: "block",
                       ...(keepPanelImageUnstyled
-                        ? { filter: "none" }
+                        ? isTableFirstColumnImageEdit
+                          ? imageBrightnessFilterStyle(brightness)
+                          : { filter: "none" }
                         : imageCornerRadiusStyle(
                             data?.borderRadius,
                             currentAspect
@@ -1474,7 +1492,11 @@ const ImageElementOffcanvas = ({
                 mt: 1.5,
               }}
             >
-            <MainLabel label="ปรับแสงรูปภาพ" value={brightness}/>
+            <MainLabel
+              label="ปรับแสงรูปภาพ"
+              value={brightness}
+              valueRef={brightnessLabelRef}
+            />
               <Box
                 sx={{
                   display: "flex",

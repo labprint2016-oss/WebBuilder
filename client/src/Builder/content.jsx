@@ -65,7 +65,6 @@ import {
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
-  defaultAnimateLayoutChanges,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import IconLucide from "../IconLucide";
@@ -168,7 +167,11 @@ import {
   mergeHeadingElement,
 } from "./Layouts/Elements/headingElementConfig";
 import { mergeCounterElement } from "./Layouts/Elements/counterElementConfig";
-import { mergeTableElement } from "./Layouts/Elements/tableElementConfig";
+import {
+  mergeTableElement,
+  sliceTableFirstColumnIconForPanel,
+  sliceTableFirstColumnImageForPanel,
+} from "./Layouts/Elements/tableElementConfig";
 import { mergeBetweenElement } from "./Layouts/Elements/betweenElementConfig";
 import { mergeDividerElement } from "./Layouts/Elements/dividerElementConfig";
 import FormElementPreview from "./Layouts/Elements/FormElement";
@@ -4738,6 +4741,13 @@ const Content = ({
   }, []);
 
   useEffect(() => {
+    const scroller = canvasScrollRef.current;
+    if (!scroller) return;
+    scroller.scrollTop = 0;
+    scroller.scrollLeft = 0;
+  }, [page?._id]);
+
+  useEffect(() => {
     if (isPreview) return undefined;
     const scroller = canvasScrollRef.current;
     if (!scroller || typeof IntersectionObserver === "undefined") {
@@ -8209,6 +8219,35 @@ const Content = ({
             hover={() => {}}
             richTextEditModal={setTextEditModal}
             isInDnD={isDraggingLayout}
+            onTableFirstColumnLeadEdit={(rowIndex) => {
+              if (builderModeRef.current !== "Editor Mode") return;
+              const current = getFresh();
+              if (current?.type !== "tbl") return;
+              const merged = mergeTableElement(current);
+              const idx = Number(rowIndex);
+              const safeIdx =
+                Number.isFinite(idx) &&
+                idx >= 0 &&
+                idx < merged.tableFirstColumnLeads.length
+                  ? idx
+                  : 0;
+              const lead = merged.tableFirstColumnLeads[safeIdx] || {};
+              if (merged.tableFirstColumnLead === "image") {
+                openOffcavanas(
+                  "Image",
+                  sliceTableFirstColumnImageForPanel(lead, merged, safeIdx),
+                  null
+                );
+                return;
+              }
+              if (merged.tableFirstColumnLead === "icon") {
+                openOffcavanas(
+                  "Icon",
+                  sliceTableFirstColumnIconForPanel(lead, merged, safeIdx),
+                  null
+                );
+              }
+            }}
             onListEditIcon={(itemIndex) => {
               if (builderModeRef.current !== "Editor Mode") return;
               const current = getFresh();
@@ -9406,6 +9445,15 @@ const Content = ({
     }
   };
 
+  const beginSuppressDropMotion = () => {
+    setSuppressDropMotion(true);
+    if (dropMotionTimerRef.current) clearTimeout(dropMotionTimerRef.current);
+    dropMotionTimerRef.current = setTimeout(() => {
+      setSuppressDropMotion(false);
+      dropMotionTimerRef.current = null;
+    }, 180);
+  };
+
   const handleDrop = (e) => {
     const dropHandlerStartedAt = performance.now();
     e.preventDefault();
@@ -9418,12 +9466,7 @@ const Content = ({
     ) {
       return;
     }
-    setSuppressDropMotion(true);
-    if (dropMotionTimerRef.current) clearTimeout(dropMotionTimerRef.current);
-    dropMotionTimerRef.current = setTimeout(() => {
-      setSuppressDropMotion(false);
-      dropMotionTimerRef.current = null;
-    }, 180);
+    beginSuppressDropMotion();
     dropCommitGuardRef.current = { token: dragToken.current, at: now };
     if (sidebarNativeDragPerfRef.current?.active) {
       sidebarNativeDragPerfRef.current.lastAction = "drop";
@@ -12671,10 +12714,7 @@ const Content = ({
   };
   applyColumnPresetToTargetRef.current = applyColumnPresetToTarget;
 
-  const noLayoutAnimWhileSorting = (args) => {
-    if (args.isSorting || args.wasDragging) return false;
-    return defaultAnimateLayoutChanges(args);
-  };
+  const noLayoutAnimWhileSorting = () => false;
 
   /** ให้ latestColID ไม่ต่ำกว่า (max suffix ของ Col-{section}-{n} + 1) — กัน id ซ้ำเมื่อ offcanvas ส่งค่าเก่า */
   const syncContainerLatestColId = (container, columns) => {
@@ -15768,7 +15808,7 @@ const Content = ({
         ? "transform 200ms ease, opacity 200ms ease"
         : undefined;
     const sortableTransition = suppressDropMotion
-      ? undefined
+      ? "none"
       : isDragging
         ? undefined
         : splitPreviewTransition ?? splitTransitionCss ?? transition;
@@ -17478,6 +17518,36 @@ const Content = ({
           }
           editorHoverMeta={builderMode === "Editor Mode" ? hoverElement : null}
           hover={setHoverElement}
+          onTableFirstColumnLeadEdit={(rowIndex) => {
+            if (builderModeRef.current !== "Editor Mode") return;
+            if (elementData?.type !== "tbl") return;
+            setSelectID({ ids: {}, status: "" });
+            setPositionElementSetting({ x: null, y: null });
+            const merged = mergeTableElement(elementData);
+            const idx = Number(rowIndex);
+            const safeIdx =
+              Number.isFinite(idx) &&
+              idx >= 0 &&
+              idx < merged.tableFirstColumnLeads.length
+                ? idx
+                : 0;
+            const lead = merged.tableFirstColumnLeads[safeIdx] || {};
+            if (merged.tableFirstColumnLead === "image") {
+              openOffcavanas(
+                "Image",
+                sliceTableFirstColumnImageForPanel(lead, merged, safeIdx),
+                null
+              );
+              return;
+            }
+            if (merged.tableFirstColumnLead === "icon") {
+              openOffcavanas(
+                "Icon",
+                sliceTableFirstColumnIconForPanel(lead, merged, safeIdx),
+                null
+              );
+            }
+          }}
           onListEditIcon={(itemIndex) => {
             if (builderModeRef.current !== "Editor Mode") return;
             setSelectID({ ids: {}, status: "" });
@@ -20278,6 +20348,7 @@ const Content = ({
   const drop = ({ active, over }) => {
     
     if(builderModeRef.current !== "Layout Mode") return;
+    beginSuppressDropMotion();
     resetDropElementGeometryCache();
     layoutDragTargetRef.current = { containerId: "", id: "" };
     sidebarPreviewIntentRef.current = { key: "", startedAt: 0, x: 0, y: 0 };

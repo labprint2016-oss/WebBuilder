@@ -35,6 +35,12 @@ const TABLE_COLOR_MODES = [
   { value: "headerText", label: "สีข้อความหัวตาราง",  field: "tableHeaderText", opacityField: "tableHeaderTextOpacity" },
   { value: "bodyText",   label: "สีข้อความในตาราง",   field: "tableBodyText",   opacityField: "tableBodyTextOpacity"   },
 ];
+const TABLE_ICON_COLOR_MODE = {
+  value: "icon",
+  label: "สีไอคอน",
+  field: "tableFirstColumnIconColor",
+  opacityField: "tableFirstColumnIconColorOpacity",
+};
 const STEPPER_BTN = "inline-flex h-[34px] w-9 shrink-0 items-center justify-center border-0 bg-white text-slate-700 transition hover:bg-slate-50 dark:bg-slate-900/80 dark:text-white/90 dark:hover:bg-white/10";
 const STEPPER_MID = "flex h-[34px] min-w-0 flex-1 items-center justify-center border-x border-slate-200 bg-white px-2 text-center text-[13px] tabular-nums text-slate-800 dark:border-white/10 dark:bg-slate-900/80 dark:text-white/90";
 
@@ -600,6 +606,119 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
                 }
                 typography="คงที่"
               />
+              <div
+                className="mt-2 flex w-full overflow-hidden rounded-lg border"
+                style={{ borderColor: "var(--dash-panel-btn-group-border, #e2e8f0)" }}
+                role="group"
+                aria-label="สื่อหน้าข้อความคอลัมน์แรก"
+              >
+                {[
+                  { value: "none", label: "ไม่มี" },
+                  { value: "icon", label: "ไอคอน" },
+                  { value: "image", label: "รูปภาพ" },
+                ].map(({ value, label }, idx, arr) => {
+                  const active = (merged.tableFirstColumnLead || "none") === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        patch({ tableFirstColumnLead: value });
+                        if (value !== "icon" && colorModeIdx >= TABLE_COLOR_MODES.length) {
+                          setColorModeIdx(0);
+                        }
+                      }}
+                      className="flex flex-1 items-center justify-center py-1.5 text-[12px] font-medium transition"
+                      style={{
+                        ...(active
+                          ? {
+                              backgroundColor: "var(--dash-panel-btn-group-active, #333333)",
+                              color: "var(--dash-panel-btn-group-active-text, #ffffff)",
+                            }
+                          : {
+                              backgroundColor: "var(--dash-panel-btn-group-inactive, #ffffff)",
+                              color: "var(--dash-panel-btn-group-inactive-text, #1e293b)",
+                            }),
+                        ...(idx !== arr.length - 1
+                          ? { borderRight: "1px solid var(--dash-panel-btn-group-border, #e2e8f0)" }
+                          : null),
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              {merged.tableFirstColumnLead === "icon" ? (
+                (() => {
+                  const activeColor = merged.tableFirstColumnIconColor;
+                  const opacityVal = merged.tableFirstColumnIconColorOpacity ?? 255;
+                  const normalizedActiveColor =
+                    typeof activeColor === "string" ? activeColor.toLowerCase() : "";
+                  const selectedSwatchIndex = allColors.findIndex((color) => {
+                    const bgColor =
+                      typeof color === "string" ? color : theme?.[color.type]?.[color.index];
+                    return (
+                      typeof bgColor === "string" &&
+                      bgColor.toLowerCase() === normalizedActiveColor
+                    );
+                  });
+                  return (
+                    <div className="pt-2">
+                      <SelectLine
+                        prev={() => {}}
+                        next={() => {}}
+                        value="สีไอคอน"
+                      />
+                      <RangeRow
+                        value={opacityVal}
+                        min={0}
+                        max={255}
+                        step={1}
+                        onChange={(v) =>
+                          patch({ tableFirstColumnIconColorOpacity: v })
+                        }
+                        accentColor={accent}
+                        mt={1}
+                      />
+                      <div className="mt-2 dash-card w-full rounded-md bg-white px-0 pb-[5px] pt-[2px] dark:bg-zinc-800">
+                        <div className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]">
+                          {allColors.map((color, i) => {
+                            const bgColor =
+                              typeof color === "string"
+                                ? color
+                                : theme?.[color.type]?.[color.index];
+                            if (bgColor == null) return null;
+                            const selected = i === selectedSwatchIndex;
+                            const margin =
+                              i % 8 !== 0 && (i + 1) % 8 !== 0 ? "mx-[65.75px]" : "";
+                            return (
+                              <div className={margin} key={i}>
+                                <button
+                                  type="button"
+                                  className="flex size-[25px] items-center justify-center rounded-full border"
+                                  style={{ backgroundColor: bgColor }}
+                                  onClick={() =>
+                                    patch({ tableFirstColumnIconColor: bgColor })
+                                  }
+                                  aria-label={`เลือกสีไอคอน ${bgColor}`}
+                                >
+                                  {selected && (
+                                    <Check
+                                      className={swatchSelectedCheckClassName(bgColor)}
+                                      strokeWidth={4}
+                                    />
+                                  )}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : null}
             </Box>
           </li>
 
@@ -658,7 +777,12 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
                 typography="กรอบนอก"
               />
               {(() => {
-                const mode = TABLE_COLOR_MODES[colorModeIdx];
+                const tableColorModes =
+                  merged.tableFirstColumnLead === "icon"
+                    ? [...TABLE_COLOR_MODES, TABLE_ICON_COLOR_MODE]
+                    : TABLE_COLOR_MODES;
+                const safeIdx = Math.min(colorModeIdx, tableColorModes.length - 1);
+                const mode = tableColorModes[safeIdx];
                 const activeColor = merged[mode.field];
                 const opacityVal = merged[mode.opacityField] ?? 255;
                 const normalizedActiveColor =
@@ -675,8 +799,14 @@ const TableElementOffcanvas = ({ element, onUpdate, close, textColor, theme }) =
                   <>
                     <div className="pt-2">
                       <SelectLine
-                        prev={() => setColorModeIdx((i) => (i - 1 + TABLE_COLOR_MODES.length) % TABLE_COLOR_MODES.length)}
-                        next={() => setColorModeIdx((i) => (i + 1) % TABLE_COLOR_MODES.length)}
+                        prev={() =>
+                          setColorModeIdx(
+                            (i) => (i - 1 + tableColorModes.length) % tableColorModes.length
+                          )
+                        }
+                        next={() =>
+                          setColorModeIdx((i) => (i + 1) % tableColorModes.length)
+                        }
                         value={mode.label}
                       />
                     </div>

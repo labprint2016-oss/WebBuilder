@@ -192,8 +192,10 @@ const IconElementOffcanvas = ({
   const isListItemIcon = data?.type === "list";
   const isListIconsElement =
     isListItemIcon && data?.listIconsElement === true;
+  const isTableFirstColumnIconEdit = Boolean(data?.__tableFirstColumnIconEdit);
   /** List iTems / List iCons ดับเบิลคลิกไอคอน — พื้นหลังไอคอน/ความกว้าง/ขนาด/มุมมนอยู่ที่แผง List หลัก */
-  const hideListItemsSharedIconDims = Boolean(data?.__listItemIconEdit);
+  const hideListItemsSharedIconDims =
+    Boolean(data?.__listItemIconEdit) || isTableFirstColumnIconEdit;
   /** compound List Item/iCons — ซ่อนเส้นคั่น/ชุดสีเพราะจัดการผ่าน List offcanvas แทน */
   const isListBoxItemIconEdit = Boolean(data?.__listBoxItemIconEdit);
   const isImageHoverIconEdit = Boolean(data?.__imageHoverIconEdit);
@@ -890,7 +892,8 @@ const IconElementOffcanvas = ({
           {showIconRowGapControl &&
             !isCompoundListItemEdit &&
             !isImageHoverIconEdit &&
-            !isBetweenIconEdit && (
+            !isBetweenIconEdit &&
+            !isTableFirstColumnIconEdit && (
           <li>
             <MainLabel
               label="ระยะห่างไอคอน"
@@ -985,6 +988,7 @@ const IconElementOffcanvas = ({
             </li>
           )}
 
+          {!isTableFirstColumnIconEdit && (
           <li>
             <div className="mb-2 flex items-center gap-2">
               <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
@@ -1267,6 +1271,7 @@ const IconElementOffcanvas = ({
             </div>
             </div>
           </li>
+          )}
 
           {(!isListItemIcon ||
             (isCompoundListItemEdit && !isListIconsElement)) &&
@@ -1351,7 +1356,8 @@ const IconElementOffcanvas = ({
             (!isListItemIcon || !isCompoundListItemEdit) &&
             !isListBoxItemIconEdit &&
             !isImageHoverIconEdit &&
-            !isBetweenIconEdit && (
+            !isBetweenIconEdit &&
+            !isTableFirstColumnIconEdit && (
           <li>
             <div className="mb-3 flex items-center gap-2">
               <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
@@ -1390,7 +1396,8 @@ const IconElementOffcanvas = ({
 
           {!isCompoundListItemEdit &&
             !isImageHoverIconEdit &&
-            !isBetweenIconEdit && <li>
+            !isBetweenIconEdit &&
+            !isTableFirstColumnIconEdit && <li>
             <div className="grid w-full grid-cols-2 gap-x-3 gap-y-4 px-0.5">
               <div className="min-w-0">
                 <div className="mb-2 flex items-center gap-2">

@@ -39,6 +39,7 @@ const Element = ({
   isHoverLocked = false,
   editorHoverMeta,
   onListEditIcon,
+  onTableFirstColumnLeadEdit,
   onListEditText,
   onListBoxEditText,
   onListBoxEditIcon,
@@ -446,6 +447,7 @@ const Element = ({
               device={device}
               isSiteRuntime={isSiteRuntime}
               onUpdate={onUpdate}
+              onFirstColumnLeadEdit={onTableFirstColumnLeadEdit}
               theme={theme}
             />
           )}

@@ -189,10 +189,17 @@ function PageSettingsPanel({
     "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-slate-900/40 dark:text-white/80 dark:hover:bg-white/10";
   const seoInputClass =
     "dash-input w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[13px] text-slate-800 outline-none placeholder:text-slate-400 dark:border-white/10 dark:bg-[#27272a] dark:text-white/90";
-  const overlayStateClass = isOpen
-    ? "pointer-events-auto opacity-100"
-    : "pointer-events-none opacity-0";
-  const panelStateClass = isOpen ? "translate-x-0" : "translate-x-full";
+  const [motionReady, setMotionReady] = useState(false);
+  useEffect(() => {
+    const frameId = requestAnimationFrame(() => setMotionReady(true));
+    return () => cancelAnimationFrame(frameId);
+  }, []);
+  const overlayStateClass =
+    isOpen && motionReady
+      ? "pointer-events-auto opacity-100"
+      : "pointer-events-none opacity-0";
+  const panelStateClass =
+    isOpen && motionReady ? "translate-x-0" : "translate-x-full";
 
   const normalizedPopup = useMemo(
     () => normalizePagePopup(pagePopup),

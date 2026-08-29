@@ -352,18 +352,17 @@ const Catagories = ({
     const node = buttonStripRef.current;
     if (!node) return;
     const activeBtn = node.querySelector("[data-ctg-tab-active='true']");
-    if (!activeBtn || typeof activeBtn.scrollIntoView !== "function") return;
+    if (!activeBtn) return;
     const stripRect = node.getBoundingClientRect();
     const btnRect = activeBtn.getBoundingClientRect();
     const overflowLeft = btnRect.left < stripRect.left + 8;
     const overflowRight = btnRect.right > stripRect.right - 8;
-    if (overflowLeft || overflowRight) {
-      activeBtn.scrollIntoView({
-        inline: "center",
-        block: "nearest",
-        behavior: "smooth",
-      });
-    }
+    if (!overflowLeft && !overflowRight) return;
+    if (node.scrollWidth <= node.clientWidth + 1) return;
+    node.scrollLeft = Math.max(
+      0,
+      activeBtn.offsetLeft - (node.clientWidth - activeBtn.offsetWidth) / 2
+    );
   }, [activeCategoryId, compactCategoryStrip]);
 
   useEffect(() => {

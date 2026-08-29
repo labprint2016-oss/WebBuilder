@@ -1038,6 +1038,11 @@ const Builder = ()=>{
 
     const applyBuilderPage = useCallback(
       (nextPage, defaultIdFromList = "") => {
+        if (pageSettingsPanelOpenRef.current) {
+          pageSettingsPanelOpenRef.current = false;
+          markBuilderPanelClosed();
+          setIsPageSettingsPanelOpen(false);
+        }
         clearAllPanelPreviews();
         const normalizedPage =
           nextPage && typeof nextPage === "object" ? nextPage : {};
@@ -1092,7 +1097,7 @@ const Builder = ()=>{
           }
         }
       },
-      [normalizePageLayouts]
+      [normalizePageLayouts, setIsPageSettingsPanelOpen]
     );
 
     const loadBuilderPages = useCallback(
@@ -1750,7 +1755,8 @@ const Builder = ()=>{
         !elementData?.id ||
         elementData?.__carouselSlideEdit ||
         elementData?.__listItemImageEdit ||
-        elementData?.__listBoxItemImageEdit
+        elementData?.__listBoxItemImageEdit ||
+        elementData?.__tableFirstColumnImageEdit
       )
         return;
       const found = findLayoutElementById(layouts, elementData.id);
@@ -1774,6 +1780,7 @@ const Builder = ()=>{
       elementData?.__carouselSlideEdit,
       elementData?.__listItemImageEdit,
       elementData?.__listBoxItemImageEdit,
+      elementData?.__tableFirstColumnImageEdit,
       setElementData,
     ]);
 
@@ -2033,7 +2040,12 @@ const Builder = ()=>{
     });
 
     useEffect(() => {
-      if (offcanvas !== "Icon" || !elementData?.id) return;
+      if (
+        offcanvas !== "Icon" ||
+        !elementData?.id ||
+        elementData?.__tableFirstColumnIconEdit
+      )
+        return;
       const found = findLayoutElementById(layouts, elementData.id);
       if (!found) return;
       setElementData((prev) => {
@@ -2043,7 +2055,13 @@ const Builder = ()=>{
         }
         return { ...found };
       });
-    }, [layouts, offcanvas, elementData?.id, setElementData]);
+    }, [
+      layouts,
+      offcanvas,
+      elementData?.id,
+      elementData?.__tableFirstColumnIconEdit,
+      setElementData,
+    ]);
 
     const pickHeadingOffcanvasSync = (e) => ({
       id: e.id,
@@ -2243,6 +2261,10 @@ const Builder = ()=>{
       tableZebraBg: e.tableZebraBg,
       tableHeaderBold: e.tableHeaderBold,
       tableStickyFirstColumn: e.tableStickyFirstColumn,
+      tableFirstColumnLead: e.tableFirstColumnLead,
+      tableFirstColumnLeads: e.tableFirstColumnLeads,
+      tableFirstColumnIconColor: e.tableFirstColumnIconColor,
+      tableFirstColumnIconColorOpacity: e.tableFirstColumnIconColorOpacity,
       tableFontSize: e.tableFontSize,
       tableCellPaddingX: e.tableCellPaddingX,
       tableCellPaddingY: e.tableCellPaddingY,
@@ -6792,7 +6814,9 @@ useEffect(() => {
                     <Route path="*" element={<Navigate to="/builder" replace />} />
                     </Routes>
                   </Suspense>
-                  {selectedMenuId === "Builder" && hasSelectedBuilderPage && (
+                  {selectedMenuId === "Builder" &&
+                    hasSelectedBuilderPage &&
+                    isPageSettingsPanelOpen && (
                     <Suspense fallback={null}>
                       <div
                         onPointerDownCapture={handlePageSettingsPerformanceEvent}
@@ -6978,6 +7002,38 @@ useEffect(() => {
                 <ImageElementOffcanvas
                 element={elementData}
                 onUpdate={(payload) => {
+                  const exTblImg = elementData?.__tableFirstColumnImageEdit;
+                  if (exTblImg?.tableElementId != null) {
+                    const base = findLayoutElementById(
+                      layouts,
+                      String(exTblImg.tableElementId)
+                    );
+                    if (!base || base.type !== "tbl") return;
+                    const merged = mergeTableElement(base);
+                    const idx = Number(exTblImg.rowIndex);
+                    if (
+                      !Number.isFinite(idx) ||
+                      idx < 0 ||
+                      idx >= merged.tableFirstColumnLeads.length
+                    )
+                      return;
+                    const src = typeof payload?.src === "string" ? payload.src : "";
+                    const brightnessRaw = Number(payload?.brightness);
+                    const brightness = Number.isFinite(brightnessRaw)
+                      ? Math.max(-100, Math.min(100, Math.round(brightnessRaw)))
+                      : 0;
+                    const nextLeads = merged.tableFirstColumnLeads.map((lead, i) =>
+                      i === idx ? { ...lead, src, brightness } : lead
+                    );
+                    patchElementRef.current?.(
+                      mergeTableElement({
+                        ...merged,
+                        tableFirstColumnLeads: nextLeads,
+                      }),
+                      { eleID: String(exTblImg.tableElementId) }
+                    );
+                    return;
+                  }
                   const exLiImg = elementData?.__listItemImageEdit;
                   if (exLiImg?.listElementId != null) {
                     const base = findLayoutElementById(
@@ -7415,6 +7471,47 @@ useEffect(() => {
                 <IconElementOffcanvas
                 element={elementData}
                 onUpdate={(payload) => {
+                  const exTblIcon = elementData?.__tableFirstColumnIconEdit;
+                  if (exTblIcon?.tableElementId != null) {
+                    const base = findLayoutElementById(
+                      layouts,
+                      String(exTblIcon.tableElementId)
+                    );
+                    if (!base || base.type !== "tbl") return;
+                    const merged = mergeTableElement(base);
+                    const idx = Number(exTblIcon.rowIndex);
+                    if (
+                      !Number.isFinite(idx) ||
+                      idx < 0 ||
+                      idx >= merged.tableFirstColumnLeads.length
+                    )
+                      return;
+                    const nextLeads = merged.tableFirstColumnLeads.map((lead, i) =>
+                      i === idx
+                        ? {
+                            ...lead,
+                            faIcon: payload?.faIcon || lead.faIcon,
+                            linkEnabled: payload?.linkEnabled === true,
+                            linkUrl:
+                              typeof payload?.linkUrl === "string"
+                                ? payload.linkUrl
+                                : "",
+                            linkTarget:
+                              payload?.linkTarget === "_blank"
+                                ? "_blank"
+                                : "_self",
+                          }
+                        : lead
+                    );
+                    patchElementRef.current?.(
+                      mergeTableElement({
+                        ...merged,
+                        tableFirstColumnLeads: nextLeads,
+                      }),
+                      { eleID: String(exTblIcon.tableElementId) }
+                    );
+                    return;
+                  }
                   const exImghIcon = elementData?.__imageHoverIconEdit;
                   if (exImghIcon?.imageHoverElementId != null) {
                     const clean = _.cloneDeep(payload || {});

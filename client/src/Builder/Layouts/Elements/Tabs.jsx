@@ -592,18 +592,26 @@ const Tabs = ({
     const node = tabStripRef.current;
     if (!node) return;
     const activeBtn = node.querySelector("[data-tabs-tab-active='true']");
-    if (!activeBtn || typeof activeBtn.scrollIntoView !== "function") return;
+    if (!activeBtn) return;
     const stripRect = node.getBoundingClientRect();
     const btnRect = activeBtn.getBoundingClientRect();
     const outOfView = isVertical
       ? btnRect.top < stripRect.top + 8 || btnRect.bottom > stripRect.bottom - 8
       : btnRect.left < stripRect.left + 8 || btnRect.right > stripRect.right - 8;
     if (!outOfView) return;
-    activeBtn.scrollIntoView({
-      inline: isVertical ? "nearest" : "center",
-      block: isVertical ? "center" : "nearest",
-      behavior: "smooth",
-    });
+    if (isVertical) {
+      if (node.scrollHeight <= node.clientHeight + 1) return;
+      node.scrollTop = Math.max(
+        0,
+        activeBtn.offsetTop - (node.clientHeight - activeBtn.offsetHeight) / 2
+      );
+      return;
+    }
+    if (node.scrollWidth <= node.clientWidth + 1) return;
+    node.scrollLeft = Math.max(
+      0,
+      activeBtn.offsetLeft - (node.clientWidth - activeBtn.offsetWidth) / 2
+    );
   }, [activeId, isVertical]);
 
   const renderTabHeader = (tab) => {

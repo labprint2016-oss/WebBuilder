@@ -1,8 +1,104 @@
 import { memo, useRef } from "react";
 import { mergeTableElement } from "./tableElementConfig";
+import { imageBrightnessFilterStyle, resolveImageLinkAttrs } from "./imageAspectConfig";
 import { setFont } from "../../../../function";
 import { usePanelPreview } from "../../panelPreviewStore";
 import { useBuilderContextStore } from "../../store/builderContextStore";
+import IconAwsome from "../../IconAwsome";
+
+const TABLE_LINE_HEIGHT = 1.2;
+const FIRST_COLUMN_LEAD_GAP = 8;
+
+const FirstColumnLead = memo(function FirstColumnLead({
+  kind,
+  lead,
+  sizePx,
+  color,
+  offsetLeft,
+  canEdit,
+  onEdit,
+  previewId,
+  allowLink,
+}) {
+  if (kind !== "icon" && kind !== "image") return null;
+  const linkAttrs = kind === "icon" && allowLink ? resolveImageLinkAttrs(lead) : null;
+  const boxStyle = {
+    position: "absolute",
+    left: offsetLeft,
+    top: "50%",
+    transform: "translateY(-50%)",
+    height: sizePx,
+    width: sizePx,
+    maxHeight: sizePx,
+    overflow: "hidden",
+    lineHeight: 0,
+    pointerEvents: canEdit || linkAttrs ? "auto" : "none",
+    cursor: canEdit || linkAttrs ? "pointer" : undefined,
+    zIndex: canEdit || linkAttrs ? 1 : undefined,
+    textDecoration: "none",
+    color: "inherit",
+  };
+  const editProps = canEdit
+    ? {
+        onMouseDown: (e) => e.stopPropagation(),
+        onClick: (e) => e.stopPropagation(),
+        onDoubleClick: (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onEdit?.();
+        },
+      }
+    : null;
+  if (kind === "icon") {
+    const IconTag = linkAttrs ? "a" : "span";
+    return (
+      <IconTag
+        className="inline-flex items-center justify-center"
+        style={boxStyle}
+        aria-hidden={!canEdit && !linkAttrs}
+        {...(linkAttrs
+          ? {
+              href: linkAttrs.href,
+              target: linkAttrs.target,
+              rel: linkAttrs.rel,
+            }
+          : null)}
+        {...editProps}
+      >
+        <IconAwsome
+          iconName={lead?.faIcon?.name}
+          iconType={lead?.faIcon?.type}
+          style={{ fontSize: sizePx, color, lineHeight: 1, pointerEvents: "none" }}
+        />
+      </IconTag>
+    );
+  }
+  const src = typeof lead?.src === "string" ? lead.src : "";
+  if (!src) {
+    return (
+      <span
+        className="rounded-sm bg-slate-200 dark:bg-white/15"
+        style={boxStyle}
+        aria-hidden={!canEdit}
+        {...editProps}
+      />
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      className="rounded-sm object-cover"
+      data-image-frame-id={previewId || undefined}
+      style={{
+        ...boxStyle,
+        ...imageBrightnessFilterStyle(lead?.brightness),
+      }}
+      {...editProps}
+    />
+  );
+});
 
 const alignClass = (align) => {
   if (align === "center") return "text-center";
@@ -34,6 +130,7 @@ const TableElement = ({
   device: deviceProp = "Desktop",
   isSiteRuntime = false,
   onUpdate,
+  onFirstColumnLeadEdit,
   theme,
 }) => {
   const storeDevice = useBuilderContextStore((state) => state.device);
@@ -76,6 +173,10 @@ const TableElement = ({
     tableBorderStyle,
     tableOuterBorder,
     tableStickyFirstColumn,
+    tableFirstColumnLead,
+    tableFirstColumnLeads,
+    tableFirstColumnIconColor,
+    tableFirstColumnIconColorOpacity,
   } = data;
 
   const resolvedHeaderBg     = hexWithOpacity(tableHeaderBg,     tableHeaderBgOpacity);
@@ -84,9 +185,25 @@ const TableElement = ({
   const resolvedRowBg        = hexWithOpacity(tableRowBg,        tableRowBgOpacity);
   const resolvedBorderColor  = hexWithOpacity(tableBorderColor,  tableBorderColorOpacity);
   const resolvedZebraBg      = hexWithOpacity(tableZebraBg,      tableZebraBgOpacity);
+  const resolvedIconColor    = hexWithOpacity(
+    tableFirstColumnIconColor,
+    tableFirstColumnIconColorOpacity
+  );
   const textFontFamily = setFont(theme?.text?.value) || undefined;
 
   const canInlineEdit = builderMode === "Editor Mode" && typeof onUpdate === "function";
+  const showFirstColumnLead =
+    tableFirstColumnLead === "icon" || tableFirstColumnLead === "image";
+  const canEditFirstColumnLead =
+    canInlineEdit &&
+    showFirstColumnLead &&
+    typeof onFirstColumnLeadEdit === "function";
+  const columnHeightPx = tableFontSize * TABLE_LINE_HEIGHT + tableCellPaddingY * 2;
+  const firstColumnLeadPx = Math.max(
+    8,
+    Math.round(columnHeightPx * (tableFirstColumnLead === "icon" ? 0.45 : 0.65))
+  );
+  const firstColumnTextPad = firstColumnLeadPx + FIRST_COLUMN_LEAD_GAP;
   const useLayoutSelectionFrame = builderMode === "Layout Mode" && selected;
   const displayPadX = isMobile ? 10 : isCompactDevice ? 14 : tableCellPaddingX;
   const columnsWidthSum = tableColumns.reduce(
@@ -183,7 +300,9 @@ const TableElement = ({
 
   return (
     <div
-      className={`w-full min-w-0 max-w-full ${animationForElement || ""} ${
+      className={`w-full min-w-0 max-w-full ${
+        isSiteRuntime ? "" : "cursor-pointer"
+      } ${animationForElement || ""} ${
         !useLayoutSelectionFrame && selected
           ? "rounded-md border border-dashed border-red-400 bg-red-300/10 p-2"
           : ""
@@ -238,6 +357,7 @@ const TableElement = ({
                         borderStyle: tableBorderStyle === "none" ? "none" : tableBorderStyle,
                         fontWeight: tableHeaderBold ? 700 : 500,
                         fontSize: `${tableFontSize}px`,
+                        lineHeight: TABLE_LINE_HEIGHT,
                         fontFamily: textFontFamily,
                         width: `${col.width}px`,
                         minWidth:
@@ -276,7 +396,35 @@ const TableElement = ({
                         tableZebra && rowIndex % 2 === 1 ? resolvedZebraBg : resolvedRowBg,
                     }}
                   >
-                    {tableColumns.map((col, colIndex) => (
+                    {tableColumns.map((col, colIndex) => {
+                      const cellKey = `${rowIndex}:${colIndex}`;
+                      const isEditing = editingKeyRef.current === cellKey;
+                      const cellText = isEditing
+                        ? (draftRef.current[cellKey] ?? (row[colIndex] ?? ""))
+                        : (row[colIndex] ?? "");
+                      const cellHtml = escapeHtml(cellText);
+                      const withLead = showFirstColumnLead && colIndex === 0;
+                      const cellEditProps = {
+                        contentEditable: canInlineEdit,
+                        suppressContentEditableWarning: true,
+                        onFocus: () =>
+                          handleFocus(rowIndex, colIndex, String(row[colIndex] ?? "")),
+                        onInput: (e) => handleInput(e, rowIndex, colIndex),
+                        onBlur: (e) => handleBlur(e, rowIndex, colIndex),
+                        onPaste: handlePaste,
+                        onKeyDown: (e) => handleKeyDown(e, rowIndex, colIndex),
+                        onMouseDown: (e) => {
+                          if (canInlineEdit) e.stopPropagation();
+                        },
+                        onClick: (e) => {
+                          if (canInlineEdit) e.stopPropagation();
+                        },
+                        onDoubleClick: (e) => {
+                          if (canInlineEdit) e.stopPropagation();
+                        },
+                        dangerouslySetInnerHTML: { __html: cellHtml },
+                      };
+                      return (
                       <td
                         key={`${col.id}-${rowIndex}`}
                         className={`${alignClass(col.align)} border-b`}
@@ -285,17 +433,29 @@ const TableElement = ({
                           borderColor: resolvedBorderColor,
                           borderStyle: tableBorderStyle === "none" ? "none" : tableBorderStyle,
                           fontSize: `${tableFontSize}px`,
+                          lineHeight: TABLE_LINE_HEIGHT,
                           fontFamily: textFontFamily,
                           padding: `${tableCellPaddingY}px ${displayPadX}px`,
                           minWidth:
                             isCompactDevice || enableStickyFirstColumn
                               ? `${col.width}px`
                               : undefined,
-                          cursor: canInlineEdit ? "text" : "default",
+                          cursor: canInlineEdit
+                            ? "text"
+                            : isSiteRuntime
+                              ? "default"
+                              : "pointer",
                           outline: "none",
                           whiteSpace: "nowrap",
                           overflow: "hidden",
-                          textOverflow: "ellipsis",
+                          textOverflow: withLead ? undefined : "ellipsis",
+                          ...(withLead
+                            ? {
+                                position: "relative",
+                                height: columnHeightPx,
+                                boxSizing: "border-box",
+                              }
+                            : {}),
                           ...(enableStickyFirstColumn && colIndex === 0
                             ? {
                                 position: "sticky",
@@ -312,40 +472,41 @@ const TableElement = ({
                               }
                             : {}),
                         }}
-                        contentEditable={canInlineEdit}
-                        suppressContentEditableWarning
-                        onFocus={() =>
-                          handleFocus(rowIndex, colIndex, String(row[colIndex] ?? ""))
-                        }
-                        onInput={(e) => handleInput(e, rowIndex, colIndex)}
-                        onBlur={(e) => handleBlur(e, rowIndex, colIndex)}
-                        onPaste={handlePaste}
-                        onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex)}
-                        onMouseDown={(e) => {
-                          if (canInlineEdit) e.stopPropagation();
-                        }}
-                        onClick={(e) => {
-                          if (canInlineEdit) e.stopPropagation();
-                        }}
-                        onDoubleClick={(e) => {
-                          if (canInlineEdit) e.stopPropagation();
-                        }}
-                        // Use dangerouslySetInnerHTML so React compares against
-                        // the actual DOM innerHTML. While editing, we pass the
-                        // current draft (= what the DOM already shows) so React
-                        // never clobbers in-progress keystrokes on any re-render.
-                        dangerouslySetInnerHTML={{
-                          __html: (() => {
-                            const cellKey = `${rowIndex}:${colIndex}`;
-                            const isEditing = editingKeyRef.current === cellKey;
-                            const text = isEditing
-                              ? (draftRef.current[cellKey] ?? (row[colIndex] ?? ""))
-                              : (row[colIndex] ?? "");
-                            return escapeHtml(text);
-                          })(),
-                        }}
-                      />
-                    ))}
+                        {...(withLead ? null : cellEditProps)}
+                      >
+                        {withLead ? (
+                          <>
+                            <FirstColumnLead
+                              kind={tableFirstColumnLead}
+                              lead={tableFirstColumnLeads[rowIndex]}
+                              sizePx={firstColumnLeadPx}
+                              color={
+                                tableFirstColumnLead === "icon"
+                                  ? resolvedIconColor
+                                  : resolvedBodyText
+                              }
+                              offsetLeft={displayPadX}
+                              canEdit={canEditFirstColumnLead}
+                              onEdit={() => onFirstColumnLeadEdit(rowIndex)}
+                              previewId={`${data.id}__tblLead${rowIndex}`}
+                              allowLink={
+                                (isSiteRuntime || builderMode === "Preview Mode") &&
+                                tableFirstColumnLead === "icon"
+                              }
+                            />
+                            <span
+                              className="block overflow-hidden text-ellipsis whitespace-nowrap outline-none"
+                              style={{
+                                paddingLeft: firstColumnTextPad,
+                                lineHeight: TABLE_LINE_HEIGHT,
+                              }}
+                              {...cellEditProps}
+                            />
+                          </>
+                        ) : null}
+                      </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>

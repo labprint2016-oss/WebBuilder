@@ -29,6 +29,11 @@ export const TABLE_ELEMENT_DEFAULTS = {
   tableHeaderBold: true,
   /** ตรึงคอลัมน์แรก — เลื่อนตารางแล้วคอลัมน์แรกอยู่กับที่ */
   tableStickyFirstColumn: false,
+  /** คอลัมน์แรก: none | icon | image — แสดงหน้าข้อความ */
+  tableFirstColumnLead: "none",
+  tableFirstColumnLeads: [],
+  tableFirstColumnIconColor: "#111827",
+  tableFirstColumnIconColorOpacity: 255,
   tableFontSize: 14,
   tableCellPaddingX: 24,
   tableCellPaddingY: 10,
@@ -45,6 +50,87 @@ export const TABLE_ELEMENT_DEFAULTS = {
 };
 
 const ALIGNS = new Set(["left", "center", "right"]);
+const FIRST_COLUMN_LEADS = new Set(["none", "icon", "image"]);
+const DEFAULT_FIRST_COLUMN_ICONS = [
+  { name: "faStar", type: "fas" },
+  { name: "faCheckCircle", type: "fas" },
+  { name: "faShieldHalved", type: "fas" },
+];
+
+function clampLeadBrightness(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(-100, Math.min(100, Math.round(n))) : 0;
+}
+
+function sanitizeFirstColumnLead(item, index) {
+  const idx = Number.isFinite(Number(index)) ? Number(index) : 0;
+  const fallback = DEFAULT_FIRST_COLUMN_ICONS[idx % DEFAULT_FIRST_COLUMN_ICONS.length];
+  const rawIcon = item?.faIcon;
+  const name =
+    typeof rawIcon?.name === "string" && rawIcon.name.trim()
+      ? rawIcon.name.trim()
+      : fallback.name;
+  const type = rawIcon?.type === "fab" || rawIcon?.type === "far" ? rawIcon.type : "fas";
+  const src = typeof item?.src === "string" ? item.src : "";
+  return {
+    faIcon: { name, type },
+    src,
+    brightness: clampLeadBrightness(item?.brightness),
+    linkEnabled: item?.linkEnabled === true,
+    linkUrl: typeof item?.linkUrl === "string" ? item.linkUrl : "",
+    linkTarget: item?.linkTarget === "_blank" ? "_blank" : "_self",
+  };
+}
+
+function normalizeFirstColumnLeads(raw, rowCount) {
+  const count = Math.max(1, Number(rowCount) || 1);
+  const source = Array.isArray(raw) ? raw : [];
+  if (source.length === count) {
+    let unchanged = true;
+    for (let i = 0; i < count; i += 1) {
+      const item = source[i];
+      if (!item || typeof item !== "object") {
+        unchanged = false;
+        break;
+      }
+      const name = item?.faIcon?.name;
+      const type = item?.faIcon?.type;
+      if (typeof name !== "string" || !name.trim()) {
+        unchanged = false;
+        break;
+      }
+      if (type !== "fas" && type !== "fab" && type !== "far") {
+        unchanged = false;
+        break;
+      }
+      if (typeof item.src !== "string") {
+        unchanged = false;
+        break;
+      }
+      if (
+        typeof item.brightness !== "number" ||
+        item.brightness !== clampLeadBrightness(item.brightness)
+      ) {
+        unchanged = false;
+        break;
+      }
+      if (item.linkEnabled !== true && item.linkEnabled !== false) {
+        unchanged = false;
+        break;
+      }
+      if (typeof item.linkUrl !== "string") {
+        unchanged = false;
+        break;
+      }
+      if (item.linkTarget !== "_self" && item.linkTarget !== "_blank") {
+        unchanged = false;
+        break;
+      }
+    }
+    if (unchanged) return source;
+  }
+  return Array.from({ length: count }, (_, i) => sanitizeFirstColumnLead(source[i], i));
+}
 
 function sanitizeColumn(col, index) {
   const idx = Number.isFinite(Number(index)) ? Number(index) : 0;
@@ -79,6 +165,45 @@ function normalizeRows(rows, colCount) {
   });
 }
 
+export function sliceTableFirstColumnIconForPanel(lead, tableElement, rowIndex) {
+  const idx = Number.isFinite(Number(rowIndex)) ? Number(rowIndex) : 0;
+  const fallback = DEFAULT_FIRST_COLUMN_ICONS[idx % DEFAULT_FIRST_COLUMN_ICONS.length];
+  const raw = lead?.faIcon;
+  const name =
+    typeof raw?.name === "string" && raw.name.trim() ? raw.name.trim() : fallback.name;
+  const type = raw?.type === "fab" || raw?.type === "far" ? raw.type : "fas";
+  return {
+    type: "icon",
+    id: `${tableElement?.id || "tbl"}__tblLead${idx}`,
+    faIcon: { name, type },
+    borderEnabled: false,
+    iconMarginTop: 0,
+    iconMarginBottom: 0,
+    linkEnabled: lead?.linkEnabled === true,
+    linkUrl: typeof lead?.linkUrl === "string" ? lead.linkUrl : "",
+    linkTarget: lead?.linkTarget === "_blank" ? "_blank" : "_self",
+    __tableFirstColumnIconEdit: {
+      tableElementId: tableElement?.id,
+      rowIndex: idx,
+    },
+  };
+}
+
+export function sliceTableFirstColumnImageForPanel(lead, tableElement, rowIndex) {
+  const idx = Number.isFinite(Number(rowIndex)) ? Number(rowIndex) : 0;
+  return {
+    type: "img",
+    id: `${tableElement?.id || "tbl"}__tblLead${idx}`,
+    src: typeof lead?.src === "string" ? lead.src : "",
+    aspectRatio: "auto",
+    brightness: clampLeadBrightness(lead?.brightness),
+    __tableFirstColumnImageEdit: {
+      tableElementId: tableElement?.id,
+      rowIndex: idx,
+    },
+  };
+}
+
 export function mergeTableElement(element) {
   const base = element && typeof element === "object" ? element : {};
   const merged = { ...TABLE_ELEMENT_DEFAULTS, ...base, type: "tbl" };
@@ -104,6 +229,13 @@ export function mergeTableElement(element) {
     tableZebra: merged.tableZebra !== false,
     tableHeaderBold: merged.tableHeaderBold !== false,
     tableStickyFirstColumn: merged.tableStickyFirstColumn === true,
+    tableFirstColumnLead: FIRST_COLUMN_LEADS.has(merged.tableFirstColumnLead)
+      ? merged.tableFirstColumnLead
+      : "none",
+    tableFirstColumnLeads: normalizeFirstColumnLeads(
+      base.tableFirstColumnLeads,
+      tableRows.length
+    ),
     tableFontSize: Number.isFinite(tableFontSize) ? Math.max(11, Math.min(26, tableFontSize)) : 14,
     tableCellPaddingX: 24,
     tableCellPaddingY: Number.isFinite(tableCellPaddingY)
@@ -120,5 +252,11 @@ export function mergeTableElement(element) {
     tableRowBgOpacity: clampOp(merged.tableRowBgOpacity),
     tableBorderColorOpacity: clampOp(merged.tableBorderColorOpacity),
     tableZebraBgOpacity: clampOp(merged.tableZebraBgOpacity),
+    tableFirstColumnIconColor:
+      typeof merged.tableFirstColumnIconColor === "string" &&
+      merged.tableFirstColumnIconColor.trim()
+        ? merged.tableFirstColumnIconColor
+        : "#111827",
+    tableFirstColumnIconColorOpacity: clampOp(merged.tableFirstColumnIconColorOpacity),
   };
 }
