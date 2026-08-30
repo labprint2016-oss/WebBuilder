@@ -124,6 +124,7 @@ const LIFECYCLE_TRANSACTION_KINDS = new Set([
   "page-save",
   "resource-load",
   "resource-save",
+  "menu-switch",
 ]);
 const ONE_SHOT_DURATION_KINDS = new Set([
   "panel-open",

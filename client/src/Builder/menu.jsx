@@ -1,4 +1,12 @@
-import React, { useEffect, memo, useState, useRef,useCallback } from "react";
+import React, {
+  Profiler,
+  useEffect,
+  memo,
+  useMemo,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
 import {
   Home,
   SwatchBook,
@@ -84,7 +92,6 @@ import {
 import { ChevronUpDownIcon } from "@heroicons/react/16/solid";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { SketchPicker } from "react-color";
-import lodash from "lodash";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation, Pagination, Autoplay } from "swiper/modules";
 import "swiper/css";
@@ -96,6 +103,14 @@ import {
   ensurePageCatalogLoaded,
   usePageCatalog,
 } from "./store/pageDocument";
+import { BuilderPerformanceTrigger } from "./performance/BuilderPerformanceMonitor";
+import ElementPerformanceBoundary from "./performance/ElementPerformanceBoundary";
+import {
+  beginBuilderPerformanceTransaction,
+  finishBuilderPerformanceTransactionAfterPaint,
+  recordBuilderCanvasCommit,
+  recordBuilderPanelControlEvent,
+} from "./performance/builderPerformanceStore";
 
 
 
@@ -710,7 +725,7 @@ const targets = [ {label:"หน้าเดิม",value:"_self"}, {label:"ห�
 
 
 const MenuList = memo(function MenuList({
-  pages,
+  pageNames,
   item,
   remove,
   copy,
@@ -725,18 +740,6 @@ const MenuList = memo(function MenuList({
   const { id,icon, name, type, page, url, target } = item;
 
 
-
-  const [pageNames,setPageNames] = useState([])
-
-  useEffect(()=>{
-    const pageNameList = []
-    pages.map(({pageName})=>{
-      pageNameList.push(pageName)
-    })
-    setPageNames(pageNameList)
-  },[pages])
-
-
   /* พื้นหลัง/กรอบเท่า input ธีม (Settings → สีกรอบ) */
   const bgMenu = "var(--dash-panel-btn-group-inactive, #ffffff)"
   const bgMenuOption = "var(--dash-panel-btn-group-inactive, #ffffff)"
@@ -744,14 +747,26 @@ const MenuList = memo(function MenuList({
   const textColor = darkMode === "dark"?"#ffffff":"#202020"
 
   const menuButtons = [
-    { Icon: {type:"far",name:"faCopy"}, funct: copy },
-    { Icon: {type:"far",name:"faCircleXmark"}, funct: remove },
+    { Icon: {type:"far",name:"faCopy"}, funct: copy, label: "คัดลอก" },
+    { Icon: {type:"far",name:"faCircleXmark"}, funct: remove, label: "ลบ" },
   ];
 
   const menuActionIconColor = darkMode === "dark" ? "#a1a1aa" : "#9ca3af";
-  const MenuButton = ({ Icon, funct }) => (
+  const handleMenuItemPerformanceEvent = (event) => {
+    if (event?.type === "pointerdown") return;
+    if (event?.target?.closest?.(".menu-item-action-btn")) return;
+    recordBuilderPanelControlEvent(event, {
+      panelType: "Menu Item",
+      elementType: "menu-item",
+      elementId: String(id || ""),
+      labelPrefix: "รายการเมนู",
+      trackFrames: true,
+    });
+  };
+  const MenuButton = ({ Icon, funct, label }) => (
     <button
       type="button"
+      data-perf-control={label}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.preventDefault();
@@ -760,7 +775,7 @@ const MenuList = memo(function MenuList({
       }}
       className="menu-item-action-btn inline-flex h-7 w-7 shrink-0 items-center justify-center border-0 bg-transparent p-0 shadow-none outline-none ring-0 hover:bg-transparent hover:opacity-80 focus:outline-none focus:ring-0"
       style={{ border: "none", boxShadow: "none", background: "transparent" }}
-      aria-label="menu-item-action"
+      aria-label={label || "menu-item-action"}
     >
       {hasVisibleIcon(Icon) ? (
         <IconAwsome
@@ -772,8 +787,126 @@ const MenuList = memo(function MenuList({
     </button>
   );
 
+  const summaryRow = (
+    <>
+          <span style={{ display: "inline-flex" }}>{collapseIcon}</span>
+          {hasVisibleIcon(icon) && (
+            <IconAwsome iconType={icon.type} iconName={icon.name} style={{
+              fontSize:15,
+              marginLeft:12,
+              color:textColor
+            }}/>
+          )}
+
+        <Typography
+          noWrap
+          sx={{
+            ml: 2,
+            fontSize: 14,
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color:textColor,
+            
+          }}
+        >
+          {name || "Home"}
+        </Typography>
+
+        <Box
+          sx={{
+            ml: 1,
+            mr: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 1.5,
+            flexShrink: 0,
+            transform: "translateX(8px)",
+          }}
+        >
+          {menuButtons.map((b, i) => (
+            <MenuButton key={i} Icon={b.Icon} funct={b.funct} label={b.label} />
+          ))}
+        </Box>
+        <Box
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleOpen(id);
+          }}
+          sx={{
+            width: 34,
+            height: 34,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 1,
+            cursor: "pointer",
+            flexShrink: 0,
+
+            "&:hover": { backgroundColor: "transparent" },
+          }}
+        >
+          <ChevronDown
+            size={16}
+            style={{
+              color: darkMode === "dark"?"#ffffff":"#202020",
+              transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 150ms ease",
+            }}
+          />
+        </Box>
+    </>
+  );
+
+  if (!isOpen) {
+    return (
+      <ElementPerformanceBoundary
+        elementType="menu-item"
+        elementId={String(id || "")}
+        selected={false}
+      >
+        <Box
+          className="menu-item-theme-card"
+          sx={{
+            my: 1,
+            cursor: isDraggable ? "grab" : "pointer",
+            height: 42,
+            minHeight: 42,
+            display: "flex",
+            alignItems: "center",
+            width: "100%",
+            gap: 1,
+            px: 1,
+            border: `1px solid ${borderColor}`,
+            borderRadius: "5px",
+            overflow: "hidden",
+            backgroundColor: `${bgMenu} !important`,
+            backgroundImage: "none !important",
+          }}
+          onClickCapture={handleMenuItemPerformanceEvent}
+        >
+          {summaryRow}
+        </Box>
+      </ElementPerformanceBoundary>
+    );
+  }
+
   return (
-    <Box sx={{ my: 1, cursor: isDraggable ? "pointer" : "grab" }}>
+    <ElementPerformanceBoundary
+      elementType="menu-item"
+      elementId={String(id || "")}
+      selected={isOpen}
+    >
+    <Box
+      sx={{ my: 1, cursor: isDraggable ? "pointer" : "grab" }}
+      onClickCapture={handleMenuItemPerformanceEvent}
+      onChangeCapture={handleMenuItemPerformanceEvent}
+      onInputCapture={handleMenuItemPerformanceEvent}
+    >
           <Accordion
       expanded={isOpen}
       onChange={() => {}}
@@ -830,80 +963,7 @@ const MenuList = memo(function MenuList({
           "& .MuiAccordionSummary-content.Mui-expanded": { m: 0 },
         }}
       >
-          <span style={{ display: "inline-flex" }}>{collapseIcon}</span>
-          {hasVisibleIcon(icon) && (
-            <IconAwsome iconType={icon.type} iconName={icon.name} style={{
-              fontSize:15,
-              marginLeft:12,
-              color:textColor
-            }}/>
-          )}
-
-        <Typography
-          noWrap
-          sx={{
-            ml: 2,
-            fontSize: 14,
-            flex: 1,
-            minWidth: 0,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            color:textColor,
-            
-          }}
-        >
-          {name || "Home"}
-        </Typography>
-
-        {/* ✅ ปุ่มลูกศร (กดตรงนี้เท่านั้นถึง toggle) */}
-        
-
-        {/* ✅ ปุ่ม copy/delete (ไม่เกี่ยวกับ toggle) */}
-        <Box
-          sx={{
-            ml: 1,
-            mr: 0,
-            display: "flex",
-            alignItems: "center",
-            gap: 1.5,
-            flexShrink: 0,
-            transform: "translateX(8px)",
-          }}
-        >
-          {menuButtons.map((b, i) => (
-            <MenuButton key={i} Icon={b.Icon} funct={b.funct} />
-          ))}
-        </Box>
-        <Box
-          onMouseDown={(e) => e.stopPropagation()} // กัน drag เริ่มจากปุ่มนี้
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleOpen(id);
-          }}
-          sx={{
-            width: 34,
-            height: 34,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 1,
-            cursor: "pointer",
-            flexShrink: 0,
-
-            "&:hover": { backgroundColor: "transparent" },
-          }}
-        >
-          <ChevronDown
-            size={16}
-            style={{
-              color: darkMode === "dark"?"#ffffff":"#202020",
-              transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-              transition: "transform 150ms ease",
-            }}
-          />
-        </Box>
+        {summaryRow}
       </AccordionSummary>
 
       <AccordionDetails
@@ -968,9 +1028,102 @@ const MenuList = memo(function MenuList({
 
     
     </Box>
+    </ElementPerformanceBoundary>
   
   );
-});
+}, areMenuListPropsEqual);
+
+function getMenuChildren(item) {
+  return Array.isArray(item?.children) ? item.children : [];
+}
+
+function cloneMenuItemWithNewIds(item) {
+  return {
+    ...item,
+    id: Math.round(Math.random() * 1e9),
+    children: getMenuChildren(item).map(cloneMenuItemWithNewIds),
+  };
+}
+
+function insertClonedMenuItem(items, id) {
+  if (!Array.isArray(items) || items.length === 0) return items;
+  const idx = items.findIndex((item) => item.id === id);
+  if (idx !== -1) {
+    const next = items.slice();
+    next.splice(idx + 1, 0, cloneMenuItemWithNewIds(items[idx]));
+    return next;
+  }
+  let changed = false;
+  const next = items.map((item) => {
+    const children = getMenuChildren(item);
+    if (children.length === 0) return item;
+    const nextChildren = insertClonedMenuItem(children, id);
+    if (nextChildren === children) return item;
+    changed = true;
+    return { ...item, children: nextChildren };
+  });
+  return changed ? next : items;
+}
+
+function removeMenuItemById(items, id, isRoot = true) {
+  if (!Array.isArray(items) || items.length === 0) return items;
+  const idx = items.findIndex((item) => item.id === id);
+  if (idx !== -1) {
+    if (isRoot && items.length === 1) return items;
+    return items.filter((_, index) => index !== idx);
+  }
+  let changed = false;
+  const next = items.map((item) => {
+    const children = getMenuChildren(item);
+    if (children.length === 0) return item;
+    const nextChildren = removeMenuItemById(children, id, false);
+    if (nextChildren === children) return item;
+    changed = true;
+    return { ...item, children: nextChildren };
+  });
+  return changed ? next : items;
+}
+
+function updateMenuItemField(items, id, name, value) {
+  if (!Array.isArray(items) || items.length === 0) return items;
+  const idx = items.findIndex((item) => item.id === id);
+  if (idx !== -1) {
+    const current = items[idx];
+    if (current[name] === value) return items;
+    const next = items.slice();
+    next[idx] = { ...current, [name]: value };
+    return next;
+  }
+  let changed = false;
+  const next = items.map((item) => {
+    const children = getMenuChildren(item);
+    if (children.length === 0) return item;
+    const nextChildren = updateMenuItemField(children, id, name, value);
+    if (nextChildren === children) return item;
+    changed = true;
+    return { ...item, children: nextChildren };
+  });
+  return changed ? next : items;
+}
+
+function areMenuListPropsEqual(prev, next) {
+  return (
+    prev.isOpen === next.isOpen &&
+    prev.isDraggable === next.isDraggable &&
+    prev.pageNames === next.pageNames &&
+    prev.darkMode === next.darkMode &&
+    prev.darkTextColor === next.darkTextColor &&
+    prev.openIconModal === next.openIconModal &&
+    prev.item?.id === next.item?.id &&
+    prev.item?.name === next.item?.name &&
+    prev.item?.type === next.item?.type &&
+    prev.item?.page === next.item?.page &&
+    prev.item?.url === next.item?.url &&
+    prev.item?.target === next.item?.target &&
+    prev.item?.icon === next.item?.icon &&
+    getMenuChildren(prev.item).length === getMenuChildren(next.item).length
+  );
+}
 
 
 
@@ -987,97 +1140,39 @@ useEffect(() => {
 
 const handleChange = useCallback((e, id) => {
   const { name, value } = e.target;
-  setMenus((prev) => {
-    const idx = prev.findIndex((d) => d.id === id);
-    const next = lodash.cloneDeep(prev);
-    if (idx === -1) {
-      const findMenu = (children)=>{
-        children.map(c=>{
-          const isTrue = c.id === id
-          if(isTrue){
-            c[name] = value
-          }else{
-            if(c.children.length > 0 ) findMenu(c.children)
-          }
-        })
-      }
-      findMenu(next)
-    }else{
-      next[idx][name] = value;
-    }
-    return next;
-  });
+  setMenus((prev) => updateMenuItemField(prev, id, name, value));
 }, [setMenus]);
 
 
 
 
-const cloneMenu = useCallback((id) => {
+const measureMenuItemAction = (kind, label, id) => {
+  const transactionId = beginBuilderPerformanceTransaction(
+    kind,
+    {
+      label,
+      elementType: "menu-item",
+      elementId: String(id || ""),
+      panelType: "Menu",
+      scope: "menu",
+    },
+    { trackFrames: true }
+  );
+  finishBuilderPerformanceTransactionAfterPaint(
+    transactionId,
+    {},
+    { reason: kind }
+  );
+};
 
-  setMenus((prev) => {
-    let next = lodash.cloneDeep(prev);
-    const clone = (menu,i)=>{
-      let newMenu = lodash.cloneDeep(menu[i]);
-      newMenu.id = Math.round(Math.random() * 1e9);
-      if(newMenu.children.length > 0){
-        setNewID(newMenu.children)
-      }
-      menu.splice(i+1, 0, newMenu);
-    }
-    const findMenu = (children)=>{
-      children.map((c,i)=>{
-        const isTrue = c.id === id
-        if(isTrue){
-          clone(children,i)
-        }else{
-          if(c.children.length > 0 ) findMenu(c.children)
-        }
-         
-       })
-     }
-     const setNewID = (children)=>{
-      children.map(c=>{
-         c.id = Math.round(Math.random() * 1e9);
-         if(c.children.length > 0 ) setNewID(c.children)
-       })
-     }
-    const idx = prev.findIndex((d) => d.id === id);
-    if (idx === -1) {
-      findMenu(next)
-    }else{
-      clone(next,idx)
-      
-    }
-    return next;
- 
-  });
+const cloneMenu = useCallback((id) => {
+  measureMenuItemAction("canvas-clone", "คัดลอกรายการเมนู", id);
+  setMenus((prev) => insertClonedMenuItem(prev, id));
 }, [setMenus]);
 
 const deleteMenu = useCallback((id) => {
-  setMenus((prev) => {
-    const next = lodash.cloneDeep(prev);
-    const findMenu = (children)=>{
-      children.map((c,i)=>{
-        const isTrue = c.id === id
-        if(isTrue){
-          children.splice(i,1)
-        }else{
-          if(c.children.length > 0 ) findMenu(c.children)
-        }
-         
-       })
-     }
-    const idx = prev.findIndex((d) => d.id === id);
-    if (idx === -1){
-      findMenu(next)
-    }else{
-      if (prev.length === 1) return prev;
-      next.splice(idx, 1);
-      
-    }
-    return next;
-    
-  });
+  measureMenuItemAction("canvas-delete", "ลบรายการเมนู", id);
+  setMenus((prev) => removeMenuItemById(prev, id));
 }, [setMenus]);
 
 
@@ -1105,6 +1200,34 @@ const toggleOpen = useCallback((id) => {
 
 
 const pages = usePageCatalog()
+const pageNames = useMemo(
+  () => (Array.isArray(pages) ? pages.map((page) => page?.pageName) : []),
+  [pages]
+);
+const menuListBindingsRef = useRef({
+  pageNames,
+  openMenu,
+  toggleOpen,
+  deleteMenu,
+  cloneMenu,
+  handleChange,
+  darkMode,
+  darkTextColor,
+  setOpenIconModal,
+  openIconModal,
+});
+menuListBindingsRef.current = {
+  pageNames,
+  openMenu,
+  toggleOpen,
+  deleteMenu,
+  cloneMenu,
+  handleChange,
+  darkMode,
+  darkTextColor,
+  setOpenIconModal,
+  openIconModal,
+};
 
 const getTotalScrollFromElement = useCallback((element) => {
   let top = window.scrollY || window.pageYOffset || 0;
@@ -1147,29 +1270,37 @@ const clearDragScrollCompensation = useCallback(() => {
    },[])
 
 
-const renderMenu = useCallback(
-  (args) => (
+const renderMenu = useCallback((args) => {
+  const bindings = menuListBindingsRef.current;
+  return (
     <MenuList
       {...args}
-      pages={pages}
-      isOpen={!!openMenu[args.item.id]}
-      toggleOpen={toggleOpen}
-      remove={deleteMenu}
-      copy={cloneMenu}
-      handleChange={handleChange}
+      pageNames={bindings.pageNames}
+      isOpen={!!bindings.openMenu[args.item.id]}
+      toggleOpen={bindings.toggleOpen}
+      remove={bindings.deleteMenu}
+      copy={bindings.cloneMenu}
+      handleChange={bindings.handleChange}
       isDraggable={args.isDraggable}
-      darkMode={darkMode}
-      darkTextColor={darkTextColor}
-      setOpenIconModal={setOpenIconModal}
-      openIconModal={openIconModal}
+      darkMode={bindings.darkMode}
+      darkTextColor={bindings.darkTextColor}
+      setOpenIconModal={bindings.setOpenIconModal}
+      openIconModal={bindings.openIconModal}
     />
-  ),
-  [openMenu, toggleOpen, deleteMenu, cloneMenu, handleChange,darkMode,darkTextColor,openIconModal,pages]
-);
+  );
+}, []);
 
 const disableDrag = useCallback(
-  ({ item }) => !openMenu[item.id],
-  [openMenu]
+  ({ item }) => !menuListBindingsRef.current.openMenu[item.id],
+  []
+);
+
+const handleMenuDragStart = useCallback(
+  (payload) => {
+    setOpenMenu({});
+    applyDragScrollCompensation(payload);
+  },
+  [applyDragScrollCompensation]
 );
 
 
@@ -1688,8 +1819,38 @@ useEffect(() => {
 
 
 
+    const handleMenuCanvasRender = useCallback(
+      (_id, phase, actualDuration, baseDuration) => {
+        recordBuilderCanvasCommit(actualDuration, baseDuration, phase);
+      },
+      []
+    );
+    const handleMenuReorder = useCallback(
+      ({ items: newItems }) => {
+        const transactionId = beginBuilderPerformanceTransaction(
+          "canvas-reorder",
+          {
+            label: "จัดเรียงรายการเมนู",
+            elementType: "menu-item",
+            elementId: "menu-tree",
+            panelType: "Menu",
+            scope: "menu",
+          },
+          { trackFrames: true }
+        );
+        setMenus(newItems);
+        finishBuilderPerformanceTransactionAfterPaint(
+          transactionId,
+          {},
+          { reason: "menu-reorder" }
+        );
+      },
+      [setMenus]
+    );
+
     return( <main className="content-area flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden" area="main">
 
+<Profiler id="MenuCanvas" onRender={handleMenuCanvasRender}>
 <div className="min-h-[600px]">
 <div className={`${["Mobile", "Tablet"].includes(device) ? "relative z-10 w-full" : "relative z-10 mx-auto w-full max-w-[1280px]"}`}>
 {device === "Desktop" && (
@@ -1700,8 +1861,8 @@ useEffect(() => {
 <Nestable
             items={menus}
             renderItem={renderMenu}
-            onChange={({ items: newItems }) => setMenus(newItems)}
-            onDragStart={applyDragScrollCompensation}
+            onChange={handleMenuReorder}
+            onDragStart={handleMenuDragStart}
             onDragEnd={clearDragScrollCompensation}
             maxDepth={4}
             threshold={30}
@@ -2595,7 +2756,13 @@ size={menuFontSize}
 }
 */
 `}</style>
- 
+    </Profiler>
+    <footer className="sticky bottom-0 z-20 mt-auto flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-[var(--dash-bg,#f8fafc)] px-4 py-2 dark:border-white/10">
+      <BuilderPerformanceTrigger />
+      <span className="shrink-0 text-[12px] text-slate-500">
+        Copyright © {new Date().getFullYear()} Web Builder. All rights reserved.
+      </span>
+    </footer>
 
     </main>
     
@@ -2603,4 +2770,4 @@ size={menuFontSize}
     )
 }
 
-export default MenuPage
+export default memo(MenuPage);

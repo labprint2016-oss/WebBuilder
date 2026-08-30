@@ -53,6 +53,8 @@ const ELEMENT_TYPE_NAMES = {
   frmRadio: "Form Radio",
   frmCheckbox: "Form Checkbox",
   frmSubmit: "Form Submit",
+  "menu-item": "Menu Item",
+  Menu: "Menu",
 };
 
 const StatusBadge = ({ status = "green" }) => (
@@ -168,6 +170,7 @@ const TransactionRow = ({ transaction }) => {
     "page-save",
     "resource-load",
     "resource-save",
+    "menu-switch",
   ].includes(transaction.kind);
   const primaryDuration =
     getDisplayedDurationMs(transaction) || transaction.durationMs;

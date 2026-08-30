@@ -203,6 +203,25 @@ const FORM_ELEMENT_TYPE_SET = new Set([
   "frmSubmit",
 ]);
 const PREVIEW_SNAPSHOT_KEY = "wb:preview:snapshot:v1";
+const assignActivePresetItems = (presets, presetId, items) => {
+  if (!presetId || !Array.isArray(presets) || !Array.isArray(items)) {
+    return Array.isArray(presets) ? presets : [];
+  }
+  let changed = false;
+  const next = presets.map((preset) => {
+    if (preset.id !== presetId) return preset;
+    if (preset.items === items) return preset;
+    changed = true;
+    return { ...preset, items };
+  });
+  return changed ? next : presets;
+};
+const resolvePresetMenuItems = (preset, activePresetId, activeItems, fallbackItems) => {
+  if (preset && preset.id === activePresetId && Array.isArray(activeItems)) {
+    return activeItems;
+  }
+  return preset?.items || fallbackItems;
+};
 const BUILDER_ACTIVE_PAGE_STORAGE_KEY = "wb:builder:active-page-id";
 const DATA_SLIDER_PERF_QUERY_PARAM = "dataSliderPerf";
 const STRUCTURE_PERF_QUERY_PARAM = "structurePerf";
@@ -4337,6 +4356,26 @@ const buildUniqueMenuPresetName = useCallback((baseName, excludeId = null) => {
   return candidate;
 }, [isMenuPresetNameTaken]);
 
+const measureMenuPresetAction = (label, presetId, apply) => {
+  const transactionId = beginBuilderPerformanceTransaction(
+    "menu-switch",
+    {
+      label,
+      elementType: "Menu",
+      elementId: String(presetId || ""),
+      scope: "switch",
+    },
+    { trackFrames: true }
+  );
+  const result = apply();
+  finishBuilderLifecycleTransactionAfterPaint(
+    transactionId,
+    {},
+    { reason: "menu-preset" }
+  );
+  return result;
+};
+
 const createMenuPreset = useCallback(
   (name) => {
     const trimmedName = String(name || "").trim();
@@ -4348,7 +4387,10 @@ const createMenuPreset = useCallback(
     // Start new preset with a fresh menu list to avoid showing old menu items.
     const nextItems = createDefaultMenuItems();
     const preset = buildMenuPreset({ id: nextId, name: trimmedName, items: nextItems });
-    const nextPresets = [...menuPresets, preset];
+    const nextPresets = [
+      ...assignActivePresetItems(menuPresets, activeMenuPresetId, menus),
+      preset,
+    ];
     latestMenuBarStateRef.current = {
       ...(latestMenuBarStateRef.current || {}),
       menuPresets: _.cloneDeep(nextPresets),
@@ -4356,17 +4398,25 @@ const createMenuPreset = useCallback(
       defaultMenuPresetId,
       menus: _.cloneDeep(nextItems),
     };
-    setMenuPresets(nextPresets);
-    setActiveMenuPresetId(nextId);
-    setMenus(_.cloneDeep(nextItems));
+    measureMenuPresetAction(
+      `สร้าง Menu Preset / ${trimmedName}`,
+      nextId,
+      () => {
+        setMenuPresets(nextPresets);
+        setActiveMenuPresetId(nextId);
+        setMenus(_.cloneDeep(nextItems));
+      }
+    );
     return { ok: true, id: nextId, name: trimmedName };
   },
   [
     buildMenuPreset,
+    activeMenuPresetId,
     createDefaultMenuItems,
     defaultMenuPresetId,
     isMenuPresetNameTaken,
     menuPresets,
+    menus,
     setMenuPresets,
   ]
 );
@@ -4376,22 +4426,30 @@ const selectMenuPreset = useCallback(
     const selected = menuPresets.find((item) => item.id === presetId);
     if (!selected) return;
     const hydratedPreset = withPresetVisualConfig(selected);
-    setMenuPresets((prev) =>
-      prev.map((item) => (item.id === presetId ? hydratedPreset : item))
+    measureMenuPresetAction(
+      `เปลี่ยน Menu Preset / ${hydratedPreset.name || presetId}`,
+      presetId,
+      () => {
+        setMenuPresets((prev) =>
+          assignActivePresetItems(prev, activeMenuPresetId, menus).map((item) =>
+            item.id === presetId ? hydratedPreset : item
+          )
+        );
+        setActiveMenuPresetId(presetId);
+        setMenus(_.cloneDeep(hydratedPreset.items || createDefaultMenuItems()));
+        if (hydratedPreset?.menuBarDesktop) setMenuBarDesktop(_.cloneDeep(hydratedPreset.menuBarDesktop));
+        if (hydratedPreset?.menuBarMobile) setMenuBarMobile(_.cloneDeep(hydratedPreset.menuBarMobile));
+        if (Object.prototype.hasOwnProperty.call(hydratedPreset || {}, "menuBarMobilePhone")) {
+          setMenuBarMobilePhone(_.cloneDeep(hydratedPreset.menuBarMobilePhone ?? null));
+        }
+        if (hydratedPreset?.navBottomMobile) setNavBottomMobile(_.cloneDeep(hydratedPreset.navBottomMobile));
+        if (hydratedPreset?.navBottomTablet) setNavBottomTablet(_.cloneDeep(hydratedPreset.navBottomTablet));
+        if (hydratedPreset?.topBar) setTopBar(_.cloneDeep(hydratedPreset.topBar));
+        if (hydratedPreset?.footerBar) setFooterBar(_.cloneDeep(hydratedPreset.footerBar));
+      }
     );
-    setActiveMenuPresetId(presetId);
-    setMenus(_.cloneDeep(hydratedPreset.items || createDefaultMenuItems()));
-    if (hydratedPreset?.menuBarDesktop) setMenuBarDesktop(_.cloneDeep(hydratedPreset.menuBarDesktop));
-    if (hydratedPreset?.menuBarMobile) setMenuBarMobile(_.cloneDeep(hydratedPreset.menuBarMobile));
-    if (Object.prototype.hasOwnProperty.call(hydratedPreset || {}, "menuBarMobilePhone")) {
-      setMenuBarMobilePhone(_.cloneDeep(hydratedPreset.menuBarMobilePhone ?? null));
-    }
-    if (hydratedPreset?.navBottomMobile) setNavBottomMobile(_.cloneDeep(hydratedPreset.navBottomMobile));
-    if (hydratedPreset?.navBottomTablet) setNavBottomTablet(_.cloneDeep(hydratedPreset.navBottomTablet));
-    if (hydratedPreset?.topBar) setTopBar(_.cloneDeep(hydratedPreset.topBar));
-    if (hydratedPreset?.footerBar) setFooterBar(_.cloneDeep(hydratedPreset.footerBar));
   },
-  [createDefaultMenuItems, menuPresets, setMenuPresets, withPresetVisualConfig]
+  [activeMenuPresetId, createDefaultMenuItems, menus, menuPresets, setMenuPresets, withPresetVisualConfig]
 );
 
 const renameMenuPreset = useCallback((presetId, name) => {
@@ -4420,31 +4478,44 @@ const duplicateMenuPreset = useCallback(
     if (!sourcePresetRaw) return { ok: false, reason: "not_found" };
     const sourcePreset = withPresetVisualConfig(sourcePresetRaw);
     const nextId = `menu-preset-${menuPresetCounterRef.current++}`;
-    const duplicatedItems = _.cloneDeep(sourcePreset.items);
+    const sourceItems =
+      sourcePreset.id === activeMenuPresetId ? menus : sourcePreset.items;
+    const duplicatedItems = _.cloneDeep(sourceItems);
     const duplicatedName = buildUniqueMenuPresetName(`${sourcePreset.name} Copy`);
     const duplicatedPreset = buildMenuPreset(
       { id: nextId, name: duplicatedName, items: duplicatedItems },
       sourcePreset
     );
-    const nextPresets = [...menuPresets, duplicatedPreset];
-    setMenuPresets(nextPresets);
-    setActiveMenuPresetId(nextId);
-    setMenus(_.cloneDeep(duplicatedItems));
-    if (duplicatedPreset?.menuBarDesktop) setMenuBarDesktop(_.cloneDeep(duplicatedPreset.menuBarDesktop));
-    if (duplicatedPreset?.menuBarMobile) setMenuBarMobile(_.cloneDeep(duplicatedPreset.menuBarMobile));
-    if (Object.prototype.hasOwnProperty.call(duplicatedPreset || {}, "menuBarMobilePhone")) {
-      setMenuBarMobilePhone(_.cloneDeep(duplicatedPreset.menuBarMobilePhone ?? null));
-    }
-    if (duplicatedPreset?.navBottomMobile) setNavBottomMobile(_.cloneDeep(duplicatedPreset.navBottomMobile));
-    if (duplicatedPreset?.navBottomTablet) setNavBottomTablet(_.cloneDeep(duplicatedPreset.navBottomTablet));
-    if (duplicatedPreset?.topBar) setTopBar(_.cloneDeep(duplicatedPreset.topBar));
-    if (duplicatedPreset?.footerBar) setFooterBar(_.cloneDeep(duplicatedPreset.footerBar));
+    const nextPresets = [
+      ...assignActivePresetItems(menuPresets, activeMenuPresetId, menus),
+      duplicatedPreset,
+    ];
+    measureMenuPresetAction(
+      `ทำสำเนา Menu Preset / ${duplicatedName}`,
+      nextId,
+      () => {
+        setMenuPresets(nextPresets);
+        setActiveMenuPresetId(nextId);
+        setMenus(_.cloneDeep(duplicatedItems));
+        if (duplicatedPreset?.menuBarDesktop) setMenuBarDesktop(_.cloneDeep(duplicatedPreset.menuBarDesktop));
+        if (duplicatedPreset?.menuBarMobile) setMenuBarMobile(_.cloneDeep(duplicatedPreset.menuBarMobile));
+        if (Object.prototype.hasOwnProperty.call(duplicatedPreset || {}, "menuBarMobilePhone")) {
+          setMenuBarMobilePhone(_.cloneDeep(duplicatedPreset.menuBarMobilePhone ?? null));
+        }
+        if (duplicatedPreset?.navBottomMobile) setNavBottomMobile(_.cloneDeep(duplicatedPreset.navBottomMobile));
+        if (duplicatedPreset?.navBottomTablet) setNavBottomTablet(_.cloneDeep(duplicatedPreset.navBottomTablet));
+        if (duplicatedPreset?.topBar) setTopBar(_.cloneDeep(duplicatedPreset.topBar));
+        if (duplicatedPreset?.footerBar) setFooterBar(_.cloneDeep(duplicatedPreset.footerBar));
+      }
+    );
     return { ok: true, id: nextId, name: duplicatedName };
   },
   [
+    activeMenuPresetId,
     buildMenuPreset,
     buildUniqueMenuPresetName,
     menuPresets,
+    menus,
     setMenuPresets,
     withPresetVisualConfig,
   ]
@@ -4457,20 +4528,30 @@ const deleteMenuPreset = useCallback(
     const removeIndex = menuPresets.findIndex((item) => String(item?.id) === targetId);
     if (removeIndex === -1) return { ok: false, reason: "not_found" };
     const removedPreset = menuPresets[removeIndex];
-    const nextPresets = menuPresets.filter((item) => String(item?.id) !== targetId);
-    setMenuPresets(nextPresets);
-    if (String(defaultMenuPresetId) === targetId) {
-      const fallbackDefault = nextPresets[Math.max(removeIndex - 1, 0)] || nextPresets[0];
-      if (fallbackDefault) {
-        setDefaultMenuPresetId(fallbackDefault.id);
+    const nextPresets = assignActivePresetItems(
+      menuPresets,
+      activeMenuPresetId,
+      menus
+    ).filter((item) => String(item?.id) !== targetId);
+    measureMenuPresetAction(
+      `ลบ Menu Preset / ${removedPreset?.name || targetId}`,
+      targetId,
+      () => {
+        setMenuPresets(nextPresets);
+        if (String(defaultMenuPresetId) === targetId) {
+          const fallbackDefault = nextPresets[Math.max(removeIndex - 1, 0)] || nextPresets[0];
+          if (fallbackDefault) {
+            setDefaultMenuPresetId(fallbackDefault.id);
+          }
+        }
+        if (String(activeMenuPresetId) === targetId) {
+          setActiveMenuPresetId(null);
+        }
       }
-    }
-    if (String(activeMenuPresetId) === targetId) {
-      setActiveMenuPresetId(null);
-    }
+    );
     return { ok: true, name: removedPreset?.name || "" };
   },
-  [menuPresets, activeMenuPresetId, defaultMenuPresetId, setMenuPresets]
+  [menuPresets, menus, activeMenuPresetId, defaultMenuPresetId, setMenuPresets]
 );
 
 const setDefaultMenuPreset = useCallback(
@@ -4487,11 +4568,13 @@ const setDefaultMenuPreset = useCallback(
 const resetMenuPresets = useCallback(() => {
   const defaultItems = createDefaultMenuItems();
   const defaultPresets = [buildMenuPreset({ id: "menu-preset-1", name: "Menu 1", items: defaultItems })];
-  setMenuPresets(defaultPresets);
-  setActiveMenuPresetId("menu-preset-1");
-  setDefaultMenuPresetId("menu-preset-1");
-  setMenus(_.cloneDeep(defaultItems));
-  menuPresetCounterRef.current = 2;
+  measureMenuPresetAction("รีเซ็ต Menu Preset", "menu-preset-1", () => {
+    setMenuPresets(defaultPresets);
+    setActiveMenuPresetId("menu-preset-1");
+    setDefaultMenuPresetId("menu-preset-1");
+    setMenus(_.cloneDeep(defaultItems));
+    menuPresetCounterRef.current = 2;
+  });
 }, [buildMenuPreset, createDefaultMenuItems, setMenuPresets]);
 
 useEffect(() => {
@@ -4983,19 +5066,6 @@ useEffect(() => {
     footerBar: _.cloneDeep(footerBar),
   };
 }, [menuBarDesktop, menuBarMobile, menuBarMobilePhone, navBottomMobile, navBottomTablet, topBar, footerBar]);
-
-useEffect(() => {
-  setMenuPresets((prev) => {
-    let changed = false;
-    const next = prev.map((preset) => {
-      if (preset.id !== activeMenuPresetId) return preset;
-      if (_.isEqual(preset.items, menus)) return preset;
-      changed = true;
-      return { ...preset, items: _.cloneDeep(menus) };
-    });
-    return changed ? next : prev;
-  });
-}, [activeMenuPresetId, menus, setMenuPresets]);
 
 useEffect(() => {
   if (activeMenuPresetId) return;
@@ -5527,14 +5597,31 @@ const isHeroDirty = useMemo(() => {
 
 const isMenuDirty = useMemo(() => {
   if (!isMenuPresetHydrated || !menuSaveBaseline) return false;
+  if (defaultMenuPresetId !== menuSaveBaseline.defaultMenuPresetId) return true;
+  const baselineItems = menuSaveBaseline.menuPresets?.find(
+    (preset) => preset.id === activeMenuPresetId
+  )?.items;
+  if (
+    activeMenuPresetId &&
+    menus !== baselineItems &&
+    (!Array.isArray(baselineItems) ||
+      menus.length !== baselineItems.length ||
+      !_.isEqual(menus, baselineItems))
+  ) {
+    return true;
+  }
   return !_.isEqual(
-    {
-      menuPresets,
-      defaultMenuPresetId,
-    },
-    menuSaveBaseline
+    assignActivePresetItems(menuPresets, activeMenuPresetId, menus),
+    menuSaveBaseline.menuPresets
   );
-}, [isMenuPresetHydrated, menuSaveBaseline, menuPresets, defaultMenuPresetId]);
+}, [
+  isMenuPresetHydrated,
+  menuSaveBaseline,
+  menuPresets,
+  defaultMenuPresetId,
+  activeMenuPresetId,
+  menus,
+]);
 
 const syncActivePresetVisualField = useCallback((field, value) => {
   if (!activeMenuPresetId) return;
@@ -5669,7 +5756,11 @@ const submitMenuBar = (options = {})=>{
     navBottomTablet: latest.navBottomTablet ?? navBottomTablet,
     topBar: latest.topBar ?? topBar,
     footerBar: latest.footerBar ?? footerBar,
-    menuPresets: latest.menuPresets ?? menuPresets,
+    menuPresets: assignActivePresetItems(
+      latest.menuPresets ?? menuPresets,
+      latest.activeMenuPresetId ?? activeMenuPresetId,
+      latest.menus ?? menus
+    ),
     activeMenuPresetId: latest.activeMenuPresetId ?? activeMenuPresetId,
     defaultMenuPresetId: latest.defaultMenuPresetId ?? defaultMenuPresetId,
     heroPresets: latest.heroPresets ?? heroPresets,
@@ -5716,8 +5807,8 @@ const submitMenuBar = (options = {})=>{
       loadMenuBar();
     } else {
       setMenuSaveBaseline({
-        menuPresets: _.cloneDeep(latest.menuPresets ?? menuPresets),
-        defaultMenuPresetId: latest.defaultMenuPresetId ?? defaultMenuPresetId,
+        menuPresets: _.cloneDeep(menuBarData.menuPresets),
+        defaultMenuPresetId: menuBarData.defaultMenuPresetId,
       });
       setHeroSaveBaseline({
         heroPresets: _.cloneDeep(latest.heroPresets ?? heroPresets),
@@ -5792,7 +5883,9 @@ const openPreviewPage = useCallback(() => {
         heroPresetId: resolvedHeroPresetId,
       },
       siteChrome: {
-        menus: _.cloneDeep(selectedMenuPreset?.items || menus),
+        menus: _.cloneDeep(
+          resolvePresetMenuItems(selectedMenuPreset, activeMenuPresetId, menus, menus)
+        ),
         menuBarDesktop: _.cloneDeep(selectedMenuPreset?.menuBarDesktop || menuBarDesktop),
         menuBarMobile: _.cloneDeep(selectedMenuPreset?.menuBarMobile || menuBarMobile),
         menuBarMobilePhone: _.cloneDeep(
@@ -5817,6 +5910,7 @@ const openPreviewPage = useCallback(() => {
   theme,
   device,
   menuPresets,
+  activeMenuPresetId,
   defaultMenuPresetId,
   pageMenuPresetId,
   pageHeroPresetId,
@@ -5857,7 +5951,9 @@ useEffect(() => {
         },
         siteChrome: {
           ...(parsed.siteChrome || {}),
-          menus: _.cloneDeep(selectedMenuPreset?.items || menus),
+          menus: _.cloneDeep(
+            resolvePresetMenuItems(selectedMenuPreset, activeMenuPresetId, menus, menus)
+          ),
           menuBarDesktop: _.cloneDeep(
             selectedMenuPreset?.menuBarDesktop || menuBarDesktop
           ),
@@ -5881,6 +5977,7 @@ useEffect(() => {
 
   return () => window.cancelAnimationFrame(rafId);
 }, [
+  activeMenuPresetId,
   defaultMenuPresetId,
   pageMenuPresetId,
   pageHeroPresetId,
