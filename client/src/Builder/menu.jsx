@@ -1,5 +1,6 @@
 import React, {
   Profiler,
+  startTransition,
   useEffect,
   memo,
   useMemo,
@@ -25,8 +26,8 @@ import {
   LogOut,
   Copy,
   CircleX,
+  Ban,
   ChevronDown,
-  Plus,
   Download,
   SlidersHorizontal,
   RefreshCw,
@@ -53,9 +54,6 @@ import {
   Typography,
   Button,
   Box,
-  ImageList,
-  ImageListItemBar,
-  ImageListItem,
   FormControl,
   InputLabel,
   MenuItem,
@@ -82,23 +80,9 @@ import {
   BottomNavigation,
   BottomNavigationAction,
 } from "@mui/material";
-import {
-  Label,
-  Listbox,
-  ListboxButton,
-  ListboxOption,
-  ListboxOptions,
-} from "@headlessui/react";
-import { ChevronUpDownIcon } from "@heroicons/react/16/solid";
-import { CheckCircleIcon } from "@heroicons/react/20/solid";
-import { SketchPicker } from "react-color";
-import { Swiper, SwiperSlide } from "swiper/react";
-import { Navigation, Pagination, Autoplay } from "swiper/modules";
-import "swiper/css";
-import "swiper/css/navigation";
-import "swiper/css/pagination";
 import IconAwsome from "./IconAwsome";
 import ServiceIcon from "./ServiceIcon";
+import { panelGroupButtonSx, panelGroupRootBorderSx } from "./panelControlSx";
 import {
   ensurePageCatalogLoaded,
   usePageCatalog,
@@ -111,6 +95,22 @@ import {
   recordBuilderCanvasCommit,
   recordBuilderPanelControlEvent,
 } from "./performance/builderPerformanceStore";
+import {
+  TOP_BAR_PREVIEW_ID,
+  TOP_BAR_PREVIEW_TYPE,
+  usePanelPreview,
+} from "./panelPreviewStore";
+import {
+  buildFooterBackgroundStyle,
+  getSliderLiveFooterBar,
+  normalizeFooterDegree,
+} from "./footerBarChromePreview";
+import {
+  buildTopBarBackgroundStyle,
+  getSliderLiveTopBar,
+  normalizeTopBarDegree,
+} from "./topBarChromePreview";
+import MenuBarLogo from "./MenuBarLogo";
 
 
 
@@ -191,7 +191,16 @@ const COMMON_FIELD_SX = (
   const bgcolor = "var(--dash-panel-btn-group-inactive, #ffffff)"
 
   const inputStyle =  {
-    borderColor,height,color:textColor, borderWidth: "1px", borderTopRightRadius: radiusRight, borderBottomRightRadius: radiusRight,borderRightWidth: broderRight, borderTopLeftRadius: radiusLeft, borderBottomLeftRadius: radiusLeft,borderLeftWidth: broderLeft
+    borderColor,
+    color:textColor,
+    borderWidth: "1px",
+    borderTopRightRadius: radiusRight,
+    borderBottomRightRadius: radiusRight,
+    borderRightWidth: broderRight,
+    borderTopLeftRadius: radiusLeft,
+    borderBottomLeftRadius: radiusLeft,
+    borderLeftWidth: broderLeft,
+    ...(useInputBottomOffset ? { height } : { top: 0, bottom: 0, height: "100%" }),
   }
 
 
@@ -206,6 +215,8 @@ const COMMON_FIELD_SX = (
     "& .MuiFormLabel-asterisk": { color: "#aaaaaa" },
     "& .MuiOutlinedInput-root": {
       height,
+      minHeight: height,
+      maxHeight: height,
       boxSizing: "border-box",
       padding: 0,
       alignItems: "center",
@@ -216,11 +227,25 @@ const COMMON_FIELD_SX = (
         boxShadow: "none",
       },
     },
+    "& .MuiInputBase-root": {
+      height,
+      minHeight: height,
+      maxHeight: height,
+      boxSizing: "border-box",
+    },
     "& .MuiOutlinedInput-input": {
       fontSize,
       color:textColor,
-      height: "100%",
+      height,
+      minHeight: height,
+      maxHeight: height,
+      paddingTop: 0,
+      paddingBottom: 0,
+      paddingLeft: "12px",
+      paddingRight: "12px",
+      lineHeight: `${height}px`,
       boxSizing: "border-box",
+      margin: 0,
       marginBottom: useInputBottomOffset ? mb : 0,
       WebkitTextFillColor: textColor,
       caretColor: textColor,
@@ -262,29 +287,142 @@ const COMMON_FIELD_SX = (
 
 
 
+function UrlRowInput({ name, value, onChange, darkMode, placeholder = "#", inputType = "url" }) {
+  const textColor = darkMode === "dark" ? "#ffffff" : "#18181b";
+  const borderColor = "var(--dash-panel-input-border, #e2e8f0)";
+  const bgcolor = "var(--dash-panel-btn-group-inactive, #ffffff)";
+  return (
+    <input
+      type={inputType}
+      name={name}
+      value={value || ""}
+      placeholder={placeholder}
+      onChange={onChange}
+      className="w-full min-w-0 outline-none"
+      style={{
+        height: MENU_TARGET_ROW_HEIGHT,
+        minHeight: MENU_TARGET_ROW_HEIGHT,
+        maxHeight: MENU_TARGET_ROW_HEIGHT,
+        boxSizing: "border-box",
+        margin: 0,
+        border: `1px solid ${borderColor}`,
+        borderRadius: 5,
+        backgroundColor: bgcolor,
+        color: textColor,
+        fontSize: 13,
+        lineHeight: `${MENU_TARGET_ROW_HEIGHT - 2}px`,
+        padding: "0 12px",
+      }}
+    />
+  );
+}
+
+function OptionButtonGroup({
+  label,
+  name,
+  value,
+  datas,
+  handleChange,
+  height = MENU_TARGET_ROW_HEIGHT,
+}) {
+  return (
+    <Box sx={{ display: "flex", alignItems: "stretch", minWidth: 0, height }}>
+      <ButtonGroup
+        variant="outlined"
+        disableElevation
+        color="inherit"
+        aria-label={label || "ตัวเลือก"}
+        sx={{
+          ...panelGroupRootBorderSx,
+          flexShrink: 0,
+          height,
+          boxShadow: "none",
+          "& .MuiButton-root": {
+            boxShadow: "none",
+            boxSizing: "border-box",
+          },
+        }}
+      >
+        {datas.map(({ label: optionLabel, value: optionValue }) => {
+          const selected = value === optionValue;
+          return (
+            <Button
+              key={optionValue}
+              size="small"
+              color="inherit"
+              onClick={() =>
+                handleChange({ target: { name, value: optionValue } })
+              }
+              sx={{
+                ...panelGroupButtonSx(selected),
+                height,
+                minHeight: height,
+                maxHeight: height,
+                minWidth: 92,
+                fontSize: 13,
+                fontWeight: 400,
+                px: 2,
+                py: 0,
+                lineHeight: 1,
+                flex: "0 0 auto",
+              }}
+            >
+              {optionLabel}
+            </Button>
+          );
+        })}
+      </ButtonGroup>
+    </Box>
+  );
+}
+
 function RadioInput({ label,name, value,datas,handleChange, color,textColor,gap=7,labelMr=1.1}) {
   return (
-    <Box sx={{display:"flex"}}>
-      <Typography sx={{fontSize:12,marginTop:1.5,marginRight:labelMr,color:textColor}}>{label}</Typography>
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        width: "100%",
+        minWidth: 0,
+        py: "3px",
+        my: "5px",
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: 13,
+          mr: labelMr,
+          color: textColor,
+          lineHeight: 1,
+          flexShrink: 0,
+        }}
+      >
+        {label}
+      </Typography>
        <RadioGroup
     row
-    sx={{ gap }}
+    sx={{
+      gap,
+      flex: 1,
+      minWidth: 0,
+      flexWrap: "wrap",
+      alignItems: "center",
+    }}
     name={name}
     value={value}
     onChange={handleChange}
   >
       {datas.map(({ label:l, value:v }) => (
-              <div key={v}>
-
-<FormControlLabel
+              <FormControlLabel
+      key={v}
       value={v}
       control={
         <Radio
           sx={() => {
             return {
-              // ยังไม่ติ๊ก = สีตามโหมด
               color: color,
-              "&.Mui-checked": { color: color }, // ติ๊กแล้ว = สีเดียวกัน
+              padding: "5px",
+              "&.Mui-checked": { color: color },
               "&:hover": { backgroundColor: "transparent" },
               "&.Mui-checked:hover": { backgroundColor: "transparent" },
             };
@@ -292,9 +430,16 @@ function RadioInput({ label,name, value,datas,handleChange, color,textColor,gap=
         />
       }
       label={l}
-      sx={{ "& .MuiFormControlLabel-label": { fontSize: 12, color: textColor } }}
+      sx={{
+        mr: 0,
+        ml: 0,
+        "& .MuiFormControlLabel-label": {
+          fontSize: 13,
+          color: textColor,
+          whiteSpace: "nowrap",
+        },
+      }}
     />
-              </div>
             ))}
   </RadioGroup>
     </Box>
@@ -336,7 +481,7 @@ function Btn({
 
   const borderRight = lastChild ? 1 : 0;
 
-  const size = 15*height/35
+  const size = 13 * height / 35
 
 
 
@@ -353,6 +498,10 @@ function Btn({
           outline: "none",
           boxSizing: "border-box",
           overflow: "hidden",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          lineHeight: 0,
           aspectRatio: "1 / 1",
           height,
           minHeight: height,
@@ -409,37 +558,48 @@ function Btn({
 
           <Box
             sx={{
-              width: 20,
-              height: 20,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              width: size,
+              height: size,
+              display: "grid",
+              placeItems: "center",
+              lineHeight: 0,
             }}
-
           >
-
-{hasVisibleIcon(Icon) &&   <IconAwsome
-                style={{color,fontSize:size}}
+            {hasVisibleIcon(Icon) ? (
+              <IconAwsome
+                style={{
+                  color,
+                  fontSize: size,
+                  width: size,
+                  height: size,
+                  lineHeight: 1,
+                  display: "block",
+                }}
                 iconType={Icon.type}
                 iconName={Icon.name}
-              />}
-
-            
+              />
+            ) : (
+              <Ban
+                size={size}
+                strokeWidth={2}
+                style={{ color, opacity: 0.55 }}
+                aria-label="ไม่มีไอคอน"
+              />
+            )}
           </Box>
-          <Box
-            sx={{
-              width: 20,
-              height: 20,
-              color,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-          {text}
-
-            
-          </Box>
+          {text ? (
+            <Box
+              sx={{
+                color,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                lineHeight: 1,
+              }}
+            >
+              {text}
+            </Box>
+          ) : null}
        
         
       </Button>
@@ -499,15 +659,22 @@ const Range = ({ value, handleChange, min, max, step }) => {
   );
 };
 
-function Field({label,name,value,handleChange,darkMode,children,fieldHeight=40}) {
+function Field({label,name,value,handleChange,darkMode,children,fieldHeight=40, useInputBottomOffset = true}) {
 
 
 
   return (
-    <FormControl fullWidth>
-      <Box sx={{ display: "flex", width: "100%" }}>
+    <FormControl fullWidth sx={{ height: fieldHeight }}>
+      <Box sx={{ display: "flex", width: "100%", height: fieldHeight, alignItems: "stretch" }}>
         <TextField
-          sx={COMMON_FIELD_SX(Boolean(children),false,darkMode,fieldHeight)}
+          hiddenLabel
+          sx={{
+            ...COMMON_FIELD_SX(Boolean(children),false,darkMode,fieldHeight, 13, useInputBottomOffset),
+            height: fieldHeight,
+            minHeight: fieldHeight,
+            maxHeight: fieldHeight,
+            margin: 0,
+          }}
           fullWidth
           placeholder={label}
           name={name}
@@ -534,47 +701,41 @@ function FieldWithBtn({
   darkMode,
   Icon = null,
   children,
-  fieldHeight = 40,
+  fieldHeight = MENU_TARGET_ROW_HEIGHT,
 }) {
-  const iconBoxHeight = Math.max(35, fieldHeight - 4);
-  const baseFieldSx = COMMON_FIELD_SX(Boolean(children), true, darkMode, fieldHeight, 13, false);
-
-
   return (
     <FormControl fullWidth>
-      <Box sx={{ display: "flex", width: "100%" , alignItems: "stretch", minHeight: fieldHeight, gap: 0 }}>
-        <Box sx={{ position: "relative", zIndex: 2 }}>
+      <Box
+        sx={{
+          display: "flex",
+          width: "100%",
+          alignItems: "center",
+          height: fieldHeight,
+          minHeight: fieldHeight,
+          gap: 1.5,
+        }}
+      >
+        <Box sx={{ flexShrink: 0, height: fieldHeight }}>
           <Btn
-            radius="noR"
+            radius="normal"
             lastChild={true}
-            height={iconBoxHeight}
+            height={fieldHeight}
             Icon={Icon}
             bgColor={darkMode === "dark" ? "#494d54" : "#333333"}
             borderColor="var(--dash-panel-input-border, #e2e8f0)"
             handleClick={handleClick}
           />
         </Box>
-        <TextField
-          sx={{
-            ...baseFieldSx,
-            ml: "-2px",
-            position: "relative",
-            zIndex: 1,
-            "& .MuiOutlinedInput-input": {
-              ...(baseFieldSx["& .MuiOutlinedInput-input"] || {}),
-              lineHeight: `${fieldHeight}px`,
-              paddingTop: 0,
-              paddingBottom: "2px",
-              marginBottom: 0,
-            },
-          }}
-          onChange={handleChange}
-          fullWidth
-          placeholder={label}
-          name={name}
-          value={value}
-        
-        />
+        <Box sx={{ flex: 1, minWidth: 0, height: fieldHeight }}>
+          <UrlRowInput
+            name={name}
+            value={value}
+            placeholder={label}
+            inputType="text"
+            darkMode={darkMode}
+            onChange={handleChange}
+          />
+        </Box>
         {children && (
             <Box sx={{ display: "flex", alignItems: "stretch" }}>
             {children}
@@ -720,7 +881,13 @@ function SelectInput({
   );
 }
 
-const types = [ {label:"หน้า",value:"page"}, {label:"URL",value:"URL"}, ]
+const MENU_TARGET_ROW_HEIGHT = 44;
+
+const types = [
+  { label: "หน้า", value: "page" },
+  { label: "URL", value: "URL" },
+  { label: "Landing Page", value: "landing" },
+]
 const targets = [ {label:"หน้าเดิม",value:"_self"}, {label:"หน้าใหม่",value:"_blank"}, ]
 
 
@@ -735,7 +902,7 @@ const MenuList = memo(function MenuList({
   collapseIcon,
   isDraggable,
   darkMode,
-  darkTextColor,setOpenIconModal,openIconModal,
+  darkTextColor,setOpenIconModal,iconModalOpen,
 }) {
   const { id,icon, name, type, page, url, target } = item;
 
@@ -747,14 +914,20 @@ const MenuList = memo(function MenuList({
   const textColor = darkMode === "dark"?"#ffffff":"#202020"
 
   const menuButtons = [
-    { Icon: {type:"far",name:"faCopy"}, funct: copy, label: "คัดลอก" },
-    { Icon: {type:"far",name:"faCircleXmark"}, funct: remove, label: "ลบ" },
+    { Icon: Copy, funct: copy, label: "คัดลอก" },
+    { Icon: CircleX, funct: remove, label: "ลบ" },
   ];
 
   const menuActionIconColor = darkMode === "dark" ? "#a1a1aa" : "#9ca3af";
   const handleMenuItemPerformanceEvent = (event) => {
     if (event?.type === "pointerdown") return;
-    if (event?.target?.closest?.(".menu-item-action-btn")) return;
+    if (
+      event?.target?.closest?.(
+        ".menu-item-action-btn, .menu-tree-collapse-hit, .menu-item-toggle-btn"
+      )
+    ) {
+      return;
+    }
     recordBuilderPanelControlEvent(event, {
       panelType: "Menu Item",
       elementType: "menu-item",
@@ -777,19 +950,69 @@ const MenuList = memo(function MenuList({
       style={{ border: "none", boxShadow: "none", background: "transparent" }}
       aria-label={label || "menu-item-action"}
     >
-      {hasVisibleIcon(Icon) ? (
-        <IconAwsome
-          iconType={Icon.type}
-          iconName={Icon.name}
-          style={{ color: menuActionIconColor, fontSize: 14, lineHeight: 1 }}
+      {Icon ? (
+        <Icon
+          size={16}
+          strokeWidth={2}
+          style={{ color: menuActionIconColor }}
+          aria-hidden
         />
       ) : null}
     </button>
   );
 
+  const [showDetails, setShowDetails] = useState(isOpen);
+  const [animateOpen, setAnimateOpen] = useState(false);
+  useEffect(() => {
+    if (isOpen) {
+      setShowDetails(true);
+      return undefined;
+    }
+    setAnimateOpen(false);
+    const closeTimer = window.setTimeout(() => setShowDetails(false), 300);
+    return () => window.clearTimeout(closeTimer);
+  }, [isOpen]);
+  useEffect(() => {
+    if (!showDetails || !isOpen) return undefined;
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setAnimateOpen(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [showDetails, isOpen]);
+
   const summaryRow = (
     <>
-          <span style={{ display: "inline-flex" }}>{collapseIcon}</span>
+          {collapseIcon ? (
+            React.isValidElement(collapseIcon)
+              ? React.cloneElement(collapseIcon, {
+                  className: "menu-tree-collapse-hit",
+                  onClick: (event) => {
+                    event?.stopPropagation?.();
+                    const collapsed = Boolean(
+                      event?.currentTarget?.closest?.(
+                        ".nestable-item--children-collapsed"
+                      )
+                    );
+                    measureMenuItemAction(
+                      collapsed ? "canvas-expand" : "canvas-collapse",
+                      collapsed ? "เปิดเมนูย่อย" : "ยุบเมนูย่อย",
+                      id
+                    );
+                    collapseIcon.props?.onClick?.(event);
+                  },
+                  children: (
+                    <span className="menu-tree-collapse-icon" aria-hidden>
+                      <span className="menu-tree-collapse-minus">−</span>
+                      <span className="menu-tree-collapse-plus">+</span>
+                    </span>
+                  ),
+                })
+              : collapseIcon
+          ) : null}
           {hasVisibleIcon(icon) && (
             <IconAwsome iconType={icon.type} iconName={icon.name} style={{
               fontSize:15,
@@ -798,56 +1021,58 @@ const MenuList = memo(function MenuList({
             }}/>
           )}
 
-        <Typography
-          noWrap
-          sx={{
-            ml: 2,
+        <span
+          style={{
+            marginLeft: 16,
             fontSize: 14,
             flex: 1,
             minWidth: 0,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            color:textColor,
-            
+            color: textColor,
+            fontWeight: isOpen ? 700 : 400,
           }}
         >
           {name || "Home"}
-        </Typography>
+        </span>
 
-        <Box
-          sx={{
-            ml: 1,
-            mr: 0,
+        <div
+          style={{
+            marginLeft: 8,
             display: "flex",
             alignItems: "center",
-            gap: 1.5,
+            gap: 12,
             flexShrink: 0,
-            transform: "translateX(8px)",
           }}
         >
           {menuButtons.map((b, i) => (
             <MenuButton key={i} Icon={b.Icon} funct={b.funct} label={b.label} />
           ))}
-        </Box>
-        <Box
+        </div>
+        <div
+          className="menu-item-toggle-btn"
+          data-perf-control={isOpen ? "ปิดรายการเมนู" : "เปิดรายการเมนู"}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            measureMenuItemAction(
+              "canvas-toggle",
+              isOpen ? "ปิดรายการเมนู" : "เปิดรายการเมนู",
+              id
+            );
             toggleOpen(id);
           }}
-          sx={{
+          style={{
             width: 34,
             height: 34,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            borderRadius: 1,
+            borderRadius: 4,
             cursor: "pointer",
             flexShrink: 0,
-
-            "&:hover": { backgroundColor: "transparent" },
           }}
         >
           <ChevronDown
@@ -855,43 +1080,38 @@ const MenuList = memo(function MenuList({
             style={{
               color: darkMode === "dark"?"#ffffff":"#202020",
               transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-              transition: "transform 150ms ease",
+              transition: "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
             }}
           />
-        </Box>
+        </div>
     </>
   );
 
-  if (!isOpen) {
+  if (!showDetails) {
     return (
-      <ElementPerformanceBoundary
-        elementType="menu-item"
-        elementId={String(id || "")}
-        selected={false}
-      >
-        <Box
+        <div
           className="menu-item-theme-card"
-          sx={{
-            my: 1,
+          style={{
+            marginTop: 8,
+            marginBottom: 8,
             cursor: isDraggable ? "grab" : "pointer",
             height: 42,
             minHeight: 42,
             display: "flex",
             alignItems: "center",
             width: "100%",
-            gap: 1,
-            px: 1,
+            gap: 8,
+            paddingLeft: 8,
+            paddingRight: 8,
             border: `1px solid ${borderColor}`,
-            borderRadius: "5px",
-            overflow: "hidden",
-            backgroundColor: `${bgMenu} !important`,
-            backgroundImage: "none !important",
+            borderRadius: 5,
+            overflow: "visible",
+            backgroundColor: bgMenu,
           }}
           onClickCapture={handleMenuItemPerformanceEvent}
         >
           {summaryRow}
-        </Box>
-      </ElementPerformanceBoundary>
+        </div>
     );
   }
 
@@ -902,20 +1122,30 @@ const MenuList = memo(function MenuList({
       selected={isOpen}
     >
     <Box
-      sx={{ my: 1, cursor: isDraggable ? "pointer" : "grab" }}
+      sx={{ my: 1, cursor: isDraggable ? "grab" : "pointer" }}
       onClickCapture={handleMenuItemPerformanceEvent}
       onChangeCapture={handleMenuItemPerformanceEvent}
       onInputCapture={handleMenuItemPerformanceEvent}
     >
           <Accordion
-      expanded={isOpen}
+      expanded={animateOpen}
       onChange={() => {}}
+      slotProps={{
+        transition: {
+          timeout: 280,
+          unmountOnExit: true,
+          easing: {
+            enter: "cubic-bezier(0.22, 1, 0.36, 1)",
+            exit: "cubic-bezier(0.4, 0, 0.2, 1)",
+          },
+        },
+      }}
       sx={{
         boxShadow: "none",
         m: 0,
         border: `1px solid ${borderColor}`,
         borderRadius: "5px",
-        overflow: "hidden",
+        overflow: "visible",
         backgroundColor: `${bgMenu} !important`,
         backgroundImage: "none !important",
         "&:before": { display: "none" },
@@ -946,6 +1176,7 @@ const MenuList = memo(function MenuList({
           border: 0,
           borderRadius: "5px",
           px: 1,
+          overflow: "visible",
           "&.Mui-expanded": {
             minHeight: 42,
             borderRadius: "5px 5px 0 0",
@@ -959,6 +1190,7 @@ const MenuList = memo(function MenuList({
             alignItems: "center",
             width: "100%",
             gap: 1,
+            overflow: "visible",
           },
           "& .MuiAccordionSummary-content.Mui-expanded": { m: 0 },
         }}
@@ -978,7 +1210,7 @@ const MenuList = memo(function MenuList({
       <FieldWithBtn
           label="Home"
           Icon={icon}
-          fieldHeight={48}
+          fieldHeight={MENU_TARGET_ROW_HEIGHT}
           name="name"
           value={name}
           handleChange={(e) => handleChange(e, id)}
@@ -993,38 +1225,92 @@ const MenuList = memo(function MenuList({
           value={type}
           name="type"
           datas={types}
+          gap={2}
           handleChange={(e) => handleChange(e, id)}
         />
         {type === "page" && (
-          <SelectInput
-          darkMode={darkMode}
-            selectHeight={44}
-            optionHeight={44}
-            datas={pageNames}
-            name="page"
-            handleChange={(e) => handleChange(e, id)}
-            label="เลือกหน้าที่ต้องการ"
-            value={page}
-          />
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              width: "100%",
+              minWidth: 0,
+              gap: 1.5,
+              mt: 0.5,
+            }}
+          >
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <SelectInput
+                darkMode={darkMode}
+                selectHeight={44}
+                optionHeight={44}
+                datas={pageNames}
+                name="page"
+                handleChange={(e) => handleChange(e, id)}
+                label="เลือกหน้าที่ต้องการ"
+                value={page}
+              />
+            </Box>
+            <Box sx={{ flexShrink: 0 }}>
+              <OptionButtonGroup
+                label="รูปแบบ"
+                value={target}
+                name="target"
+                datas={targets}
+                height={44}
+                handleChange={(e) => handleChange(e, id)}
+              />
+            </Box>
+          </Box>
         )}
         {type === "URL" && (
-          <Field label="#" name="url" value={url} handleChange={(e) => handleChange(e, id)}  darkMode={darkMode} fieldHeight={44}/>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              width: "100%",
+              minWidth: 0,
+              height: MENU_TARGET_ROW_HEIGHT,
+              gap: 1.5,
+              mt: 0.5,
+            }}
+          >
+            <Box sx={{ flex: 1, minWidth: 0, height: MENU_TARGET_ROW_HEIGHT }}>
+              <UrlRowInput
+                name="url"
+                value={url}
+                placeholder="#"
+                darkMode={darkMode}
+                onChange={(e) => handleChange(e, id)}
+              />
+            </Box>
+            <Box sx={{ flexShrink: 0, height: MENU_TARGET_ROW_HEIGHT }}>
+              <OptionButtonGroup
+                label="รูปแบบ"
+                value={target}
+                name="target"
+                datas={targets}
+                handleChange={(e) => handleChange(e, id)}
+              />
+            </Box>
+          </Box>
         )}
-        <RadioInput
-        color={darkMode === "dark"?darkTextColor:"black"}
-          label="รูปแบบ"
-          textColor={darkMode === "dark"?"white":"black"}
-          value={target}
-          name="target"
-          datas={targets}
-          gap={4.5}
-          labelMr={1.4}
-          handleChange={(e) => handleChange(e, id)}
-        />
+        {type === "landing" && (
+          <Box sx={{ width: "100%", minWidth: 0, height: MENU_TARGET_ROW_HEIGHT, mt: 0.5 }}>
+            <UrlRowInput
+              name="url"
+              value={url}
+              placeholder="วาง Section ID ที่คัดลอก"
+              inputType="text"
+              darkMode={darkMode}
+              onChange={(e) => handleChange(e, id)}
+            />
+          </Box>
+        )}
       </AccordionDetails>
     </Accordion>
 
-      <ServiceIcon darkColor={darkTextColor} header="ไอคอน" icon={icon} open={openIconModal === id} onClose={()=>setOpenIconModal(false)} handleChange={(icon)=>handleChange({target:{name:"icon",value:icon}},id)} darkMode={darkMode}/>
+      <ServiceIcon darkColor={darkTextColor} header="ไอคอน" icon={icon} open={iconModalOpen} onClose={()=>setOpenIconModal(false)} handleChange={(icon)=>handleChange({target:{name:"icon",value:icon}},id)} darkMode={darkMode}/>
 
     
     </Box>
@@ -1106,47 +1392,7 @@ function updateMenuItemField(items, id, name, value) {
   return changed ? next : items;
 }
 
-function areMenuListPropsEqual(prev, next) {
-  return (
-    prev.isOpen === next.isOpen &&
-    prev.isDraggable === next.isDraggable &&
-    prev.pageNames === next.pageNames &&
-    prev.darkMode === next.darkMode &&
-    prev.darkTextColor === next.darkTextColor &&
-    prev.openIconModal === next.openIconModal &&
-    prev.item?.id === next.item?.id &&
-    prev.item?.name === next.item?.name &&
-    prev.item?.type === next.item?.type &&
-    prev.item?.page === next.item?.page &&
-    prev.item?.url === next.item?.url &&
-    prev.item?.target === next.item?.target &&
-    prev.item?.icon === next.item?.icon &&
-    getMenuChildren(prev.item).length === getMenuChildren(next.item).length
-  );
-}
-
-
-
-function MenuPage({menus, setMenus,navOpen,device,menuBar,theme,setNavOpen,navBottom,darkMode,darkTextColor,menuButtonRef,topBar,footerBar,setOpenBar}){
-
-
-
-
-const [previewNavOpen, setPreviewNavOpen] = useState(navOpen);
-
-useEffect(() => {
-  setPreviewNavOpen(navOpen);
-}, [navOpen]);
-
-const handleChange = useCallback((e, id) => {
-  const { name, value } = e.target;
-  setMenus((prev) => updateMenuItemField(prev, id, name, value));
-}, [setMenus]);
-
-
-
-
-const measureMenuItemAction = (kind, label, id) => {
+function measureMenuItemAction(kind, label, id) {
   const transactionId = beginBuilderPerformanceTransaction(
     kind,
     {
@@ -1163,145 +1409,422 @@ const measureMenuItemAction = (kind, label, id) => {
     {},
     { reason: kind }
   );
-};
+}
 
-const cloneMenu = useCallback((id) => {
-  measureMenuItemAction("canvas-clone", "คัดลอกรายการเมนู", id);
-  setMenus((prev) => insertClonedMenuItem(prev, id));
-}, [setMenus]);
-
-const deleteMenu = useCallback((id) => {
-  measureMenuItemAction("canvas-delete", "ลบรายการเมนู", id);
-  setMenus((prev) => removeMenuItemById(prev, id));
-}, [setMenus]);
-
-
-const [openMenu,setOpenMenu] = useState({})
-const [openIconModal,setOpenIconModal] = useState(null)
-
-
-const closeAll = (id=null)=>{
-  setOpenMenu(prev=>{
-    const next = {...prev}
-    for(let nid in next){
-      if(nid != id){
-        next[nid] = false
-      }
-    }
-    return next
-  })
+function areMenuListPropsEqual(prev, next) {
+  return (
+    prev.isOpen === next.isOpen &&
+    prev.isDraggable === next.isDraggable &&
+    prev.pageNames === next.pageNames &&
+    prev.darkMode === next.darkMode &&
+    prev.darkTextColor === next.darkTextColor &&
+    prev.iconModalOpen === next.iconModalOpen &&
+    prev.item?.id === next.item?.id &&
+    prev.item?.name === next.item?.name &&
+    prev.item?.type === next.item?.type &&
+    prev.item?.page === next.item?.page &&
+    prev.item?.url === next.item?.url &&
+    prev.item?.target === next.item?.target &&
+    prev.item?.icon === next.item?.icon &&
+    getMenuChildren(prev.item).length === getMenuChildren(next.item).length
+  );
 }
 
 
-const toggleOpen = useCallback((id) => {
-  closeAll(id)
-  setOpenMenu((prev) => ({ ...prev, [id]: !prev[id] }));
-}, []);
 
+const PARENT_MENUS_FLUSH_MS = 64;
+
+const MenuDesignTree = memo(function MenuDesignTree({
+  menus,
+  setMenus,
+  pageNames,
+  darkMode,
+  darkTextColor,
+}) {
+  const [items, setItems] = useState(menus);
+  const itemsRef = useRef(menus);
+  const flushTimerRef = useRef(null);
+  itemsRef.current = items;
+
+  const flushParentMenus = useCallback(() => {
+    if (flushTimerRef.current != null) {
+      window.clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    const next = itemsRef.current;
+    startTransition(() => {
+      setMenus(next);
+    });
+  }, [setMenus]);
+
+  const scheduleParentFlush = useCallback(() => {
+    if (flushTimerRef.current != null) window.clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = window.setTimeout(() => {
+      flushTimerRef.current = null;
+      flushParentMenus();
+    }, PARENT_MENUS_FLUSH_MS);
+  }, [flushParentMenus]);
+
+  useEffect(() => {
+    if (flushTimerRef.current != null) return;
+    if (menus === itemsRef.current) return;
+    setItems(menus);
+    itemsRef.current = menus;
+  }, [menus]);
+
+  useEffect(
+    () => () => {
+      if (flushTimerRef.current != null) {
+        window.clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+        setMenus(itemsRef.current);
+      }
+    },
+    [setMenus]
+  );
+
+  const updateItems = useCallback(
+    (updater) => {
+      setItems((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        itemsRef.current = next;
+        return next;
+      });
+      scheduleParentFlush();
+    },
+    [scheduleParentFlush]
+  );
+
+  const handleChange = useCallback(
+    (e, id) => {
+      const { name, value } = e.target;
+      updateItems((prev) => updateMenuItemField(prev, id, name, value));
+    },
+    [updateItems]
+  );
+
+  const cloneMenu = useCallback((id) => {
+    measureMenuItemAction("canvas-clone", "คัดลอกรายการเมนู", id);
+    updateItems((prev) => insertClonedMenuItem(prev, id));
+  }, [updateItems]);
+
+  const deleteMenu = useCallback((id) => {
+    measureMenuItemAction("canvas-delete", "ลบรายการเมนู", id);
+    updateItems((prev) => removeMenuItemById(prev, id));
+  }, [updateItems]);
+
+  const [openMenu, setOpenMenu] = useState({});
+  const [openIconModal, setOpenIconModal] = useState(null);
+
+  const toggleOpen = useCallback((id) => {
+    setOpenMenu((prev) => {
+      const next = {};
+      for (const nid in prev) {
+        if (nid != id) next[nid] = false;
+      }
+      next[id] = !prev[id];
+      return next;
+    });
+  }, []);
+
+  const menuListBindingsRef = useRef({
+    pageNames,
+    openMenu,
+    toggleOpen,
+    deleteMenu,
+    cloneMenu,
+    handleChange,
+    darkMode,
+    darkTextColor,
+    setOpenIconModal,
+    openIconModal,
+  });
+  menuListBindingsRef.current = {
+    pageNames,
+    openMenu,
+    toggleOpen,
+    deleteMenu,
+    cloneMenu,
+    handleChange,
+    darkMode,
+    darkTextColor,
+    setOpenIconModal,
+    openIconModal,
+  };
+
+  const getTotalScrollFromElement = useCallback((element) => {
+    let top = window.scrollY || window.pageYOffset || 0;
+    let left = window.scrollX || window.pageXOffset || 0;
+    let current = element?.parentElement ?? null;
+    while (current) {
+      top += current.scrollTop || 0;
+      left += current.scrollLeft || 0;
+      current = current.parentElement;
+    }
+    return { top, left };
+  }, []);
+
+  const applyDragScrollCompensation = useCallback(({ dragItem }) => {
+    const root = document.documentElement;
+    const dragEl = document.querySelector(`.menuTree .nestable-item-${dragItem?.id}`);
+    if (!(dragEl instanceof HTMLElement)) {
+      root.style.setProperty("--menu-drag-compensate-x", "0px");
+      root.style.setProperty("--menu-drag-compensate-y", "0px");
+      return;
+    }
+    const { top, left } = getTotalScrollFromElement(dragEl);
+    root.style.setProperty("--menu-drag-compensate-x", `${left}px`);
+    root.style.setProperty("--menu-drag-compensate-y", `${top}px`);
+  }, [getTotalScrollFromElement]);
+
+  const clearDragScrollCompensation = useCallback(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--menu-drag-compensate-x", "0px");
+    root.style.setProperty("--menu-drag-compensate-y", "0px");
+  }, []);
+
+  const renderMenu = useCallback((args) => {
+    const bindings = menuListBindingsRef.current;
+    return (
+      <MenuList
+        {...args}
+        pageNames={bindings.pageNames}
+        isOpen={!!bindings.openMenu[args.item.id]}
+        toggleOpen={bindings.toggleOpen}
+        remove={bindings.deleteMenu}
+        copy={bindings.cloneMenu}
+        handleChange={bindings.handleChange}
+        isDraggable={args.isDraggable}
+        darkMode={bindings.darkMode}
+        darkTextColor={bindings.darkTextColor}
+        setOpenIconModal={bindings.setOpenIconModal}
+        iconModalOpen={bindings.openIconModal === args.item.id}
+      />
+    );
+  }, []);
+
+  const disableDrag = useCallback(
+    ({ item }) => !menuListBindingsRef.current.openMenu[item.id],
+    []
+  );
+
+  const handleMenuDragStart = useCallback(
+    (payload) => {
+      setOpenMenu({});
+      applyDragScrollCompensation(payload);
+    },
+    [applyDragScrollCompensation]
+  );
+
+  const handleMenuReorder = useCallback(
+    ({ items: newItems }) => {
+      const transactionId = beginBuilderPerformanceTransaction(
+        "canvas-reorder",
+        {
+          label: "จัดเรียงรายการเมนู",
+          elementType: "menu-item",
+          elementId: "menu-tree",
+          panelType: "Menu",
+          scope: "menu",
+        },
+        { trackFrames: true }
+      );
+      updateItems(newItems);
+      finishBuilderPerformanceTransactionAfterPaint(
+        transactionId,
+        {},
+        { reason: "menu-reorder" }
+      );
+    },
+    [updateItems]
+  );
+
+  return (
+    <div className="menuTree">
+      <Nestable
+        items={items}
+        renderItem={renderMenu}
+        onChange={handleMenuReorder}
+        onDragStart={handleMenuDragStart}
+        onDragEnd={clearDragScrollCompensation}
+        maxDepth={4}
+        threshold={30}
+        disableDrag={disableDrag}
+      />
+    </div>
+  );
+});
+
+function LiveMenuTopBarPreview({ topBar, device, setColor }) {
+  const topBarPreview = usePanelPreview(
+    TOP_BAR_PREVIEW_TYPE,
+    TOP_BAR_PREVIEW_ID
+  );
+  const liveTopBar = topBarPreview || getSliderLiveTopBar() || topBar || {};
+  const {
+    hideTopBarEverywhere = false,
+    tabletTopBarMode = "social",
+    ableLeft = true,
+    ableRight = true,
+    topBarHeight = 52,
+    isGradient: topBarIsGradient = false,
+    bgColor: topBarBgColor = "#000000",
+    bgOpacity: topBarBgOpacity = 255,
+    bgColorGradient: topBarBgColorGradient = ["#000000", "#000000"],
+    bgOpacityGradient: topBarBgOpacityGradient = [255, 255],
+    bgDegree: topBarBgDegreeRaw = 0,
+    borderSize = 26,
+    radius = 50,
+    iconGroup = [],
+    radiusText = 50,
+    borderTextSize = 26,
+    textGroup = [],
+  } = liveTopBar;
+  const showTopBarPreview =
+    !hideTopBarEverywhere && (tabletTopBarMode || "social") !== "off";
+  const isTextTopBarPreviewMode = (tabletTopBarMode || "social") === "text";
+  if (!showTopBarPreview) return null;
+  const topBarBgDegree = normalizeTopBarDegree(topBarBgDegreeRaw);
+  const topBarBg = setColor(
+    topBarIsGradient ? topBarBgColorGradient : topBarBgColor,
+    topBarIsGradient ? topBarBgOpacityGradient : topBarBgOpacity,
+    topBarIsGradient,
+    topBarIsGradient ? topBarBgDegree : null
+  );
+  const topBarBgStyle = buildTopBarBackgroundStyle(topBarIsGradient, topBarBg);
+  return (
+    <div
+      data-builder-topbar="true"
+      className={`flex items-center px-3 ${
+        device === "Mobile" && isTextTopBarPreviewMode
+          ? "justify-start overflow-hidden"
+          : "justify-center"
+      }`}
+      style={
+        device === "Mobile" && isTextTopBarPreviewMode
+          ? { height: topBarHeight, ...topBarBgStyle, scrollbarWidth: "none", msOverflowStyle: "none" }
+          : { height: topBarHeight, ...topBarBgStyle }
+      }
+    >
+      {isTextTopBarPreviewMode ? (
+        <div
+          className={`${device === "Mobile" ? "w-full overflow-x-auto [&::-webkit-scrollbar]:hidden" : ""}`}
+          style={device === "Mobile" ? { scrollbarWidth: "none", msOverflowStyle: "none" } : undefined}
+        >
+        <div className={`flex items-center gap-3 ${device === "Mobile" ? "min-w-max" : ""}`}>
+          {ableRight &&
+            textGroup.map((item, i) => {
+              const safeIcon =
+                item?.icon?.name && item?.icon?.name !== "fa0"
+                  ? item.icon
+                  : { type: "fas", name: "faHouse" };
+              return (
+                <div key={i} className="flex shrink-0 items-center text-[10px]">
+                  <div
+                    data-builder-topbar-chip="text"
+                    data-builder-topbar-index={i}
+                    className="flex items-center justify-center"
+                    style={{
+                      width: borderTextSize,
+                      height: borderTextSize,
+                      background: setColor(item.bgColor, item.bgOpacity),
+                      borderRadius: `${radiusText}%`,
+                    }}
+                  >
+                    <IconAwsome
+                      iconType={safeIcon.type}
+                      iconName={safeIcon.name}
+                      style={{
+                        color: setColor(item.iconColor, item.iconOpacity),
+                        fontSize: item.iconSize,
+                      }}
+                    />
+                  </div>
+                  <span
+                    data-builder-topbar-text="true"
+                    data-builder-topbar-index={i}
+                    className="ml-2 whitespace-nowrap"
+                    style={{
+                      color: setColor(item.textColor, item.textOpacity),
+                      fontSize: item.textSize,
+                    }}
+                  >
+                    {item.text}
+                  </span>
+                </div>
+              );
+            })}
+        </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          {ableLeft &&
+            iconGroup.map((item, i) => {
+              const safeIcon =
+                item?.icon?.name && item?.icon?.name !== "fa0"
+                  ? item.icon
+                  : { type: "fas", name: "faHouse" };
+              return (
+                <div
+                  key={i}
+                  data-builder-topbar-chip="social"
+                  data-builder-topbar-index={i}
+                  className="flex items-center justify-center"
+                  style={{
+                    width: borderSize,
+                    height: borderSize,
+                    background: setColor(item.bgColor, item.bgOpacity),
+                    borderRadius: `${radius}%`,
+                  }}
+                >
+                  <IconAwsome
+                    iconType={safeIcon.type}
+                    iconName={safeIcon.name}
+                    style={{
+                      color: setColor(item.iconColor, item.iconOpacity),
+                      fontSize: item.iconSize,
+                    }}
+                  />
+                </div>
+              );
+            })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuPage({menus, setMenus,navOpen,device,menuBar,theme,setNavOpen,navBottom,darkMode,darkTextColor,menuButtonRef,topBar,footerBar,setOpenBar}){
+
+
+
+
+const [previewNavOpen, setPreviewNavOpen] = useState(navOpen);
+
+useEffect(() => {
+  setPreviewNavOpen(navOpen);
+}, [navOpen]);
 
 const pages = usePageCatalog()
 const pageNames = useMemo(
   () => (Array.isArray(pages) ? pages.map((page) => page?.pageName) : []),
   [pages]
 );
-const menuListBindingsRef = useRef({
-  pageNames,
-  openMenu,
-  toggleOpen,
-  deleteMenu,
-  cloneMenu,
-  handleChange,
-  darkMode,
-  darkTextColor,
-  setOpenIconModal,
-  openIconModal,
-});
-menuListBindingsRef.current = {
-  pageNames,
-  openMenu,
-  toggleOpen,
-  deleteMenu,
-  cloneMenu,
-  handleChange,
-  darkMode,
-  darkTextColor,
-  setOpenIconModal,
-  openIconModal,
-};
-
-const getTotalScrollFromElement = useCallback((element) => {
-  let top = window.scrollY || window.pageYOffset || 0;
-  let left = window.scrollX || window.pageXOffset || 0;
-  let current = element?.parentElement ?? null;
-
-  while (current) {
-    top += current.scrollTop || 0;
-    left += current.scrollLeft || 0;
-    current = current.parentElement;
-  }
-
-  return { top, left };
-}, []);
-
-const applyDragScrollCompensation = useCallback(({ dragItem }) => {
-  const root = document.documentElement;
-  const dragEl = document.querySelector(`.menuTree .nestable-item-${dragItem?.id}`);
-
-  if (!(dragEl instanceof HTMLElement)) {
-    root.style.setProperty("--menu-drag-compensate-x", "0px");
-    root.style.setProperty("--menu-drag-compensate-y", "0px");
-    return;
-  }
-
-  const { top, left } = getTotalScrollFromElement(dragEl);
-  root.style.setProperty("--menu-drag-compensate-x", `${left}px`);
-  root.style.setProperty("--menu-drag-compensate-y", `${top}px`);
-}, [getTotalScrollFromElement]);
-
-const clearDragScrollCompensation = useCallback(() => {
-  const root = document.documentElement;
-  root.style.setProperty("--menu-drag-compensate-x", "0px");
-  root.style.setProperty("--menu-drag-compensate-y", "0px");
-}, []);
-
+const menuBarPreview = usePanelPreview(
+  "Menu",
+  device === "Desktop" ? "" : `chrome:Menu:${device}`
+);
+const navBottomPreview = usePanelPreview(
+  "Nav",
+  `chrome:Nav:${device}`
+);
+const liveMenuBar =
+  device === "Desktop" ? menuBar : (menuBarPreview || menuBar);
+const liveNavBottom = navBottomPreview || navBottom;
 
    useEffect(()=>{
     ensurePageCatalogLoaded()
    },[])
-
-
-const renderMenu = useCallback((args) => {
-  const bindings = menuListBindingsRef.current;
-  return (
-    <MenuList
-      {...args}
-      pageNames={bindings.pageNames}
-      isOpen={!!bindings.openMenu[args.item.id]}
-      toggleOpen={bindings.toggleOpen}
-      remove={bindings.deleteMenu}
-      copy={bindings.cloneMenu}
-      handleChange={bindings.handleChange}
-      isDraggable={args.isDraggable}
-      darkMode={bindings.darkMode}
-      darkTextColor={bindings.darkTextColor}
-      setOpenIconModal={bindings.setOpenIconModal}
-      openIconModal={bindings.openIconModal}
-    />
-  );
-}, []);
-
-const disableDrag = useCallback(
-  ({ item }) => !menuListBindingsRef.current.openMenu[item.id],
-  []
-);
-
-const handleMenuDragStart = useCallback(
-  (payload) => {
-    setOpenMenu({});
-    applyDragScrollCompensation(payload);
-  },
-  [applyDragScrollCompensation]
-);
 
 
 const{
@@ -1348,7 +1871,7 @@ const{
   subMenuColor,
   subMenuColorOpacity,
 
-} = menuBar;
+} = liveMenuBar;
 
 
 const {  
@@ -1376,27 +1899,14 @@ const {
   navDivider,
   navDividerColor,
   navDividerOpacity,
-  navDividerStyle,} = navBottom
+    navDividerStyle,} = liveNavBottom
 
 const {
   hideTopBarEverywhere = false,
   tabletTopBarMode = "social",
-  ableLeft = true,
-  ableRight = true,
   topBarHeight = 52,
-  isGradient: topBarIsGradient = false,
-  bgColor: topBarBgColor = "#000000",
-  bgOpacity: topBarBgOpacity = 255,
-  bgColorGradient: topBarBgColorGradient = ["#000000", "#000000"],
-  bgOpacityGradient: topBarBgOpacityGradient = [255, 255],
-  bgDegree: topBarBgDegree = 0,
-  borderSize = 26,
-  radius = 50,
-  iconGroup = [],
-  radiusText = 50,
-  borderTextSize = 26,
-  textGroup = [],
 } = topBar || {};
+const liveFooterBar = getSliderLiveFooterBar() || footerBar || {};
 const {
   footerHeight = 46,
   isGradient: footerIsGradient = false,
@@ -1404,7 +1914,7 @@ const {
   bgOpacity: footerBgOpacity = 255,
   bgColorGradient: footerBgColorGradient = ["#111827", "#0f172a"],
   bgOpacityGradient: footerBgOpacityGradient = [255, 255],
-  bgDegree: footerBgDegree = 0,
+  bgDegree: footerBgDegreeRaw = 0,
   logo: footerLogo = "",
   logoHeight: footerLogoHeight = 35,
   logoPosition: footerLogoPositionRaw = "center",
@@ -1416,14 +1926,30 @@ const {
   rightText: footerRightText = "All rights reserved.",
   rightIcon: footerRightIcon = { name: null, type: null },
   isFluidLayout: footerIsFluidLayout = false,
-} = footerBar || {};
+} = liveFooterBar;
+const footerBgDegree = normalizeFooterDegree(footerBgDegreeRaw);
 
 
 
 const opacity_2_hex = (opcy) => {
-  if (Number.isNaN(opcy)) return "";
-  const hex = opcy.toString(16).toUpperCase().padStart(2, 0);
-  return hex;
+  if (opcy == null) return "";
+  const numeric = Number(opcy);
+  if (!Number.isFinite(numeric)) return "";
+  return Math.max(0, Math.min(255, Math.round(numeric)))
+    .toString(16)
+    .toUpperCase()
+    .padStart(2, "0");
+};
+
+const resolveColorHex = (value, fallback = "#000000") => {
+  if (typeof value === "string" && value.trim()) return value;
+  if (value && typeof value === "object") {
+    const themedColor = theme?.[value.type]?.[value.index];
+    if (typeof themedColor === "string" && themedColor.trim()) {
+      return themedColor;
+    }
+  }
+  return fallback;
 };
 
 const setColor = (
@@ -1433,33 +1959,16 @@ const setColor = (
   degree = null
 ) => {
   if (isGradient) {
-    let gradientColor;
-    let color1;
-    let color2;
-    if (typeof color[0] === "string") {
-      color1 = color[0]+ opacity_2_hex(opacity[0])
-      
-    } else {
-      color1 =
-        theme[color[0].type][color[0].index] + opacity_2_hex(opacity[0]);
-    }
-
-    if (typeof color[1] === "string") {
-      color2 = color[1]+ opacity_2_hex(opacity[1])
-    } else {
-      color2 =
-        theme[color[1].type][color[1].index] + opacity_2_hex(opacity[1]);
-    }
-
-    gradientColor = `linear-gradient(${degree}deg, ${color1} 0%, ${color2} 100%)`;
-
-    return gradientColor;
-  } else {
-    if (typeof color === "string") {
-      return color + opacity_2_hex(opacity);
-    }
-    return theme[color.type][color.index] + opacity_2_hex(opacity);
+    const colors = Array.isArray(color) ? color : [];
+    const opacities = Array.isArray(opacity) ? opacity : [];
+    const color1 =
+      resolveColorHex(colors[0]) + opacity_2_hex(opacities[0]);
+    const color2 =
+      resolveColorHex(colors[1]) + opacity_2_hex(opacities[1]);
+    const safeDegree = Number.isFinite(Number(degree)) ? Number(degree) : 0;
+    return `linear-gradient(${safeDegree}deg, ${color1} 0%, ${color2} 100%)`;
   }
+  return resolveColorHex(color) + opacity_2_hex(opacity);
 };
 
 
@@ -1506,11 +2015,13 @@ const closeSubTree = useCallback((menus) => {
 
 
 
-useEffect(()=>{
-  if(!previewNavOpen){
-    closeSubTree(menus)
+useEffect(() => {
+  if (!previewNavOpen) {
+    closeSubTree(menus);
   }
-},[closeSubTree, menus, previewNavOpen])
+  // ปิดเฉพาะตอนพับพรีวิว — อย่าตาม menus ทุกครั้ง เพราะคัดลอก/ลบจะ setState ซ้ำโดยไม่จำเป็น
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [previewNavOpen]);
 
 
 const mainBG = setColor(
@@ -1666,28 +2177,31 @@ const tabletSkeletonSvg = `
   <rect x='24' y='1162' width='720' height='130' rx='5' fill='#d2d2d6'/>
 </svg>
 `.trim();
-const previewScreenSkeletonStyle = isMobilePreview
-  ? {
-      backgroundColor: "#f5f5f6",
-      backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(mobileSkeletonSvg)}")`,
-      backgroundSize: "375px 1320px",
-      backgroundPosition: "center top",
-      backgroundRepeat: "repeat-y",
-      borderRadius: 30,
-    }
-  : isTabletPreview
-    ? {
-        backgroundColor: "#f5f5f6",
-        backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(tabletSkeletonSvg)}")`,
-        backgroundSize: "768px 1320px",
-        backgroundPosition: "center top",
-        backgroundRepeat: "repeat-y",
-        borderRadius: 24,
-      }
-  : {};
+const previewScreenSkeletonStyle = useMemo(
+  () =>
+    isMobilePreview
+      ? {
+          backgroundColor: "#f5f5f6",
+          backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(mobileSkeletonSvg)}")`,
+          backgroundSize: "375px 1320px",
+          backgroundPosition: "center top",
+          backgroundRepeat: "repeat-y",
+          borderRadius: 30,
+        }
+      : isTabletPreview
+        ? {
+            backgroundColor: "#f5f5f6",
+            backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(tabletSkeletonSvg)}")`,
+            backgroundSize: "768px 1320px",
+            backgroundPosition: "center top",
+            backgroundRepeat: "repeat-y",
+            borderRadius: 24,
+          }
+        : {},
+  [isMobilePreview, isTabletPreview, mobileSkeletonSvg, tabletSkeletonSvg]
+);
 const showTopBarPreview =
   !hideTopBarEverywhere && (tabletTopBarMode || "social") !== "off";
-const isTextTopBarPreviewMode = (tabletTopBarMode || "social") === "text";
 const previewTopOffset = (showTopBarPreview ? topBarHeight : 0) + barHeight;
 const previewBottomOffset =
   device === "Mobile" && isAbleNavBottom === true ? navHeight : 0;
@@ -1697,18 +2211,13 @@ const menuBarBg = setColor(
   isMenuBarGradient,
   isMenuBarGradient ? bgMenuBarDegree : null
 );
-const topBarBg = setColor(
-  topBarIsGradient ? topBarBgColorGradient : topBarBgColor,
-  topBarIsGradient ? topBarBgOpacityGradient : topBarBgOpacity,
-  topBarIsGradient,
-  topBarIsGradient ? topBarBgDegree : null
-);
 const footerBg = setColor(
   footerIsGradient ? footerBgColorGradient : footerBgColor,
   footerIsGradient ? footerBgOpacityGradient : footerBgOpacity,
   footerIsGradient,
   footerIsGradient ? footerBgDegree : null
 );
+const footerBgStyle = buildFooterBackgroundStyle(footerIsGradient, footerBg);
 const footerTextColorValue = setColor(footerTextColor, footerTextOpacity);
 const hasFooterLogo = String(footerLogo || "").trim() !== "";
 const footerLogoPosition = ["hidden", "left", "center", "right"].includes(
@@ -1825,64 +2334,40 @@ useEffect(() => {
       },
       []
     );
-    const handleMenuReorder = useCallback(
-      ({ items: newItems }) => {
-        const transactionId = beginBuilderPerformanceTransaction(
-          "canvas-reorder",
-          {
-            label: "จัดเรียงรายการเมนู",
-            elementType: "menu-item",
-            elementId: "menu-tree",
-            panelType: "Menu",
-            scope: "menu",
-          },
-          { trackFrames: true }
-        );
-        setMenus(newItems);
-        finishBuilderPerformanceTransactionAfterPaint(
-          transactionId,
-          {},
-          { reason: "menu-reorder" }
-        );
-      },
-      [setMenus]
-    );
 
     return( <main className="content-area flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden" area="main">
 
 <Profiler id="MenuCanvas" onRender={handleMenuCanvasRender}>
 <div className="min-h-[600px]">
-<div className={`${["Mobile", "Tablet"].includes(device) ? "relative z-10 w-full" : "relative z-10 mx-auto w-full max-w-[1280px]"}`}>
+<div className={`${["Mobile", "Tablet"].includes(device) ? "relative z-10 w-full" : "relative z-10 mx-auto w-full max-w-[880px] px-4 pt-6"}`}>
 {device === "Desktop" && (
-
-
-
-<div className="menuTree">
-<Nestable
-            items={menus}
-            renderItem={renderMenu}
-            onChange={handleMenuReorder}
-            onDragStart={handleMenuDragStart}
-            onDragEnd={clearDragScrollCompensation}
-            maxDepth={4}
-            threshold={30}
-            disableDrag={disableDrag}
+  <>
+<MenuDesignTree
+            menus={menus}
+            setMenus={setMenus}
+            pageNames={pageNames}
+            darkMode={darkMode}
+            darkTextColor={darkTextColor}
           />
 <div
+  data-builder-footer="true"
   className="mt-3 cursor-pointer overflow-hidden rounded-lg"
-  style={{ background: footerBg }}
+  style={footerBgStyle}
   onClick={() => setOpenBar?.("Footer")}
 >
   <div
+    data-builder-footer-inner="true"
     className={`flex items-center justify-between gap-4 px-4 ${footerIsFluidLayout ? "w-full" : "mx-auto w-full max-w-[1280px]"}`}
-    style={{ minHeight: footerHeight, color: footerTextColorValue }}
+    style={{ height: footerHeight, minHeight: footerHeight, color: footerTextColorValue }}
   >
     <span
+      data-builder-footer-text="true"
       className="min-w-0 flex flex-1 items-center gap-2"
       style={{ fontSize: `${footerTextSize}px` }}
     >
       {showFooterLogoLeft ? (
         <img
+          data-builder-footer-logo="true"
           src={footerLogo}
           alt="footer-logo"
           className="object-contain"
@@ -1901,6 +2386,7 @@ useEffect(() => {
     {showFooterLogoCenter ? (
       <div className="shrink-0 px-2">
         <img
+          data-builder-footer-logo="true"
           src={footerLogo}
           alt="footer-logo"
           className="object-contain"
@@ -1909,11 +2395,13 @@ useEffect(() => {
       </div>
     ) : null}
     <span
+      data-builder-footer-text="true"
       className="min-w-0 flex flex-1 items-center justify-end gap-2 text-right"
       style={{ fontSize: `${footerTextSize}px` }}
     >
       {showFooterLogoRight ? (
         <img
+          data-builder-footer-logo="true"
           src={footerLogo}
           alt="footer-logo"
           className="object-contain"
@@ -1931,11 +2419,7 @@ useEffect(() => {
     </span>
   </div>
 </div>
-</div>
-
-
-
-
+  </>
 )}
 {['Mobile',"Tablet"].includes(device) && (
 
@@ -1993,99 +2477,7 @@ useEffect(() => {
     }}
   >
     
-  {showTopBarPreview && (
-    <div
-      className={`flex items-center px-3 ${
-        device === "Mobile" && isTextTopBarPreviewMode
-          ? "justify-start overflow-hidden"
-          : "justify-center"
-      }`}
-      style={
-        device === "Mobile" && isTextTopBarPreviewMode
-          ? { height: topBarHeight, background: topBarBg, scrollbarWidth: "none", msOverflowStyle: "none" }
-          : { height: topBarHeight, background: topBarBg }
-      }
-    >
-      {isTextTopBarPreviewMode ? (
-        <div
-          className={`${device === "Mobile" ? "w-full overflow-x-auto [&::-webkit-scrollbar]:hidden" : ""}`}
-          style={device === "Mobile" ? { scrollbarWidth: "none", msOverflowStyle: "none" } : undefined}
-        >
-        <div className={`flex items-center gap-3 ${device === "Mobile" ? "min-w-max" : ""}`}>
-          {ableRight &&
-            textGroup.map((item, i) => {
-              const safeIcon =
-                item?.icon?.name && item?.icon?.name !== "fa0"
-                  ? item.icon
-                  : { type: "fas", name: "faHouse" };
-              return (
-                <div key={i} className="flex shrink-0 items-center text-[10px]">
-                  <div
-                    className="flex items-center justify-center"
-                    style={{
-                      width: borderTextSize,
-                      height: borderTextSize,
-                      background: setColor(item.bgColor, item.bgOpacity),
-                      borderRadius: `${radiusText}%`,
-                    }}
-                  >
-                    <IconAwsome
-                      iconType={safeIcon.type}
-                      iconName={safeIcon.name}
-                      style={{
-                        color: setColor(item.iconColor, item.iconOpacity),
-                        fontSize: item.iconSize,
-                      }}
-                    />
-                  </div>
-                  <span
-                    className="ml-2 whitespace-nowrap"
-                    style={{
-                      color: setColor(item.textColor, item.textOpacity),
-                      fontSize: item.textSize,
-                    }}
-                  >
-                    {item.text}
-                  </span>
-                </div>
-              );
-            })}
-        </div>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2">
-          {ableLeft &&
-            iconGroup.map((item, i) => {
-              const safeIcon =
-                item?.icon?.name && item?.icon?.name !== "fa0"
-                  ? item.icon
-                  : { type: "fas", name: "faHouse" };
-              return (
-                <div
-                  key={i}
-                  className="flex items-center justify-center"
-                  style={{
-                    width: borderSize,
-                    height: borderSize,
-                    background: setColor(item.bgColor, item.bgOpacity),
-                    borderRadius: `${radius}%`,
-                  }}
-                >
-                  <IconAwsome
-                    iconType={safeIcon.type}
-                    iconName={safeIcon.name}
-                    style={{
-                      color: setColor(item.iconColor, item.iconOpacity),
-                      fontSize: item.iconSize,
-                    }}
-                  />
-                </div>
-              );
-            })}
-        </div>
-      )}
-    </div>
-  )}
+  <LiveMenuTopBarPreview topBar={topBar} device={device} setColor={setColor} />
 
   <div
     style={{
@@ -2124,16 +2516,12 @@ useEffect(() => {
         display === "left" ? "flex justify-end text-right" : ""
       }`}
     >
-      {logo ? (
-        <img
-          src={logo}
-          alt="logo"
-          style={{ height: logoHeight }}
-          className={`object-contain ${display === "left" ? "ml-auto" : ""}`}
-        />
-      ) : (
-        <div className="font-bold text-[18px] text-[#374151] truncate">Logo App</div>
-      )}
+      <MenuBarLogo
+        src={logo}
+        height={logoHeight}
+        className={`object-contain ${display === "left" ? "ml-auto" : ""}`}
+        textClassName="font-bold text-[18px] text-[#374151] truncate"
+      />
     </div>
 
     {display === "right" && (
@@ -2593,6 +2981,49 @@ size={menuFontSize}
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.menuTree .menu-tree-collapse-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.menuTree .menu-tree-collapse-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  color: #9ca3af;
+}
+
+.menuTree .menu-tree-collapse-minus,
+.menuTree .menu-tree-collapse-plus {
+  display: none;
+  width: 16px;
+  text-align: center;
+}
+
+.menuTree .nestable-item--children-open .menu-tree-collapse-minus,
+.menuTree .nestable-item--children-collapsed .menu-tree-collapse-plus {
+  display: inline-block;
+}
+
+.menuTree .nestable-icon,
+.menuTree .nestable-icon:before {
+  display: none !important;
+  content: none !important;
+  background-image: none !important;
 }
 
 /* ===== เส้นแนวตั้งของ nested level ===== */

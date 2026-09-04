@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { AlertCircle, Check } from "lucide-react";
 import { setColor, setFont } from "../../../../function";
 import IconAwsome from "../../IconAwsome";
+import { usePanelPreview } from "../../panelPreviewStore";
 import { isValidFaIconRef } from "./iconElementConfig";
 import {
   DEFAULT_TEL_PLACEHOLDER,
@@ -31,8 +32,17 @@ const normalizeColorRef = (raw, fallback) => {
 };
 
 function FormElement(props) {
+  const preview = usePanelPreview(
+    "FormElement",
+    String(props.elementData?.id || "form-element")
+  );
   if (!props?.elementData) return null;
-  return <FormElementView {...props} />;
+  return (
+    <FormElementView
+      {...props}
+      elementData={preview || props.elementData}
+    />
+  );
 }
 
 function FormElementView({
@@ -1076,4 +1086,4 @@ function FormElementView({
   );
 }
 
-export default FormElement;
+export default React.memo(FormElement);

@@ -10,7 +10,12 @@ import {
   Trash2,
 } from "lucide-react";
 import FormElementPreview from "./Layouts/Elements/FormElement";
-import FormElementOffcanvas from "./Offcanvas/formElement";
+import { BuilderPerformanceTrigger } from "./performance/BuilderPerformanceMonitor";
+import {
+  recordBuilderCanvasCommit,
+  recordBuilderPanelControlEvent,
+} from "./performance/builderPerformanceStore";
+import { markBuilderPanelOpen } from "./panelPreviewStore";
 import {
   collectFormSelectFields,
   fieldOptions,
@@ -93,11 +98,13 @@ const FORM_BUILDER_PREVIEW_ELEMENTS = [
   { label: "Text", icon: "format_size", formType: "text" },
 ];
 const FORM_DRAG_TYPE = "application/x-form-builder-element";
+const NOOP = () => {};
 const FORM_PREVIEW_THEME = {
   textColor: ["#334155"],
   mainColor: ["#0f172a", "#334155"],
   text: { value: "Prompt" },
 };
+const FormElementOffcanvas = React.lazy(() => import("./Offcanvas/formElement"));
 
 const createRowDraft = (index = 0) => ({
   id: `row-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
@@ -331,7 +338,7 @@ const buildFormDraftElement = (formType) => {
   return null;
 };
 
-export default function FormsPage({
+function FormsPage({
   theme,
   darkMode = "light",
   textColor,
@@ -408,6 +415,17 @@ export default function FormsPage({
   const [editingElementRef, setEditingElementRef] = useState(null);
   const [fieldValues, setFieldValues] = useState({});
   const [selectResetKeys, setSelectResetKeys] = useState({});
+  const handleFormsPerformanceEvent = useCallback(
+    (event) => {
+      recordBuilderPanelControlEvent(event, {
+        panelType: "Forms",
+        elementType: "Form",
+        elementId: String(activeFormPresetId || "form"),
+        labelPrefix: "Forms",
+      });
+    },
+    [activeFormPresetId]
+  );
 
   const rows = useMemo(
     () =>
@@ -485,33 +503,36 @@ export default function FormsPage({
     return map;
   }, [allFields, calculations, fieldValues]);
 
-  const handleDesignFieldChange = (entry) => {
-    if (!entry?.fieldId) return;
-    const nextValue = String(entry?.value ?? "");
-    setFieldValues((prev) => {
-      const next = { ...prev, [entry.fieldId]: nextValue };
+  const handleDesignFieldChange = useCallback(
+    (entry) => {
+      if (!entry?.fieldId) return;
+      const nextValue = String(entry?.value ?? "");
+      setFieldValues((prev) => {
+        const next = { ...prev, [entry.fieldId]: nextValue };
+        const chain = findChainByFieldId(conditionalChains, entry.fieldId);
+        if (chain) {
+          getDescendantFieldIds(chain, entry.fieldId).forEach((childId) => {
+            next[childId] = "";
+          });
+        }
+        return next;
+      });
       const chain = findChainByFieldId(conditionalChains, entry.fieldId);
       if (chain) {
-        getDescendantFieldIds(chain, entry.fieldId).forEach((childId) => {
-          next[childId] = "";
-        });
-      }
-      return next;
-    });
-    const chain = findChainByFieldId(conditionalChains, entry.fieldId);
-    if (chain) {
-      const descendants = getDescendantFieldIds(chain, entry.fieldId);
-      if (descendants.length > 0) {
-        setSelectResetKeys((prev) => {
-          const next = { ...prev };
-          descendants.forEach((childId) => {
-            next[childId] = (next[childId] || 0) + 1;
+        const descendants = getDescendantFieldIds(chain, entry.fieldId);
+        if (descendants.length > 0) {
+          setSelectResetKeys((prev) => {
+            const next = { ...prev };
+            descendants.forEach((childId) => {
+              next[childId] = (next[childId] || 0) + 1;
+            });
+            return next;
           });
-          return next;
-        });
+        }
       }
-    }
-  };
+    },
+    [conditionalChains]
+  );
 
   const handleToggleLinkedOption = (fieldId, option, enabled) => {
     const chain = findChainByFieldId(conditionalChains, fieldId);
@@ -571,6 +592,7 @@ export default function FormsPage({
   const openElementSettings = (rowId, columnIndex, elementItem) => {
     if (!elementItem?.id) return;
     if (!FORM_ELEMENT_SETTINGS_TYPES.has(String(elementItem.type || ""))) return;
+    markBuilderPanelOpen("FormElement", elementItem.id);
     setCurrentRowId(rowId);
     setEditingElementRef({
       rowId,
@@ -797,10 +819,16 @@ export default function FormsPage({
 
   return (
     <div
-      className="relative h-full min-h-0 w-full overflow-hidden"
+      className="relative flex h-full min-h-0 w-full flex-col overflow-hidden"
       style={{ background: "var(--dash-bg, #f8fafc)" }}
+      onPointerDownCapture={handleFormsPerformanceEvent}
+      onPointerUpCapture={handleFormsPerformanceEvent}
+      onInputCapture={handleFormsPerformanceEvent}
+      onChangeCapture={handleFormsPerformanceEvent}
+      onClickCapture={handleFormsPerformanceEvent}
+      onBlurCapture={handleFormsPerformanceEvent}
     >
-      <div className="flex h-full min-h-0 w-full flex-col items-center overflow-y-auto px-4 py-4">
+      <div className="flex min-h-0 w-full flex-1 flex-col items-center overflow-y-auto px-4 py-4">
         {rows.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <button
@@ -935,7 +963,7 @@ export default function FormsPage({
                                       <FormElementPreview
                                         elementData={elementItem}
                                         selected={false}
-                                        hover={() => {}}
+                                        hover={NOOP}
                                         theme={previewTheme}
                                         builderMode="Layout Mode"
                                         outerSpacing={false}
@@ -1055,24 +1083,32 @@ export default function FormsPage({
           </div>
         )}
       </div>
+      <footer className="z-[60] flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-[var(--dash-bg,#f8fafc)] px-4 py-2 dark:border-white/10">
+        <BuilderPerformanceTrigger />
+        <span className="shrink-0 text-[12px] text-slate-500">
+          Copyright © {new Date().getFullYear()} Web Builder. All rights reserved.
+        </span>
+      </footer>
 
       {editingElementData && (
         <div className="absolute right-0 top-0 z-[80] h-full w-[400px] overflow-hidden">
-          <FormElementOffcanvas
-            element={editingElementData}
-            onUpdate={updateEditingElement}
-            close={closeElementSettings}
-            theme={previewTheme}
-            darkMode={darkMode}
-            textColor={textColor}
-            hideLayoutSection
-            selectFields={selectFields}
-            conditionalChains={conditionalChains}
-            onConditionalChainsChange={onConditionalChainsChange}
-            calculations={calculations}
-            onCalculationsChange={onCalculationsChange}
-            registerFlushHandler={registerFlushHandler}
-          />
+          <React.Suspense fallback={<div className="h-full w-full bg-transparent" />}>
+            <FormElementOffcanvas
+              element={editingElementData}
+              onUpdate={updateEditingElement}
+              close={closeElementSettings}
+              theme={previewTheme}
+              darkMode={darkMode}
+              textColor={textColor}
+              hideLayoutSection
+              selectFields={selectFields}
+              conditionalChains={conditionalChains}
+              onConditionalChainsChange={onConditionalChainsChange}
+              calculations={calculations}
+              onCalculationsChange={onCalculationsChange}
+              registerFlushHandler={registerFlushHandler}
+            />
+          </React.Suspense>
         </div>
       )}
 
@@ -1419,3 +1455,23 @@ export default function FormsPage({
     </div>
   );
 }
+
+const MemoizedFormsPage = React.memo(FormsPage);
+
+function ProfiledFormsPage(props) {
+  return (
+    <React.Profiler
+      id="FormsCanvas"
+      onRender={(_id, phase, actualDuration, baseDuration) =>
+        recordBuilderCanvasCommit(actualDuration, baseDuration, phase, {
+          area: "Forms",
+          formId: String(props.activeFormPresetId || ""),
+        })
+      }
+    >
+      <MemoizedFormsPage {...props} />
+    </React.Profiler>
+  );
+}
+
+export default React.memo(ProfiledFormsPage);

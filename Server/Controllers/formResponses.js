@@ -62,8 +62,80 @@ exports.getFormResponses = async (req, res) => {
     const filter = { menuBarId };
     if (formPresetId) filter.formPresetId = formPresetId;
 
-    const rows = await FormResponse.find(filter).sort({ createdAt: -1 }).exec();
-    res.send(rows);
+    const wantsPagination =
+      req.query.page != null ||
+      req.query.limit != null ||
+      req.query.folder != null ||
+      req.query.search != null;
+    if (!wantsPagination) {
+      const rows = await FormResponse.find(filter)
+        .sort({ createdAt: -1 })
+        .lean()
+        .exec();
+      return res.send(rows);
+    }
+
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(10, Number.parseInt(req.query.limit, 10) || 50)
+    );
+    const folder = String(req.query.folder || "all").trim();
+    const listFilter = {};
+    if (folder === "unread") listFilter.read = false;
+    if (folder === "read") listFilter.read = true;
+    if (folder === "starred") listFilter.starred = true;
+
+    const search = String(req.query.search || "").trim().slice(0, 100);
+    if (search) {
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(escaped, "i");
+      listFilter.$or = [
+        { formName: pattern },
+        { "answers.label": pattern },
+        { "answers.value": pattern },
+      ];
+    }
+
+    const countBase = { menuBarId };
+    if (formPresetId) countBase.formPresetId = formPresetId;
+    const listMatch =
+      Object.keys(listFilter).length > 0 ? [{ $match: listFilter }] : [];
+    const [result] = await FormResponse.aggregate([
+      { $match: countBase },
+      {
+        $facet: {
+          items: [
+            ...listMatch,
+            { $sort: { createdAt: -1, _id: -1 } },
+            { $skip: (page - 1) * limit },
+            { $limit: limit },
+          ],
+          total: [...listMatch, { $count: "value" }],
+          all: [{ $count: "value" }],
+          unread: [{ $match: { read: false } }, { $count: "value" }],
+          read: [{ $match: { read: true } }, { $count: "value" }],
+          starred: [{ $match: { starred: true } }, { $count: "value" }],
+        },
+      },
+    ]).exec();
+    const rows = Array.isArray(result?.items) ? result.items : [];
+    const total = Number(result?.total?.[0]?.value || 0);
+    const all = Number(result?.all?.[0]?.value || 0);
+    const unread = Number(result?.unread?.[0]?.value || 0);
+    const read = Number(result?.read?.[0]?.value || 0);
+    const starred = Number(result?.starred?.[0]?.value || 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    return res.send({
+      items: rows,
+      pagination: {
+        page: Math.min(page, totalPages),
+        limit,
+        total,
+        totalPages,
+      },
+      counts: { all, unread, read, starred },
+    });
   } catch (error) {
     console.log(error);
     res.status(500).send("Server Error");
@@ -78,6 +150,20 @@ exports.deleteFormResponse = async (req, res) => {
     const deleted = await FormResponse.findByIdAndDelete(id).exec();
     if (!deleted) return res.status(404).send("Not found");
     res.send(deleted);
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Server Error");
+  }
+};
+
+exports.deleteFormResponses = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids)
+      ? [...new Set(req.body.ids.map(String).filter(Boolean))].slice(0, 100)
+      : [];
+    if (ids.length === 0) return res.status(400).send("ids are required");
+    const result = await FormResponse.deleteMany({ _id: { $in: ids } }).exec();
+    res.send({ deletedCount: result.deletedCount || 0 });
   } catch (error) {
     console.log(error);
     res.status(500).send("Server Error");

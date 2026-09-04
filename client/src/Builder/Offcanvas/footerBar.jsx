@@ -1,14 +1,30 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button, ButtonGroup } from "@mui/material";
 import { Image } from "lucide-react";
 import MainLabel from "../HTML/MainLabel";
-import Range from "../HTML/Range";
+import Range, { applyRangeValue } from "../HTML/Range";
 import SelectLine from "../HTML/SelectLine";
 import ServiceColor from "../Services/ServiceColor";
 import IconAwsome from "../IconAwsome";
 import ServiceIcon from "../ServiceIcon";
 import ImageModal from "../imageModal";
 import { panelGroupButtonSx } from "../panelControlSx";
+import {
+  finishPanelSliderPerf,
+  recordPanelSliderInputUpdate,
+  startPanelSliderPerf,
+} from "../panelPreviewStore";
+import {
+  clearSliderLiveFooterBar,
+  normalizeFooterDegree,
+  previewFooterChromeDirectly,
+} from "../footerBarChromePreview";
+
+const FOOTER_SLIDER_TARGET = "chrome:Footer";
+const MIN_LOGO_HEIGHT = 10;
+const MAX_LOGO_HEIGHT = 120;
+const MIN_FOOTER_HEIGHT = 36;
+const MAX_FOOTER_HEIGHT = 120;
 
 const GROUP_BORDER = "#e2e8f0";
 const GROUP_BORDER_DARK = "rgba(255, 255, 255, 0.1)";
@@ -118,7 +134,6 @@ const normalizeFooterBar = (input) => {
   next.textOpacity = clamp(next.textOpacity, 0, 255, fallback.textOpacity);
   next.textSize = clamp(next.textSize, 10, 40, fallback.textSize);
   next.logoHeight = clamp(next.logoHeight, 10, 120, fallback.logoHeight);
-  next.logoHeight = Math.min(next.logoHeight, next.footerHeight);
   next.logoPosition = normalizeLogoPosition(source?.logoPosition ?? fallback.logoPosition);
   next.bgDegree = clamp(next.bgDegree, 0, 360, fallback.bgDegree);
   next.bgColorGradient = Array.isArray(source?.bgColorGradient)
@@ -156,17 +171,22 @@ function FooterBarOffcanvas({
   darkMode = "light",
   darkTextColor = "#374151",
   updateFooterBar,
+  onReady,
 }) {
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  useLayoutEffect(() => {
+    onReadyRef.current?.();
+  }, []);
   const [gradientStop, setGradientStop] = useState("start");
   const [solidColorModeIndex, setSolidColorModeIndex] = useState(0);
   const [openIconTarget, setOpenIconTarget] = useState(null);
   const [openImgModal, setOpenImgModal] = useState(false);
+  const pendingFooterIconRef = useRef({ left: null, right: null });
   const data = useMemo(() => normalizeFooterBar(footerBar), [footerBar]);
   const accentColor = darkTextColor || FOOTER_ACCENT_COLOR;
   const gradientIndex = gradientStop === "end" ? 1 : 0;
   const hasFooterLogo = String(data.logo || "").trim() !== "";
-  const minLogoHeight = 10;
-  const maxLogoHeight = Math.max(minLogoHeight, Number(data.footerHeight) || 36);
 
   const patchFooterBar = useCallback(
     (patchOrUpdater) => {
@@ -182,6 +202,107 @@ function FooterBarOffcanvas({
     },
     [updateFooterBar]
   );
+  const footerSliderGestureRef = useRef(null);
+  const footerSliderLabelRef = useRef("");
+  const draftFooterRef = useRef(data);
+  const draggingFooterSliderRef = useRef(false);
+  const degreeLabelRef = useRef(null);
+  const logoHeightLabelRef = useRef(null);
+  const footerHeightLabelRef = useRef(null);
+  const textSizeLabelRef = useRef(null);
+  const logoRangeRef = useRef(null);
+  if (!draggingFooterSliderRef.current) {
+    draftFooterRef.current = data;
+  }
+  const view = draggingFooterSliderRef.current ? draftFooterRef.current : data;
+  const syncFooterSliderLabels = (latest, prev = null) => {
+    if (!latest) return;
+    if (degreeLabelRef.current) {
+      degreeLabelRef.current.textContent = String(
+        normalizeFooterDegree(latest.bgDegree)
+      );
+    }
+    if (logoHeightLabelRef.current) {
+      logoHeightLabelRef.current.textContent = String(
+        Math.round(latest.logoHeight)
+      );
+    }
+    if (footerHeightLabelRef.current) {
+      footerHeightLabelRef.current.textContent = String(
+        Math.round(latest.footerHeight)
+      );
+    }
+    if (textSizeLabelRef.current) {
+      textSizeLabelRef.current.textContent = String(Math.round(latest.textSize));
+    }
+    if (!prev || prev.logoHeight === latest.logoHeight) return;
+    applyRangeValue(
+      logoRangeRef.current,
+      Math.round(latest.logoHeight),
+      MIN_LOGO_HEIGHT,
+      MAX_LOGO_HEIGHT
+    );
+  };
+  const trackFooterSliderPerf = useCallback((label) => {
+    if (
+      footerSliderGestureRef.current == null ||
+      footerSliderLabelRef.current !== label
+    ) {
+      footerSliderGestureRef.current = startPanelSliderPerf(
+        "Footer",
+        FOOTER_SLIDER_TARGET,
+        [],
+        { controlField: label }
+      );
+      footerSliderLabelRef.current = label;
+      return;
+    }
+    recordPanelSliderInputUpdate(footerSliderGestureRef.current);
+  }, []);
+  const previewFooterSlider = useCallback(
+    (label, patchOrUpdater) => {
+      draggingFooterSliderRef.current = true;
+      const prev = draftFooterRef.current;
+      const next = normalizeFooterBar(
+        typeof patchOrUpdater === "function"
+          ? patchOrUpdater(prev)
+          : { ...prev, ...patchOrUpdater }
+      );
+      draftFooterRef.current = next;
+      trackFooterSliderPerf(label);
+      previewFooterChromeDirectly(next);
+      syncFooterSliderLabels(next, prev);
+      return next;
+    },
+    [trackFooterSliderPerf]
+  );
+  const handleDegreeChange = useCallback(
+    (event) => {
+      previewFooterSlider("องศาไล่โทน", {
+        bgDegree: normalizeFooterDegree(event.target.value),
+      });
+    },
+    [previewFooterSlider]
+  );
+  const commitFooterSlider = useCallback((reason) => {
+    if (draggingFooterSliderRef.current) {
+      patchFooterBar(draftFooterRef.current);
+      draggingFooterSliderRef.current = false;
+      window.requestAnimationFrame(() => {
+        clearSliderLiveFooterBar();
+      });
+    }
+    if (footerSliderGestureRef.current == null) return;
+    finishPanelSliderPerf(reason || "pointerup", footerSliderGestureRef.current);
+    footerSliderGestureRef.current = null;
+    footerSliderLabelRef.current = "";
+  }, [patchFooterBar]);
+  useEffect(() => () => commitFooterSlider("unmount"), [commitFooterSlider]);
+  useLayoutEffect(() => {
+    if (!draggingFooterSliderRef.current) return;
+    const live = draftFooterRef.current;
+    syncFooterSliderLabels(live, live);
+  });
 
   const solidColorModes = useMemo(
     () => [
@@ -191,7 +312,8 @@ function FooterBarOffcanvas({
         color: data.bgColor,
         opacity: data.bgOpacity,
         handleColor: (value) => patchFooterBar({ bgColor: value }),
-        handleOpacity: (value) => patchFooterBar({ bgOpacity: value }),
+        handleOpacity: (value) =>
+          previewFooterSlider("ความโปร่งใส", { bgOpacity: value }),
       },
       {
         key: "text",
@@ -199,10 +321,11 @@ function FooterBarOffcanvas({
         color: data.textColor,
         opacity: data.textOpacity,
         handleColor: (value) => patchFooterBar({ textColor: value }),
-        handleOpacity: (value) => patchFooterBar({ textOpacity: value }),
+        handleOpacity: (value) =>
+          previewFooterSlider("ความโปร่งใส", { textOpacity: value }),
       },
     ],
-    [data.bgColor, data.bgOpacity, data.textColor, data.textOpacity, patchFooterBar]
+    [data.bgColor, data.bgOpacity, data.textColor, data.textOpacity, patchFooterBar, previewFooterSlider]
   );
   const activeSolidColorMode =
     solidColorModes[solidColorModeIndex] ?? solidColorModes[0];
@@ -212,6 +335,27 @@ function FooterBarOffcanvas({
       return (prev + step + length) % length;
     });
   }, [solidColorModes.length]);
+  const previewFooterIcon = useCallback((side, icon) => {
+    const field = side === "right" ? "rightIcon" : "leftIcon";
+    const nextIcon = normalizeFooterIcon(icon);
+    pendingFooterIconRef.current[side] = nextIcon;
+    draftFooterRef.current = normalizeFooterBar({
+      ...draftFooterRef.current,
+      [field]: nextIcon,
+    });
+  }, []);
+  const closeIconPicker = useCallback(() => {
+    const pending = pendingFooterIconRef.current;
+    const leftIcon = pending.left;
+    const rightIcon = pending.right;
+    pendingFooterIconRef.current = { left: null, right: null };
+    setOpenIconTarget(null);
+    if (!leftIcon && !rightIcon) return;
+    patchFooterBar({
+      ...(leftIcon ? { leftIcon } : {}),
+      ...(rightIcon ? { rightIcon } : {}),
+    });
+  }, [patchFooterBar]);
 
   return (
     <div className="dash-panel sm:block h-full min-h-0 w-full overflow-hidden">
@@ -223,6 +367,8 @@ function FooterBarOffcanvas({
           className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
           onClick={() => close(null)}
           type="button"
+          aria-label="ปิดแผง"
+          data-perf-control="ปิดแผง"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -276,6 +422,7 @@ function FooterBarOffcanvas({
                       <Button
                         key={opt.value}
                         color="inherit"
+                        data-perf-control={`ตำแหน่งโลโก้ ${opt.label}`}
                         onClick={() => patchFooterBar({ logoPosition: opt.value })}
                         sx={groupButtonSx(selected, accentColor)}
                       >
@@ -286,34 +433,57 @@ function FooterBarOffcanvas({
                 </ButtonGroup>
               </div>
               <div className="col-span-1">
-                <MainLabel label="ความสูงโลโก้" value={data.logoHeight} mb={1} />
+                <MainLabel
+                  label="ความสูงโลโก้"
+                  value={view.logoHeight}
+                  mb={1}
+                  valueRef={logoHeightLabelRef}
+                />
                 <div className="px-[5px] mb-[10px]">
                   <Range
-                    min={minLogoHeight}
-                    max={maxLogoHeight}
+                    name="logoHeight"
+                    controlLabel="ความสูงโลโก้"
+                    min={MIN_LOGO_HEIGHT}
+                    max={MAX_LOGO_HEIGHT}
                     step={1}
-                    value={data.logoHeight}
-                    pos={((data.logoHeight - minLogoHeight) / (maxLogoHeight - minLogoHeight || 1)) * 100}
+                    uncontrolled
+                    value={view.logoHeight}
+                    pos={((view.logoHeight - MIN_LOGO_HEIGHT) / (MAX_LOGO_HEIGHT - MIN_LOGO_HEIGHT)) * 100}
                     color={accentColor}
+                    inputRef={logoRangeRef}
                     handleChange={(event) =>
-                      patchFooterBar({ logoHeight: Number(event.target.value) })
+                      previewFooterSlider("ความสูงโลโก้", {
+                        logoHeight: Number(event.target.value),
+                      })
                     }
+                    onCommit={(_, reason) => commitFooterSlider(reason)}
                   />
                 </div>
               </div>
               <div className="col-span-1">
-                <MainLabel label="ความสูง Footer" value={data.footerHeight} mb={1} />
+                <MainLabel
+                  label="ความสูง Footer"
+                  value={view.footerHeight}
+                  mb={1}
+                  valueRef={footerHeightLabelRef}
+                />
                 <div className="px-[5px] mb-[10px]">
                   <Range
-                    min={36}
-                    max={120}
+                    name="footerHeight"
+                    controlLabel="ความสูง Footer"
+                    min={MIN_FOOTER_HEIGHT}
+                    max={MAX_FOOTER_HEIGHT}
                     step={1}
-                    value={data.footerHeight}
-                    pos={((data.footerHeight - 36) / (120 - 36)) * 100}
+                    uncontrolled
+                    value={view.footerHeight}
+                    pos={((view.footerHeight - MIN_FOOTER_HEIGHT) / (MAX_FOOTER_HEIGHT - MIN_FOOTER_HEIGHT)) * 100}
                     color={accentColor}
                     handleChange={(event) =>
-                      patchFooterBar({ footerHeight: Number(event.target.value) })
+                      previewFooterSlider("ความสูง Footer", {
+                        footerHeight: Number(event.target.value),
+                      })
                     }
+                    onCommit={(_, reason) => commitFooterSlider(reason)}
                   />
                 </div>
               </div>
@@ -344,6 +514,7 @@ function FooterBarOffcanvas({
                   handleOpacity={(event) =>
                     activeSolidColorMode?.handleOpacity?.(Number(event.target.value))
                   }
+                  onCommit={(_, reason) => commitFooterSlider(reason)}
                   rangeColor={accentColor}
                   darkMode={darkMode}
                 />
@@ -364,6 +535,7 @@ function FooterBarOffcanvas({
                       <Button
                         key={opt.value}
                         color="inherit"
+                        data-perf-control={`ไล่โทน ${opt.label}`}
                         onClick={() => setGradientStop(opt.value)}
                         sx={groupButtonSx(selected, accentColor)}
                       >
@@ -383,27 +555,37 @@ function FooterBarOffcanvas({
                     })
                   }
                   handleOpacity={(event) =>
-                    patchFooterBar((prev) => {
+                    previewFooterSlider("ความโปร่งใส", (prev) => {
                       const next = [...prev.bgOpacityGradient];
                       next[gradientIndex] = Number(event.target.value);
                       return { ...prev, bgOpacityGradient: next };
                     })
                   }
+                  onCommit={(_, reason) => commitFooterSlider(reason)}
                   rangeColor={accentColor}
                   darkMode={darkMode}
                 />
-                <MainLabel label={`${data.bgDegree} องศา`} mb={1} />
+                <div className="mt-4">
+                <MainLabel
+                  label="องศา"
+                  value={normalizeFooterDegree(view.bgDegree)}
+                  mb={0}
+                  valueRef={degreeLabelRef}
+                />
+                </div>
                 <div className="px-[5px]">
                   <Range
+                    name="bgDegree"
+                    controlLabel="องศาไล่โทน"
                     min={0}
                     max={360}
-                    step={45}
-                    value={data.bgDegree}
-                    pos={(data.bgDegree / 360) * 100}
+                    step={1}
+                    uncontrolled
+                    value={view.bgDegree}
+                    pos={(normalizeFooterDegree(view.bgDegree) / 360) * 100}
                     color={accentColor}
-                    handleChange={(event) =>
-                      patchFooterBar({ bgDegree: Number(event.target.value) })
-                    }
+                    handleChange={handleDegreeChange}
+                    onCommit={(_, reason) => commitFooterSlider(reason)}
                   />
                 </div>
               </>
@@ -411,14 +593,20 @@ function FooterBarOffcanvas({
 
             {data.isGradient ? (
               <>
-                <MainLabel label="สีข้อความ" mb={1} />
+                <div className="mt-4">
+                  <MainLabel label="สีข้อความ" mb={0} />
+                </div>
                 <ServiceColor
+                  compact
                   color={data.textColor}
                   opacity={data.textOpacity}
                   handleColor={(value) => patchFooterBar({ textColor: value })}
                   handleOpacity={(event) =>
-                    patchFooterBar({ textOpacity: Number(event.target.value) })
+                    previewFooterSlider("ความโปร่งใส", {
+                      textOpacity: Number(event.target.value),
+                    })
                   }
+                  onCommit={(_, reason) => commitFooterSlider(reason)}
                   rangeColor={accentColor}
                   darkMode={darkMode}
                 />
@@ -433,6 +621,7 @@ function FooterBarOffcanvas({
                   className={FOOTER_SIDE_ICON_BTN_CLASS}
                   onClick={() => setOpenIconTarget("left")}
                   aria-label="เลือกไอคอนข้อความซ้าย"
+                  data-perf-control="เลือกไอคอนข้อความซ้าย"
                 >
                   {hasVisibleFooterIcon(data.leftIcon) ? (
                     <IconAwsome
@@ -462,6 +651,7 @@ function FooterBarOffcanvas({
                   className={FOOTER_SIDE_ICON_BTN_CLASS}
                   onClick={() => setOpenIconTarget("right")}
                   aria-label="เลือกไอคอนข้อความขวา"
+                  data-perf-control="เลือกไอคอนข้อความขวา"
                 >
                   {hasVisibleFooterIcon(data.rightIcon) ? (
                     <IconAwsome
@@ -484,18 +674,29 @@ function FooterBarOffcanvas({
             </div>
 
             <div className="mt-[15px]">
-              <MainLabel label="ขนาดข้อความ" value={data.textSize} mb={1} />
+              <MainLabel
+                label="ขนาดข้อความ"
+                value={view.textSize}
+                mb={1}
+                valueRef={textSizeLabelRef}
+              />
               <div className="px-[5px]">
                 <Range
+                  name="textSize"
+                  controlLabel="ขนาดข้อความ"
                   min={10}
                   max={40}
                   step={1}
-                  value={data.textSize}
-                  pos={((data.textSize - 10) / (40 - 10)) * 100}
+                  uncontrolled
+                  value={view.textSize}
+                  pos={((view.textSize - 10) / (40 - 10)) * 100}
                   color={accentColor}
                   handleChange={(event) =>
-                    patchFooterBar({ textSize: Number(event.target.value) })
+                    previewFooterSlider("ขนาดข้อความ", {
+                      textSize: Number(event.target.value),
+                    })
                   }
+                  onCommit={(_, reason) => commitFooterSlider(reason)}
                 />
               </div>
             </div>
@@ -506,10 +707,8 @@ function FooterBarOffcanvas({
         header="ไอคอนข้อความซ้าย"
         icon={data.leftIcon}
         open={openIconTarget === "left"}
-        onClose={() => setOpenIconTarget(null)}
-        handleChange={(icon) =>
-          patchFooterBar({ leftIcon: normalizeFooterIcon(icon) })
-        }
+        onClose={closeIconPicker}
+        handleChange={(icon) => previewFooterIcon("left", icon)}
         darkColor={darkTextColor}
         darkMode={darkMode}
       />
@@ -517,10 +716,8 @@ function FooterBarOffcanvas({
         header="ไอคอนข้อความขวา"
         icon={data.rightIcon}
         open={openIconTarget === "right"}
-        onClose={() => setOpenIconTarget(null)}
-        handleChange={(icon) =>
-          patchFooterBar({ rightIcon: normalizeFooterIcon(icon) })
-        }
+        onClose={closeIconPicker}
+        handleChange={(icon) => previewFooterIcon("right", icon)}
         darkColor={darkTextColor}
         darkMode={darkMode}
       />

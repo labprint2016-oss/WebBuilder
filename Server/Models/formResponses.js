@@ -41,4 +41,9 @@ const formResponseSchema = new Schema(
   }
 );
 
+formResponseSchema.index({ menuBarId: 1, createdAt: -1 });
+formResponseSchema.index({ menuBarId: 1, formPresetId: 1, createdAt: -1 });
+formResponseSchema.index({ menuBarId: 1, read: 1, createdAt: -1 });
+formResponseSchema.index({ menuBarId: 1, starred: 1, createdAt: -1 });
+
 module.exports = model("FormResponse", formResponseSchema);

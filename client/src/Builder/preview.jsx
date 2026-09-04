@@ -1,4 +1,7 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { subscribePreviewLive } from "./previewLiveChannel";
+import { applyFooterChromeToDocument } from "./footerBarChromePreview";
+import { applyTopBarChromeToDocument } from "./topBarChromePreview";
 
 const SNAPSHOT_KEY = "wb:preview:snapshot:v1";
 const PreviewCanvas = lazy(() => import("./PreviewCanvas"));
@@ -61,6 +64,20 @@ function PreviewRuntime() {
     } finally {
       setIsSnapshotLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const unsubTop = subscribePreviewLive("topBar", (payload) => {
+      applyTopBarChromeToDocument(payload, document);
+    });
+    const unsubFooter = subscribePreviewLive("footerBar", (payload) => {
+      applyFooterChromeToDocument(payload, document);
+    });
+    return () => {
+      unsubTop();
+      unsubFooter();
+    };
   }, []);
 
   useEffect(() => {

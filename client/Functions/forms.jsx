@@ -18,16 +18,22 @@ export const createFormResponse = async (data) => {
   return await api.post(`/createFormResponse`, data);
 };
 
-export const getFormResponses = async (menuBarId, formPresetId) => {
-  const params =
-    formPresetId != null && String(formPresetId).trim()
+export const getFormResponses = async (menuBarId, formPresetId, options = null) => {
+  const params = {
+    ...(formPresetId != null && String(formPresetId).trim()
       ? { formPresetId: String(formPresetId).trim() }
-      : undefined;
+      : {}),
+    ...(options && typeof options === "object" ? options : {}),
+  };
   return await api.get(`/getFormResponses/${menuBarId}`, { params });
 };
 
 export const deleteFormResponse = async (id) => {
   return await api.delete(`/deleteFormResponse/${id}`);
+};
+
+export const deleteFormResponses = async (ids) => {
+  return await api.delete(`/deleteFormResponses`, { data: { ids } });
 };
 
 export const updateFormResponse = async (id, data) => {

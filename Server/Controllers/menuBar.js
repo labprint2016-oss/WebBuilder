@@ -15,7 +15,8 @@ exports.createMenuBar = async(req,res)=>{
 exports.getMenuBar = async(req,res)=>{
     try {
         const id = req.params.id
-        const menuBar = await MenuBar.findById(id).exec()
+        const menuBar = await MenuBar.findById(id).lean().exec()
+        if (!menuBar) return res.status(404).send("Menu bar not found")
         res.send(menuBar)
 
     } catch (error) {
@@ -28,8 +29,12 @@ exports.getMenuBar = async(req,res)=>{
 exports.updateMenuBar = async(req,res)=>{
     try {
         const id = req.params.id
-        const menuBar = await MenuBar.findByIdAndUpdate(id,req.body,{new:true}).exec()
-        res.send(menuBar)
+        const result = await MenuBar.updateOne(
+            { _id: id },
+            { $set: req.body }
+        ).exec()
+        if (result.matchedCount === 0) return res.status(404).send("Menu bar not found")
+        res.status(204).end()
 
     } catch (error) {
         res.status(500).send("Server Error")

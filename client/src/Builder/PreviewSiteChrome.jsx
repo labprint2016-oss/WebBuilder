@@ -1,6 +1,22 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import IconAwsome from "./IconAwsome";
+import {
+  TOP_BAR_PREVIEW_ID,
+  TOP_BAR_PREVIEW_TYPE,
+  usePanelPreview,
+} from "./panelPreviewStore";
+import { subscribePreviewLive } from "./previewLiveChannel";
+import {
+  applyFooterChromeToDocument,
+  buildFooterBackgroundStyle,
+  normalizeFooterDegree,
+} from "./footerBarChromePreview";
+import {
+  buildTopBarBackgroundStyle,
+  normalizeTopBarDegree,
+} from "./topBarChromePreview";
+import MenuBarLogo from "./MenuBarLogo";
 
 const HeroPage = lazy(() => import("./hero"));
 
@@ -24,7 +40,8 @@ const createThemeSetColor = (theme) => {
       };
       const color1 = resolveGradientStop(color[0], opacity[0]);
       const color2 = resolveGradientStop(color[1], opacity[1]);
-      return `linear-gradient(${degree ?? 0}deg, ${color1} 0%, ${color2} 100%)`;
+      const safeDegree = Number.isFinite(Number(degree)) ? Number(degree) : 0;
+      return `linear-gradient(${safeDegree}deg, ${color1} 0%, ${color2} 100%)`;
     }
 
     if (color == null) return "#ffffff" + opacity_2_hex(opacity ?? 255);
@@ -83,6 +100,11 @@ const normalizeUrlForNavigation = (value) => {
 const fallbackResolveMenuLink = (menuItem) => {
   const type = String(menuItem?.type || "").toLowerCase();
   const target = menuItem?.target === "_blank" ? "_blank" : "_self";
+  if (type === "landing" || type === "landingpage") {
+    const sectionId = String(menuItem?.url || "").trim().replace(/^#/, "");
+    if (!sectionId) return { href: "#", target: "_self", disabled: true };
+    return { href: `#${sectionId}`, target: "_self", disabled: false };
+  }
   const urlValue = normalizeUrlForNavigation(menuItem?.url);
   if (type === "url" || (!type && urlValue)) {
     if (!urlValue) return { href: "#", target, disabled: true };
@@ -115,7 +137,43 @@ const resolveMenuLinkMeta = (menuItem, resolveMenuLink, menuLinksEnabled) => {
 };
 
 function PreviewTopBar({ topBar = {}, theme, device = "Desktop" }) {
+  const topBarPreview = usePanelPreview(
+    TOP_BAR_PREVIEW_TYPE,
+    TOP_BAR_PREVIEW_ID
+  );
+  const barRef = useRef(null);
   const setColor = useMemo(() => createThemeSetColor(theme), [theme]);
+  const setColorRef = useRef(setColor);
+  setColorRef.current = setColor;
+
+  useEffect(() => {
+    return subscribePreviewLive("topBar", (payload) => {
+      const node = barRef.current;
+      if (!node || !payload) return;
+      const paint = setColorRef.current;
+      if (payload.isGradient) {
+        const degree = normalizeTopBarDegree(payload.bgDegree);
+        node.style.backgroundImage = paint(
+          payload.bgColorGradient,
+          payload.bgOpacityGradient,
+          true,
+          degree
+        );
+        node.style.backgroundColor = "transparent";
+        node.style.setProperty("--wb-topbar-deg", `${degree}deg`);
+        return;
+      }
+      node.style.backgroundImage = "none";
+      node.style.backgroundColor = paint(
+        payload.bgColor,
+        payload.bgOpacity,
+        false,
+        null
+      );
+    });
+  }, []);
+
+  const liveTopBar = topBarPreview || topBar;
   const {
     ableLeft = true,
     ableRight = true,
@@ -125,7 +183,7 @@ function PreviewTopBar({ topBar = {}, theme, device = "Desktop" }) {
     bgOpacity = 255,
     bgColorGradient = [],
     bgOpacityGradient = [255, 255],
-    bgDegree = 0,
+    bgDegree: bgDegreeRaw = 0,
     borderSize = 26,
     radius = 50,
     radiusText = 50,
@@ -135,7 +193,8 @@ function PreviewTopBar({ topBar = {}, theme, device = "Desktop" }) {
     hideTopBarEverywhere = false,
     tabletTopBarMode = "social",
     isFluidLayout = false,
-  } = topBar;
+  } = liveTopBar;
+  const bgDegree = normalizeTopBarDegree(bgDegreeRaw);
 
   if (hideTopBarEverywhere) return null;
 
@@ -145,6 +204,10 @@ function PreviewTopBar({ topBar = {}, theme, device = "Desktop" }) {
     isGradient,
     bgDegree
   );
+  const barStyle = {
+    height: topBarHeight,
+    ...buildTopBarBackgroundStyle(isGradient, background),
+  };
 
   const topBarInnerBaseClass = toBoolean(isFluidLayout)
     ? "relative z-10 h-full w-full min-w-0 max-w-none"
@@ -173,6 +236,8 @@ function PreviewTopBar({ topBar = {}, theme, device = "Desktop" }) {
               onClick={(event) => {
                 if (!item?.url) event.preventDefault();
               }}
+              data-builder-topbar-chip="social"
+              data-builder-topbar-index={index}
               className="flex items-center justify-center"
               style={{
                 width: borderSize,
@@ -209,6 +274,8 @@ function PreviewTopBar({ topBar = {}, theme, device = "Desktop" }) {
               className="h-full shrink-0 flex items-center text-[10px]"
             >
               <div
+                data-builder-topbar-chip="text"
+                data-builder-topbar-index={index}
                 className="flex items-center justify-center"
                 style={{
                   width: borderTextSize,
@@ -227,6 +294,8 @@ function PreviewTopBar({ topBar = {}, theme, device = "Desktop" }) {
                 />
               </div>
               <div
+                data-builder-topbar-text="true"
+                data-builder-topbar-index={index}
                 className="ml-2 whitespace-nowrap"
                 style={{
                   color: setColor(item?.textColor, item?.textOpacity),
@@ -246,8 +315,10 @@ function PreviewTopBar({ topBar = {}, theme, device = "Desktop" }) {
     if (tabletTopBarMode === "off") return null;
     return (
       <header
+        ref={barRef}
+        data-builder-topbar="true"
         className="relative z-[140] flex min-w-0 w-full max-w-full shrink-0 items-center justify-center overflow-visible px-3 sm:px-6 backdrop-blur"
-        style={{ width, maxWidth: "100%", height: topBarHeight, background }}
+        style={{ width, maxWidth: "100%", ...barStyle }}
       >
         <div className={`${topBarInnerBaseClass} flex items-center justify-center`}>
           {tabletTopBarMode === "text" ? <TextGroup /> : <IconGroup />}
@@ -260,8 +331,10 @@ function PreviewTopBar({ topBar = {}, theme, device = "Desktop" }) {
     if (tabletTopBarMode === "off") return null;
     return (
       <header
+        ref={barRef}
+        data-builder-topbar="true"
         className="relative z-[140] flex min-w-0 w-full max-w-full shrink-0 items-center justify-center overflow-visible px-3 sm:px-6 backdrop-blur"
-        style={{ width, maxWidth: "100%", height: topBarHeight, background }}
+        style={{ width, maxWidth: "100%", ...barStyle }}
       >
         <div className={`${topBarInnerBaseClass} flex items-center justify-center`}>
           <IconGroup />
@@ -272,8 +345,10 @@ function PreviewTopBar({ topBar = {}, theme, device = "Desktop" }) {
 
   return (
     <header
+      ref={barRef}
+      data-builder-topbar="true"
       className="relative z-[140] flex min-w-0 w-full max-w-full shrink-0 items-center overflow-visible px-3 sm:px-6 backdrop-blur"
-      style={{ width, height: topBarHeight, background }}
+      style={{ width, ...barStyle }}
     >
       <div className={`${topBarInnerBaseClass} flex items-center justify-between`}>
         <IconGroup />
@@ -284,7 +359,16 @@ function PreviewTopBar({ topBar = {}, theme, device = "Desktop" }) {
 }
 
 export function PreviewFooterBar({ footerBar = {}, theme, device = "Desktop" }) {
+  const footerRef = useRef(null);
   const setColor = useMemo(() => createThemeSetColor(theme), [theme]);
+
+  useEffect(() => {
+    return subscribePreviewLive("footerBar", (payload) => {
+      if (!payload) return;
+      applyFooterChromeToDocument(payload, footerRef.current?.ownerDocument || document);
+    });
+  }, []);
+
   const {
     footerHeight = 46,
     isGradient = false,
@@ -292,7 +376,7 @@ export function PreviewFooterBar({ footerBar = {}, theme, device = "Desktop" }) 
     bgOpacity = 255,
     bgColorGradient = [],
     bgOpacityGradient = [255, 255],
-    bgDegree = 0,
+    bgDegree: bgDegreeRaw = 0,
     logo = "",
     logoHeight = 35,
     logoPosition: logoPositionRaw = "center",
@@ -305,6 +389,7 @@ export function PreviewFooterBar({ footerBar = {}, theme, device = "Desktop" }) 
     rightIcon = { name: null, type: null },
     isFluidLayout = false,
   } = footerBar || {};
+  const bgDegree = normalizeFooterDegree(bgDegreeRaw);
 
   const width = device === "Desktop" ? "100%" : device === "Mobile" ? 375 : 768;
   const background = setColor(
@@ -313,6 +398,7 @@ export function PreviewFooterBar({ footerBar = {}, theme, device = "Desktop" }) 
     isGradient,
     isGradient ? bgDegree : null
   );
+  const footerBgStyle = buildFooterBackgroundStyle(isGradient, background);
   const textColorValue = setColor(textColor, textOpacity);
   const hasFooterLogo = String(logo || "").trim() !== "";
   const logoPosition = ["hidden", "left", "center", "right"].includes(
@@ -329,16 +415,23 @@ export function PreviewFooterBar({ footerBar = {}, theme, device = "Desktop" }) 
 
   return (
     <footer
+      ref={footerRef}
+      data-builder-footer="true"
       className="relative z-[120] flex min-w-0 w-full max-w-full shrink-0 items-center px-3 sm:px-6"
-      style={{ width, height: footerHeight, background }}
+      style={{ width, height: footerHeight, ...footerBgStyle }}
     >
-      <div className={`${footerInnerBaseClass} flex items-center justify-between gap-4`}>
+      <div
+        data-builder-footer-inner="true"
+        className={`${footerInnerBaseClass} flex items-center justify-between gap-4`}
+      >
         <div
+          data-builder-footer-text="true"
           className="min-w-0 flex flex-1 items-center gap-2"
           style={{ color: textColorValue, fontSize: `${textSize}px` }}
         >
           {showFooterLogoLeft ? (
             <img
+              data-builder-footer-logo="true"
               src={logo}
               alt="footer-logo"
               className="object-contain"
@@ -357,6 +450,7 @@ export function PreviewFooterBar({ footerBar = {}, theme, device = "Desktop" }) 
         {showFooterLogoCenter ? (
           <div className="shrink-0 px-2">
             <img
+              data-builder-footer-logo="true"
               src={logo}
               alt="footer-logo"
               className="object-contain"
@@ -365,11 +459,13 @@ export function PreviewFooterBar({ footerBar = {}, theme, device = "Desktop" }) 
           </div>
         ) : null}
         <div
+          data-builder-footer-text="true"
           className="min-w-0 flex flex-1 items-center justify-end gap-2 text-right"
           style={{ color: textColorValue, fontSize: `${textSize}px` }}
         >
           {showFooterLogoRight ? (
             <img
+              data-builder-footer-logo="true"
               src={logo}
               alt="footer-logo"
               className="object-contain"
@@ -555,14 +651,7 @@ function PreviewMenuBar({
     };
   }, []);
 
-  const Logo = () => {
-    if (l_D) {
-      return (
-        <img src={l_D} alt="logo" className="object-contain" style={{ height: lh_D }} />
-      );
-    }
-    return <h1 className="font-semibold text-[25px]">Logo App</h1>;
-  };
+  const logoNode = <MenuBarLogo src={l_D} height={lh_D} />;
 
   const length = menus.length;
   let splitMenu;
@@ -850,7 +939,7 @@ function PreviewMenuBar({
             </div>
 
             <div className="justify-self-center h-full flex items-center">
-              <Logo />
+              {logoNode}
             </div>
 
             <div className="justify-self-start h-full flex items-stretch">
@@ -881,7 +970,7 @@ function PreviewMenuBar({
         >
           <div className={`${menuInnerBaseClass} flex items-center justify-between`}>
             {renderMenuItems(menus)}
-            <Logo />
+            {logoNode}
           </div>
         </header>
       </>
@@ -905,7 +994,7 @@ function PreviewMenuBar({
         style={menuOuterStyle}
       >
         <div className={`${menuInnerBaseClass} flex items-center justify-between`}>
-          <Logo />
+          {logoNode}
           {renderMenuItems(menus)}
         </div>
       </header>

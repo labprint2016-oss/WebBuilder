@@ -983,12 +983,19 @@ const ContainerOffcanvas = ({
           <span className="shrink-0 font-bold tracking-wide">
             Section
           </span>
-          <span
+          <button
+            type="button"
             className="inline-flex min-w-0 max-w-full items-center rounded-md border border-[#333333] bg-[#333333] px-2 py-0.5 text-[11px] font-mono font-bold leading-none text-white tabular-nums dark:border-[#333333] dark:bg-[#333333] dark:text-white"
             title={String(data.id ?? "")}
+            aria-label={`คัดลอก ID ${String(data.id ?? "")}`}
+            onClick={() => {
+              const id = String(data.id ?? "");
+              if (!id || typeof navigator?.clipboard?.writeText !== "function") return;
+              navigator.clipboard.writeText(id).catch(() => {});
+            }}
           >
             <span className="truncate">{data.id}</span>
-          </span>
+          </button>
         </div>
         <button
           type="button"

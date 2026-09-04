@@ -100,10 +100,11 @@ import {
   updateDashbordSetting,
 } from "../../Functions/dashbordSetting";
 import _ from 'lodash';        // เปลี่ยนชื่อให้ชัด
-import { Navigate, Route, Routes, useLocation } from "react-router-dom"
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom"
 
 import HeroPage from "./hero";
-import MenuPage from "./menu";
+const loadMenuPage = () => import("./menu");
+const MenuPage = lazy(loadMenuPage);
 import FormsPage from "./forms";
 import MessagesPage from "./messages";
 import { invalidateFormsCache } from "./Layouts/Elements/formsCache";
@@ -187,9 +188,12 @@ const CounterElementOffcanvas = lazy(() => import("./Offcanvas/counterElement"))
 const DividerElementOffcanvas = lazy(() => import("./Offcanvas/dividerElement"));
 const FormBlockOffcanvas = lazy(() => import("./Offcanvas/formBlock"));
 const FormElementOffcanvas = lazy(() => import("./Offcanvas/formElement"));
-const TopBarOffcanvas = lazy(() => import("./Offcanvas/topBar"));
-const FooterBarOffcanvas = lazy(() => import("./Offcanvas/footerBar"));
-const MenuBarOffcanvas = lazy(() => import("./Offcanvas/menuBar"));
+const loadTopBarOffcanvas = () => import("./Offcanvas/topBar");
+const loadFooterBarOffcanvas = () => import("./Offcanvas/footerBar");
+const TopBarOffcanvas = lazy(loadTopBarOffcanvas);
+const FooterBarOffcanvas = lazy(loadFooterBarOffcanvas);
+const loadMenuBarOffcanvas = () => import("./Offcanvas/menuBar");
+const MenuBarOffcanvas = lazy(loadMenuBarOffcanvas);
 const HeroOffcanvas = lazy(() => import("./Offcanvas/hero"));
 const FORM_ELEMENT_TYPE_SET = new Set([
   "frmInput",
@@ -625,8 +629,17 @@ function startBuilderNavPerf(nextOpen) {
   window.__builderNavPerf = perf;
 }
 
+const BUILDER_SECTION_PATHS = {
+  Menu: "/builder/menus",
+  Hero: "/builder/heros",
+  Forms: "/builder/forms",
+  Message: "/builder/messages",
+  Settings: "/builder/settings",
+};
+
 const Builder = ()=>{
   const location = useLocation();
+  const navigate = useNavigate();
   const isPreviewRoute = location.pathname === "/preview";
   const themeId = useBuilderContextStore((state) => state.themeId);
   const menuBarId = useBuilderContextStore((state) => state.menuBarId);
@@ -650,7 +663,11 @@ const Builder = ()=>{
   useEffect(() => {
     if (isPreviewRoute || typeof window === "undefined") return undefined;
     const preload = () => {
+      loadMenuPage().catch(() => {});
       loadDataSliderElementOffcanvas().catch(() => {});
+      loadTopBarOffcanvas().catch(() => {});
+      loadFooterBarOffcanvas().catch(() => {});
+      loadMenuBarOffcanvas().catch(() => {});
       import("./Offcanvas/iconElement").catch(() => {});
     };
     if (typeof window.requestIdleCallback === "function") {
@@ -893,8 +910,15 @@ const Builder = ()=>{
       (state) => state.setActivePanel
     );
     const offcanvasAsideRef = useRef(null);
+    const [chromePanelReadyFor, setChromePanelReadyFor] = useState(null);
     const offcanvasRef = useRef(offcanvas);
     offcanvasRef.current = offcanvas;
+    const markChromePanelReady = useCallback(() => {
+      const panel = offcanvasRef.current;
+      if (panel !== "Top" && panel !== "Footer" && panel !== "Menu" && panel !== "Nav") return;
+      setChromePanelReadyFor(panel);
+      markBuilderPanelMounted(panel, `chrome:${panel}`);
+    }, []);
     const panelPerformanceTargetRef = useRef("");
     const offcanvasWriteGenRef = useRef(0);
     const isPageSettingsPanelOpen = useBuilderContextStore(
@@ -1010,6 +1034,13 @@ const Builder = ()=>{
         setSelectedMenuId("Builder");
       }
     }, [location.pathname, setSelectedMenuId]);
+
+    useEffect(() => {
+      const target = BUILDER_SECTION_PATHS[selectedMenuId];
+      if (!target) return;
+      if ((location.pathname || "") === target) return;
+      navigate(target, { replace: true });
+    }, [location.pathname, navigate, selectedMenuId]);
     
     const [page,setPage] = useState({});
     const activeBuilderPageId = useBuilderContextStore(
@@ -4306,17 +4337,17 @@ useEffect(() => {
   setHeroSectionsByPreset((prev) => {
     const prevMap = prev && typeof prev === "object" ? prev : {};
     const prevSection = prevMap[activeHeroPresetId];
-    if (prevSection && _.isEqual(prevSection, heroSection)) return prevMap;
+    if (prevSection === heroSection) return prevMap;
     return {
       ...prevMap,
-      [activeHeroPresetId]: _.cloneDeep(heroSection),
+      [activeHeroPresetId]: heroSection,
     };
   });
 }, [activeHeroPresetId, heroSection, setHeroSectionsByPreset]);
 const updateHeroSectionFromPanel = useCallback(
   (nextSection) => {
     setHeroSection((prevSection) =>
-      applyHeroSectionUpdateByDevice(prevSection, _.cloneDeep(nextSection), device)
+      applyHeroSectionUpdateByDevice(prevSection, nextSection, device)
     );
   },
   [applyHeroSectionUpdateByDevice, device]
@@ -4402,9 +4433,10 @@ const createMenuPreset = useCallback(
       `สร้าง Menu Preset / ${trimmedName}`,
       nextId,
       () => {
+        setMenus(_.cloneDeep(nextItems));
         setMenuPresets(nextPresets);
         setActiveMenuPresetId(nextId);
-        setMenus(_.cloneDeep(nextItems));
+        navigate("/builder/menus", { replace: true });
       }
     );
     return { ok: true, id: nextId, name: trimmedName };
@@ -4418,25 +4450,35 @@ const createMenuPreset = useCallback(
     menuPresets,
     menus,
     setMenuPresets,
+    navigate,
   ]
 );
 
 const selectMenuPreset = useCallback(
   (presetId) => {
-    const selected = menuPresets.find((item) => item.id === presetId);
+    const selected =
+      menuPresets.find((item) => item.id === presetId) ||
+      menuPresetCatalog.find((item) => item.id === presetId);
     if (!selected) return;
-    const hydratedPreset = withPresetVisualConfig(selected);
+    const hydratedPreset = withPresetVisualConfig({
+      ...selected,
+      items:
+        Array.isArray(selected.items) && selected.items.length > 0
+          ? selected.items
+          : createDefaultMenuItems(),
+    });
     measureMenuPresetAction(
       `เปลี่ยน Menu Preset / ${hydratedPreset.name || presetId}`,
       presetId,
       () => {
+        setMenus(_.cloneDeep(hydratedPreset.items || createDefaultMenuItems()));
         setMenuPresets((prev) =>
           assignActivePresetItems(prev, activeMenuPresetId, menus).map((item) =>
             item.id === presetId ? hydratedPreset : item
           )
         );
         setActiveMenuPresetId(presetId);
-        setMenus(_.cloneDeep(hydratedPreset.items || createDefaultMenuItems()));
+        navigate("/builder/menus", { replace: true });
         if (hydratedPreset?.menuBarDesktop) setMenuBarDesktop(_.cloneDeep(hydratedPreset.menuBarDesktop));
         if (hydratedPreset?.menuBarMobile) setMenuBarMobile(_.cloneDeep(hydratedPreset.menuBarMobile));
         if (Object.prototype.hasOwnProperty.call(hydratedPreset || {}, "menuBarMobilePhone")) {
@@ -4449,7 +4491,7 @@ const selectMenuPreset = useCallback(
       }
     );
   },
-  [activeMenuPresetId, createDefaultMenuItems, menus, menuPresets, setMenuPresets, withPresetVisualConfig]
+  [activeMenuPresetId, createDefaultMenuItems, menus, menuPresetCatalog, menuPresets, navigate, setMenuPresets, withPresetVisualConfig]
 );
 
 const renameMenuPreset = useCallback((presetId, name) => {
@@ -5253,7 +5295,6 @@ const loadMenuBar = () => {
       next.logoHeight = Number.isFinite(numericLogoHeight)
         ? Math.max(10, Math.min(120, numericLogoHeight))
         : base.logoHeight;
-      next.logoHeight = Math.min(next.logoHeight, next.footerHeight);
       next.logoPosition = normalizeFooterLogoPosition(
         source?.logoPosition ?? base.logoPosition
       );
@@ -5564,15 +5605,6 @@ useEffect(() => {
   loadMenuBarRef.current();
 }, []); // ดึง
 
-useEffect(()=>{
-  console.log(navBottomTablet);
-},[navBottomTablet])
-
-
-
-
-
-
 const navBottom = device === "Mobile" ? navBottomMobile:navBottomTablet
 const menuBarForCurrentDevice =
   device === "Mobile" ? (menuBarMobilePhone || menuBarMobile) : menuBarMobile;
@@ -5638,7 +5670,10 @@ const updateTopBarForPreset = useCallback((valueOrUpdater) => {
   setTopBar((prev) => {
     const next =
       typeof valueOrUpdater === "function" ? valueOrUpdater(prev) : valueOrUpdater;
-    syncActivePresetVisualField("topBar", next);
+    if (!next || next === prev) return prev;
+    window.setTimeout(() => {
+      syncActivePresetVisualField("topBar", next);
+    }, 0);
     return next;
   });
 }, [syncActivePresetVisualField]);
@@ -5655,29 +5690,40 @@ const updateFooterBarForPreset = useCallback((valueOrUpdater) => {
 
 
 
+const mergeChrome = (prev, data) =>
+  prev && typeof prev === "object" && data && typeof data === "object"
+    ? { ...prev, ...data }
+    : data;
+
 const editMenuBar = (data,isNav)=>{
   if(["Mobile","Tablet"].includes(device)){
     if(isNav){
       if(device === "Mobile"){
-        setNavBottomMobile(data)
+        setNavBottomMobile((prev) => mergeChrome(prev, data))
         syncActivePresetVisualField("navBottomMobile", data);
       }else{
-        setNavBottomTablet(data)
+        setNavBottomTablet((prev) => mergeChrome(prev, data))
         syncActivePresetVisualField("navBottomTablet", data);
       }
     }else{
       if (device === "Mobile") {
-        setMenuBarMobilePhone(data);
+        setMenuBarMobilePhone((prev) => mergeChrome(prev, data));
         syncActivePresetVisualField("menuBarMobilePhone", data);
       } else {
-        setMenuBarMobile(data)
+        setMenuBarMobile((prev) => mergeChrome(prev, data))
         syncActivePresetVisualField("menuBarMobile", data);
       }
     }
    
   }else{
-    setMenuBarDesktop(data)
-    syncActivePresetVisualField("menuBarDesktop", data);
+    if (isNav) return;
+    setMenuBarDesktop((prev) => {
+      const next = mergeChrome(prev, data);
+      window.setTimeout(() => {
+        syncActivePresetVisualField("menuBarDesktop", next);
+      }, 0);
+      return next;
+    });
   }
 }
 
@@ -5705,7 +5751,7 @@ useEffect(()=>{
   setOffcanvas(null)
 },[selectedMenuId, setOffcanvas])
 
-useLayoutEffect(() => {
+useEffect(() => {
   latestMenuBarStateRef.current = {
     menuBarDesktop,
     menuBarMobile,
@@ -5925,10 +5971,7 @@ const openPreviewPage = useCallback(() => {
 
 useEffect(() => {
   if (typeof window === "undefined") return undefined;
-  const hasPreviewSnapshot = Boolean(localStorage.getItem(PREVIEW_SNAPSHOT_KEY));
-  if (!hasPreviewSnapshot) return undefined;
-
-  const rafId = window.requestAnimationFrame(() => {
+  const timeoutId = window.setTimeout(() => {
     try {
       const raw = localStorage.getItem(PREVIEW_SNAPSHOT_KEY);
       if (!raw) return;
@@ -5973,9 +6016,9 @@ useEffect(() => {
     } catch {
       // Ignore preview live sync errors.
     }
-  });
+  }, 300);
 
-  return () => window.cancelAnimationFrame(rafId);
+  return () => window.clearTimeout(timeoutId);
 }, [
   activeMenuPresetId,
   defaultMenuPresetId,
@@ -6264,6 +6307,17 @@ const shouldCloseOffcanvasOnOutsideClick =
 const isAbsoluteOffcanvas = shouldOffsetMenuChromeOffcanvas;
 const offcanvasZIndex = shouldOffsetMenuChromeOffcanvas ? 220 : undefined;
 const effectiveOffcanvasWidth = offcanvas ? offcanvasWidth : 0;
+const isAnimatedChromeOffcanvas =
+  offcanvas === "Top" ||
+  offcanvas === "Footer" ||
+  offcanvas === "Menu" ||
+  offcanvas === "Nav";
+const chromePanelReady = chromePanelReadyFor === offcanvas;
+const chromePanelVisible = !isAnimatedChromeOffcanvas || chromePanelReady;
+
+useLayoutEffect(() => {
+  if (!offcanvas) setChromePanelReadyFor(null);
+}, [offcanvas]);
 
 useEffect(() => {
   if (!shouldCloseOffcanvasOnOutsideClick) return;
@@ -6311,10 +6365,20 @@ useEffect(() => {
 
 const handlePanelPerformanceEvent = useCallback(
   (event) => {
+    const isChromePanel =
+      offcanvas === "Top" ||
+      offcanvas === "Footer" ||
+      offcanvas === "Menu" ||
+      offcanvas === "Nav";
+    const isHeroPanel = offcanvas === "Hero";
     recordBuilderPanelControlEvent(event, {
       panelType: offcanvas,
-      elementType: elementData?.type,
-      elementId: elementData?.id ?? elementData?.colData?.id,
+      elementType: isChromePanel ? offcanvas : isHeroPanel ? "Hero" : elementData?.type,
+      elementId: isChromePanel
+        ? `chrome:${offcanvas}`
+        : isHeroPanel
+          ? String(elementData?.id || "HeroSec-1")
+        : elementData?.id ?? elementData?.colData?.id,
     });
   },
   [elementData, offcanvas]
@@ -6379,6 +6443,14 @@ useEffect(() => {
     if (!pageSettingsPanelOpenRef.current) {
       markBuilderPanelClosed();
     }
+    return undefined;
+  }
+  if (
+    offcanvas === "Top" ||
+    offcanvas === "Footer" ||
+    offcanvas === "Menu" ||
+    offcanvas === "Nav"
+  ) {
     return undefined;
   }
   if (typeof requestAnimationFrame !== "function") return undefined;
@@ -6542,7 +6614,6 @@ useEffect(() => {
                         isMenuPresetHydrated ? (
                           activeHeroPresetId ? (
                             <HeroPage
-                              key={`hero-${device}`}
                               heroSection={heroSection}
                               theme={theme}
                               openOffcavanas={openOffcavanas}
@@ -6620,13 +6691,14 @@ useEffect(() => {
                         isMenuPresetHydrated ? (
                           activeMenuPresetId ? (
                             <MenuPage
+                              key={activeMenuPresetId}
                               menuButtonRef={menuButtonRef}
                               menus={menus}
                               setMenus={setMenus}
                               navBottom={navBottom}
                               navOpen={navOpen}
                               setNavOpen={setNavOpen}
-                              setOpenBar={setOffcanvas}
+                              setOpenBar={setHeaderOffcanvas}
                               device={device}
                               menuBar={menuBarForCurrentDevice}
                               topBar={topBar}
@@ -6976,10 +7048,10 @@ useEffect(() => {
   onChangeCapture={handlePanelPerformanceEvent}
   onClickCapture={handlePanelPerformanceEvent}
   onBlurCapture={handlePanelPerformanceEvent}
-  className="
+  className={`
     dash-panel flex flex-col min-h-0 h-full max-h-full overflow-hidden
-    border-r
-  "
+    border-r${isAnimatedChromeOffcanvas && chromePanelReady ? " dash-offcanvas-enter-right" : ""}
+  `}
   style={{
     ...dashboardChromeCssVars,
     position: isAbsoluteOffcanvas ? "absolute" : "relative",
@@ -6992,8 +7064,12 @@ useEffect(() => {
       : offcanvas
         ? offcanvasWidth
         : 0,
-    transform: "translateX(0)",
-    visibility: offcanvas ? "visible" : "hidden",
+    transform: isAnimatedChromeOffcanvas && !chromePanelReady
+      ? "translateX(100%)"
+      : isAnimatedChromeOffcanvas
+        ? undefined
+        : "translateX(0)",
+    visibility: offcanvas && chromePanelVisible ? "visible" : "hidden",
     pointerEvents: offcanvas ? "auto" : "none",
     height: shouldOffsetMenuChromeOffcanvas
       ? `calc(100% - ${BUILDER_HEADER_HEIGHT}px)`
@@ -8183,7 +8259,7 @@ useEffect(() => {
                   )
                 }
               >
-                <TopBarOffcanvas open={offcanvas === "Top"} close={setOffcanvas} topBar={topBar} darkMode={darkMode} darkTextColor={darkTextColor} updateTopBar={updateTopBarForPreset} device={device}/>
+                <TopBarOffcanvas open={offcanvas === "Top"} close={setOffcanvas} topBar={topBar} darkMode={darkMode} darkTextColor={darkTextColor} updateTopBar={updateTopBarForPreset} device={device} onReady={markChromePanelReady}/>
               </Profiler>
              )}
              {offcanvas === "Footer" && (
@@ -8205,6 +8281,7 @@ useEffect(() => {
                   darkMode={darkMode}
                   darkTextColor={darkTextColor}
                   updateFooterBar={updateFooterBarForPreset}
+                  onReady={markChromePanelReady}
                 />
               </Profiler>
              )}
@@ -8221,7 +8298,7 @@ useEffect(() => {
                   )
                 }
               >
-                <MenuBarOffcanvas  open={["Menu","Nav"].includes(offcanvas)} device={device} close={setOffcanvas} navBottom={navBottom} topBar={topBar} updateTopBar={updateTopBarForPreset} textColor={darkTextColor} menuBarDesktop={menuBarDesktop} menuBarMobile={menuBarForCurrentDevice} updateMenuBar={(data,isNav=false)=>editMenuBar(data,isNav)} darkMode={darkMode} darkTextColor={darkTextColor}/>
+                <MenuBarOffcanvas  open={["Menu","Nav"].includes(offcanvas)} panel={offcanvas} device={device} close={setOffcanvas} navBottom={navBottom} topBar={topBar} updateTopBar={updateTopBarForPreset} textColor={darkTextColor} menuBarDesktop={menuBarDesktop} menuBarMobile={menuBarForCurrentDevice} updateMenuBar={(data,isNav=false)=>editMenuBar(data,isNav)} darkMode={darkMode} darkTextColor={darkTextColor} onReady={markChromePanelReady}/>
               </Profiler>
 )}
 </Suspense>

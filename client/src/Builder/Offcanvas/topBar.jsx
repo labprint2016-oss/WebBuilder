@@ -1,4 +1,13 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { memo, useEffect, useLayoutEffect, useState, useRef, useCallback } from "react";
+import {
+  TOP_BAR_PREVIEW_ID,
+  TOP_BAR_PREVIEW_TYPE,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
+import {
+  clearSliderLiveTopBar,
+  previewTopBarChromeDirectly,
+} from "../topBarChromePreview";
 import TextField from "@mui/material/TextField";
 import { panelGroupButtonSx } from "../panelControlSx";
 import {
@@ -23,13 +32,7 @@ import {
   Grow,
   Slide,
   ButtonGroup,
-  Accordion,
-  AccordionActions,
-  AccordionDetails,
-  AccordionSummary
 } from "@mui/material";
-
-import { TabContext, TabPanel } from "@mui/lab";
 import lodash from "lodash";
 import {
   Minus,
@@ -39,6 +42,7 @@ import {
   Palette,
   ImageOff,
   Trash2,
+  Copy,
   Image,
   Home,
 } from "lucide-react";
@@ -62,6 +66,18 @@ const TOPBAR_DISPLAY_LAYOUT_OPTIONS = [
   { value: false, label: "ความกว้างมาตรฐาน" },
 ];
 const TOPBAR_FALLBACK_ICON = { type: "fas", name: "faHouse" };
+const TOPBAR_SLIDER_LABELS = {
+  topBarHeight: "ความสูง",
+  bgOpacity: "ความโปร่งใส",
+  bgDegree: "องศาไล่โทน",
+  iconSize: "ขนาดไอคอน",
+  iconOpacity: "ความโปร่งใส",
+  textSize: "ขนาดข้อความ",
+  borderSize: "ขนาดกรอบ",
+  radius: "ความโค้งมน",
+  borderTextSize: "ขนาดกรอบ",
+  radiusText: "ความโค้งมน",
+};
 const normalizeTopBarIcon = (icon) =>
   icon?.name && icon.name !== "fa0" ? icon : TOPBAR_FALLBACK_ICON;
 const CHIP_BORDER = "#e2e8f0";
@@ -74,6 +90,48 @@ const OPTION_CHIP_RADIUS = "0.375rem";
 const TOPBAR_GROUP_ACTIVE_COLOR = "var(--dash-panel-accent, #333333)";
 
 const topBarGroupButtonSx = panelGroupButtonSx;
+
+const AntSwitch = styled(Switch)(({ theme }) => ({
+  width: 28,
+  height: 16,
+  padding: 0,
+  display: "flex",
+  "&:active": {
+    "& .MuiSwitch-thumb": {
+      width: 15,
+    },
+    "& .MuiSwitch-switchBase.Mui-checked": {
+      transform: "translateX(9px)",
+    },
+  },
+  "& .MuiSwitch-switchBase": {
+    padding: 2,
+    "&.Mui-checked": {
+      transform: "translateX(12px)",
+      color: "#fff",
+      "& + .MuiSwitch-track": {
+        opacity: 1,
+        backgroundColor: TOPBAR_GROUP_ACTIVE_COLOR,
+      },
+    },
+  },
+  "& .MuiSwitch-thumb": {
+    boxShadow: "0 2px 4px 0 rgb(0 35 11 / 20%)",
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    transition: theme.transitions.create(["width"], {
+      duration: 200,
+    }),
+  },
+  "& .MuiSwitch-track": {
+    borderRadius: 16 / 2,
+    opacity: 1,
+    backgroundColor: "rgba(0,0,0,.25)",
+    boxSizing: "border-box",
+    ".dark &": { backgroundColor: "rgba(255,255,255,.25)" },
+  },
+}));
 
 const topBarGroupRootSx = {
   width: "100%",
@@ -271,32 +329,60 @@ const Range = ({
   max,
   step,
   handleChange,
+  onCommit,
   darkTextColor,
   darkMode,
   index = -1,
   mainField = null,
+  controlLabel,
 }) => {
   const [newValue, setNewValue] = useState(value);
+  const draggingRef = useRef(false);
 
   useEffect(() => {
+    if (draggingRef.current) return;
     setNewValue(value);
   }, [value]);
 
   let pos = ((newValue - min) / (max - min)) * 100;
+  const commit = (e, reason) => {
+    draggingRef.current = false;
+    if (!onCommit) return;
+    const n = Number(e.currentTarget.value);
+    onCommit(
+      Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : value,
+      reason
+    );
+  };
 
   return (
     <div className="pb-[2px] px-[5px]">
       <input
         type="range"
+        name={name}
+        data-perf-control={controlLabel || name}
         min={min}
         max={max}
         value={newValue}
         step={step}
+        onPointerDown={() => {
+          draggingRef.current = true;
+        }}
         onChange={(e) => {
+          draggingRef.current = true;
           const v = Number(e.target.value);
           setNewValue(v);
-          handleChange?.(name, v, index, mainField);
+          handleChange?.(name, v, index, mainField, controlLabel);
         }}
+        onPointerUp={onCommit ? (e) => commit(e, "pointerup") : undefined}
+        onPointerCancel={
+          onCommit ? (e) => commit(e, "pointercancel") : undefined
+        }
+        onMouseUp={onCommit ? (e) => commit(e, "mouseup") : undefined}
+        onTouchEnd={onCommit ? (e) => commit(e, "touchend") : undefined}
+        onTouchCancel={onCommit ? (e) => commit(e, "touchcancel") : undefined}
+        onKeyUp={onCommit ? (e) => commit(e, "keyboard") : undefined}
+        onBlur={onCommit ? (e) => commit(e, "blur") : undefined}
         className={`
           w-full cursor-pointer appearance-none h-2 rounded-full
           bg-zinc-200
@@ -543,14 +629,126 @@ function FieldWithBtn({
   );
 }
 
+const ITEM_CARD_ANIMATION_MS = 220;
+
+function TopBarItemCard({
+  isOpen,
+  borderColor,
+  bgMenu,
+  bgMenuOption,
+  summary,
+  children,
+}) {
+  const [bodyMounted, setBodyMounted] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || bodyMounted) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      setBodyMounted(true);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isOpen, bodyMounted]);
+
+  return (
+    <div
+      style={{
+        marginTop: 4,
+        marginBottom: 4,
+        cursor: "pointer",
+        borderWidth: 1,
+        borderStyle: "solid",
+        borderColor,
+        borderRadius: 4,
+        backgroundColor: bgMenu,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          height: 45,
+          minHeight: 35,
+          display: "flex",
+          alignItems: "center",
+          width: "100%",
+          gap: 8,
+          paddingLeft: 8,
+          paddingRight: 8,
+          backgroundColor: bgMenu,
+        }}
+      >
+        {summary}
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateRows: isOpen && bodyMounted ? "1fr" : "0fr",
+          transition: `grid-template-rows ${ITEM_CARD_ANIMATION_MS}ms ease`,
+        }}
+      >
+        <div style={{ overflow: "hidden", minHeight: 0 }}>
+          {bodyMounted ? (
+            <div
+              style={{
+                backgroundColor: bgMenuOption,
+                padding: "8px 16px 16px",
+              }}
+            >
+              {children}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const toSafeOpacity = (value) =>
+  Number.isFinite(Number(value)) ? Number(value) : 255;
+
+function TopBarItemMenuButton({
+  Icon,
+  label,
+  darkMode,
+  onClick,
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      data-perf-control={label}
+      onClick={onClick}
+      className="dash-panel-soft-btn inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border"
+      style={{
+        backgroundColor:
+          darkMode === "dark"
+            ? "rgba(73, 77, 84, 0.4)"
+            : "rgba(236, 236, 236, 0.4)",
+        borderColor: darkMode === "dark" ? "#494D54" : "#e5e5e5",
+        color: darkMode === "dark" ? "#ffffff" : "#505050",
+      }}
+    >
+      <Icon
+        className="h-3 w-3"
+        strokeWidth={2}
+        style={{ color: darkMode === "dark" ? "#ffffff" : "#505050" }}
+      />
+    </button>
+  );
+}
+
+const TOPBAR_TEXT_FIELDS = new Set(["url", "text"]);
+
 function Field({
   name,
   value,
   handleChange,
+  onBlur,
   darkMode,
   children,
   placeholder = "",
   borderColor = null,
+  uncontrolled = false,
 }) {
   return (
     <FormControl fullWidth>
@@ -559,8 +757,9 @@ function Field({
           sx={COMMON_FIELD_SX(Boolean(children), false, darkMode, 35, 12, borderColor)}
           fullWidth
           name={name}
-          value={value}
+          {...(uncontrolled ? { defaultValue: value ?? "" } : { value })}
           onChange={handleChange}
+          onBlur={onBlur}
           placeholder={placeholder}
           type={name === "url" ? "url" : "text"}
         />
@@ -572,7 +771,7 @@ function Field({
   );
 }
 
-  function SocialList({
+const SocialList = memo(function SocialList({
     item,
     index,
     isOpen,
@@ -580,12 +779,31 @@ function Field({
     darkTextColor,
     onToggle,
     onFieldChange,
+    onFieldBlur,
     onRangeChange,
+    onRangeCommit,
+    onMetricLabelRef,
     onSelectChange,
     onCopy,
     onRemove,
-    colors,
   }) {
+    const { iconColor, iconOpacity, bgColor, bgOpacity } = item;
+    const colors = [
+      {
+        label: "สีพื้นหลัง",
+        field: "bgColor",
+        data: bgColor,
+        opacity: toSafeOpacity(bgOpacity),
+        opacityField: "bgOpacity",
+      },
+      {
+        label: "สีไอคอน",
+        field: "iconColor",
+        data: iconColor,
+        opacity: toSafeOpacity(iconOpacity),
+        opacityField: "iconOpacity",
+      },
+    ];
     const { icon, url, iconSize } = item;
     const safeIcon = normalizeTopBarIcon(icon);
     const [socialColorMode, setSocialColorMode] = useState("bg");
@@ -602,76 +820,35 @@ function Field({
     const borderColor = darkMode === "dark" ? "#494d54" : "#e5e5e5";
     const textColor = darkMode === "dark" ? "#ffffff" : "#202020";
 
-    const menuButtons = [
-      { Icon: { type: "far", name: "faCopy" }, funct: onCopy },
-      { Icon: { type: "far", name: "faCircleXmark" }, funct: onRemove },
-    ];
-
-    const MenuButton = ({ Icon, funct }) => (
-      <Btn
-        handleClick={() => funct(index,"iconGroup")}
-        icon={Icon}
-        lastChild={true}
-        height={28}
-        softBg
-        className="dash-panel-soft-btn"
-        bgColor={
-          darkMode === "dark"
-            ? "rgba(73, 77, 84, 0.4)"
-            : "rgba(236, 236, 236, 0.4)"
-        }
-        borderColor={darkMode === "dark" ? "#494D54" : "#e5e5e5"}
-        color={darkMode === "dark" ? "#ffffff" : "#505050"}
-      />
-    );
-
     return (
-      <Box sx={{ my: 1, cursor: "pointer" }}>
-        <Accordion
-          expanded={isOpen}
-          onChange={() => {}}
-          sx={{
-            boxShadow: "none",
-            m: 0,
-            borderWidth: 1,
-            borderColor,
-            borderRadius: 1,
-            backgroundColor: bgMenu,
-            "&:not(.Mui-expanded):before": { display: "none" },
-          }}
-        >
-          <AccordionSummary
-            expandIcon={null}
-            component="div"
-            sx={{
-              cursor: "pointer !important",
-              height: 45,
-              minHeight: 35,
-              backgroundColor: bgMenu,
-              border: 0,
-              borderRadius: 1,
-              px: 1,
-              "&.Mui-expanded": { minHeight: 45 },
-              "& .MuiAccordionSummary-content": {
-                m: 0,
-                minWidth: 0,
-                display: "flex",
-                alignItems: "center",
-                width: "100%",
-                gap: 1,
-              },
-              "& .MuiAccordionSummary-content.Mui-expanded": { m: 0 },
-            }}
-          >
+      <>
+      <TopBarItemCard
+        isOpen={isOpen}
+        borderColor={borderColor}
+        bgMenu={bgMenu}
+        bgMenuOption={bgMenuOption}
+        summary={
+          <>
             <span style={{ display: "inline-flex" }}></span>
-            <Btn handleClick={()=>{
-              setOpenIconMoal(true)
-            }} icon={safeIcon} hideBorder bgColor={darkMode === "dark" ? "#494d54" : "#333333"} height={30}/>
+            <button
+              type="button"
+              onClick={() => setOpenIconMoal(true)}
+              className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded border-0"
+              style={{
+                backgroundColor: darkMode === "dark" ? "#494d54" : "#333333",
+              }}
+            >
+              <IconAwsome
+                style={{ color: "white", fontSize: 13 }}
+                iconType={safeIcon.type}
+                iconName={safeIcon.name}
+              />
+            </button>
             
-            <Typography
-              noWrap
-              sx={{
-                ml: 2,
+            <span
+              ref={onMetricLabelRef?.(`iconGroup:${index}:url`)}
+              style={{
+                marginLeft: 16,
                 fontSize: 12,
                 flex: 1,
                 minWidth: 0,
@@ -682,41 +859,62 @@ function Field({
               }}
             >
               {url || "Link URL"}
-            </Typography>
+            </span>
 
-            <Box
-              sx={{
-                ml: 2,
-                mr: 0,
+            <div
+              style={{
+                marginLeft: 16,
                 display: "flex",
                 alignItems: "center",
-                gap: 1.5,
+                gap: 12,
                 flexShrink: 0,
                 transform: "translateX(8px)",
               }}
             >
-              {menuButtons.map((b, i) => (
-                <MenuButton key={i} Icon={b.Icon} funct={b.funct} />
-              ))}
-            </Box>
+              <TopBarItemMenuButton
+                Icon={Copy}
+                label="คัดลอก"
+                darkMode={darkMode}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onCopy(index, "iconGroup");
+                }}
+              />
+              <TopBarItemMenuButton
+                Icon={Trash2}
+                label="ลบ"
+                darkMode={darkMode}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onRemove(index, "iconGroup");
+                }}
+              />
+            </div>
 
-            <Box
+            <button
+              type="button"
+              data-perf-control={isOpen ? "ปิดรายการโซเชียล" : "เปิดรายการโซเชียล"}
+              aria-label={isOpen ? "ปิดรายการโซเชียล" : "เปิดรายการโซเชียล"}
+              aria-expanded={isOpen}
               onClick={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 onToggle(index);
               }}
-              sx={{
+              style={{
                 width: 34,
                 height: 34,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                borderRadius: 1,
+                borderRadius: 4,
                 cursor: "pointer",
                 flexShrink: 0,
-                "&:hover": {
-                  backgroundColor: "transparent",
-                },
+                border: "none",
+                background: "transparent",
+                padding: 0,
               }}
             >
               <ChevronDown
@@ -724,26 +922,21 @@ function Field({
                 style={{
                   color: darkMode === "dark" ? "#ffffff" : "#202020",
                   transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: "transform 150ms ease",
+                  transition: "transform 220ms ease",
                 }}
               />
-            </Box>
-          </AccordionSummary>
-
-          <AccordionDetails
-            sx={{
-              backgroundColor: bgMenuOption,
-              borderRadius: 1,
-              borderTopLeftRadius: 0,
-              borderTopRightRadius: 0,
-            }}
-          >
+            </button>
+          </>
+        }
+      >
             <div className="grid grid-cols-12 items-center">
               <div className="col-span-12">
                 <Field
                   name="url"
                   value={url}
+                  uncontrolled
                   handleChange={(e) => onFieldChange(e, index, "iconGroup")}
+                  onBlur={onFieldBlur}
                   darkMode={darkMode}
                   placeholder="Link URL"
                   borderColor={darkMode === "dark" ? "#494D54" : "#e5e5e5"}
@@ -757,7 +950,10 @@ function Field({
                   <span className="dash-panel-label text-[13px] font-bold">
                     ขนาดไอคอน
                   </span>
-                  <span className="text-[13px] text-slate-400">
+                  <span
+                    ref={onMetricLabelRef?.(`iconGroup:${index}:iconSize`)}
+                    className="text-[13px] text-slate-400"
+                  >
                     {iconSize}
                   </span>
                   <div className="dash-heading-rule border-b flex-1"></div>
@@ -773,8 +969,10 @@ function Field({
                     max={30}
                     step={1}
                     handleChange={onRangeChange}
+                    onCommit={onRangeCommit}
                     index={index}
                     mainField="iconGroup"
+                    controlLabel="ขนาดไอคอน"
                   />
                 </div>
               </div>
@@ -838,8 +1036,10 @@ function Field({
                             max={255}
                             step={1}
                             handleChange={onRangeChange}
+                            onCommit={onRangeCommit}
                             index={index}
                             mainField="iconGroup"
+                            controlLabel="ความโปร่งใส"
                           />
                         </div>
                         <ServiceColor
@@ -860,17 +1060,18 @@ function Field({
                 </div>
               </div>
             </>
-          </AccordionDetails>
-        </Accordion>
+      </TopBarItemCard>
+      {openIconModal ? (
         <ServiceIcon header="ไอคอน" icon={safeIcon} open={openIconModal} onClose={()=>setOpenIconMoal(false)} darkMode={darkMode} darkColor={darkTextColor} handleChange={(icon)=>{
           onFieldChange({target:{name:"icon",value:icon}},index,"iconGroup")
         }}/>
-      </Box>
+      ) : null}
+      </>
     );
 
-  }
+});
 
-  function TextList({
+const TextList = memo(function TextList({
     item,
     index,
     isOpen,
@@ -878,13 +1079,20 @@ function Field({
     darkTextColor,
     onToggle,
     onFieldChange,
+    onFieldBlur,
     onRangeChange,
+    onRangeCommit,
+    onMetricLabelRef,
     onSelectChange,
     onCopy,
     onRemove,
-    colors,
   }) {
-    const { text, textSize, icon, iconSize } = item;
+    const { text, textSize, icon, iconSize, iconColor, iconOpacity, bgColor, bgOpacity, textColor: itemTextColor, textOpacity } = item;
+    const colors = [
+      { label: "สีพื้นหลัง", field: "bgColor", data: bgColor, opacity: toSafeOpacity(bgOpacity), opacityField: "bgOpacity" },
+      { label: "สีไอคอน", field: "iconColor", data: iconColor, opacity: toSafeOpacity(iconOpacity), opacityField: "iconOpacity" },
+      { label: "สีข้อความ", field: "textColor", data: itemTextColor, opacity: toSafeOpacity(textOpacity), opacityField: "textOpacity" },
+    ];
     const safeIcon = normalizeTopBarIcon(icon);
     const [textIconColorMode, setTextIconColorMode] = useState("bg");
 
@@ -901,79 +1109,36 @@ function Field({
     const borderColor = darkMode === "dark" ? "#494d54" : "#e5e5e5";
     const textColor = darkMode === "dark" ? "#ffffff" : "#202020";
 
-    const menuButtons = [
-      { Icon: { type: "far", name: "faCopy" }, funct: onCopy },
-      { Icon: { type: "far", name: "faCircleXmark" }, funct: onRemove },
-    ];
-
-    const MenuButton = ({ Icon, funct }) => (
-      <Btn
-        handleClick={() => funct(index,"textGroup")}
-        icon={Icon}
-        lastChild={true}
-        height={28}
-        softBg
-        className="dash-panel-soft-btn"
-        bgColor={
-          darkMode === "dark"
-            ? "rgba(73, 77, 84, 0.4)"
-            : "rgba(236, 236, 236, 0.4)"
-        }
-        borderColor={darkMode === "dark" ? "#494D54" : "#e5e5e5"}
-        color={darkMode === "dark" ? "#ffffff" : "#505050"}
-      />
-    );
-
     return (
-      <Box sx={{ my: 1, cursor: "pointer" }}>
-        <Accordion
-          expanded={isOpen}
-          onChange={() => {}}
-          sx={{
-            boxShadow: "none",
-            m: 0,
-            borderWidth: 1,
-            borderColor,
-            borderRadius: 1,
-            backgroundColor: bgMenu,
-            "&:not(.Mui-expanded):before": { display: "none" },
-          }}
-        >
-          <AccordionSummary
-            expandIcon={null}
-            component="div"
-            sx={{
-              cursor: "pointer !important",
-              height: 45,
-              minHeight: 35,
-              backgroundColor: bgMenu,
-              border: 0,
-              borderRadius: 1,
-              px: 1,
-              "&.Mui-expanded": { minHeight: 45 },
-              "& .MuiAccordionSummary-content": {
-                m: 0,
-                minWidth: 0,
-                display: "flex",
-                alignItems: "center",
-                width: "100%",
-                gap: 1,
-              },
-              "& .MuiAccordionSummary-content.Mui-expanded": { m: 0 },
-            }}
-          >
+      <>
+      <TopBarItemCard
+        isOpen={isOpen}
+        borderColor={borderColor}
+        bgMenu={bgMenu}
+        bgMenuOption={bgMenuOption}
+        summary={
+          <>
             <span style={{ display: "inline-flex" }}></span>
 
-            <Btn handleClick={()=>{
-              setOpenIconMoal(true)
-            }} icon={safeIcon} hideBorder bgColor={darkMode === "dark" ? "#494d54" : "#333333"} height={30}/>
+            <button
+              type="button"
+              onClick={() => setOpenIconMoal(true)}
+              className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded border-0"
+              style={{
+                backgroundColor: darkMode === "dark" ? "#494d54" : "#333333",
+              }}
+            >
+              <IconAwsome
+                style={{ color: "white", fontSize: 13 }}
+                iconType={safeIcon.type}
+                iconName={safeIcon.name}
+              />
+            </button>
 
-          
-            
-            <Typography
-              noWrap
-              sx={{
-                ml: 2,
+            <span
+              ref={onMetricLabelRef?.(`textGroup:${index}:text`)}
+              style={{
+                marginLeft: 16,
                 fontSize: 12,
                 flex: 1,
                 minWidth: 0,
@@ -984,41 +1149,62 @@ function Field({
               }}
             >
               {text || "Bangkok Thailand"}
-            </Typography>
+            </span>
 
-            <Box
-              sx={{
-                ml: 2,
-                mr: 0,
+            <div
+              style={{
+                marginLeft: 16,
                 display: "flex",
                 alignItems: "center",
-                gap: 1.5,
+                gap: 12,
                 flexShrink: 0,
                 transform: "translateX(8px)",
               }}
             >
-              {menuButtons.map((b, i) => (
-                <MenuButton key={i} Icon={b.Icon} funct={b.funct} />
-              ))}
-            </Box>
+              <TopBarItemMenuButton
+                Icon={Copy}
+                label="คัดลอก"
+                darkMode={darkMode}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onCopy(index, "textGroup");
+                }}
+              />
+              <TopBarItemMenuButton
+                Icon={Trash2}
+                label="ลบ"
+                darkMode={darkMode}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onRemove(index, "textGroup");
+                }}
+              />
+            </div>
 
-            <Box
+            <button
+              type="button"
+              data-perf-control={isOpen ? "ปิดรายการข้อความ" : "เปิดรายการข้อความ"}
+              aria-label={isOpen ? "ปิดรายการข้อความ" : "เปิดรายการข้อความ"}
+              aria-expanded={isOpen}
               onClick={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 onToggle(index);
               }}
-              sx={{
+              style={{
                 width: 34,
                 height: 34,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                borderRadius: 1,
+                borderRadius: 4,
                 cursor: "pointer",
                 flexShrink: 0,
-                "&:hover": {
-                  backgroundColor: "transparent",
-                },
+                border: "none",
+                background: "transparent",
+                padding: 0,
               }}
             >
               <ChevronDown
@@ -1026,27 +1212,21 @@ function Field({
                 style={{
                   color: darkMode === "dark" ? "#ffffff" : "#202020",
                   transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: "transform 150ms ease",
+                  transition: "transform 220ms ease",
                 }}
               />
-            </Box>
-          </AccordionSummary>
-
-          <AccordionDetails
-            sx={{
-              backgroundColor: bgMenuOption,
-              borderRadius: 1,
-              borderTopLeftRadius: 0,
-              borderTopRightRadius: 0,
-              pb: "11px",
-            }}
-          >
+            </button>
+          </>
+        }
+      >
             <div className="grid grid-cols-12">
               <div className="col-span-12">
                 <Field
                   name="text"
                   value={text}
+                  uncontrolled
                   handleChange={(e) => onFieldChange(e, index, "textGroup")}
+                  onBlur={onFieldBlur}
                   darkMode={darkMode}
                   borderColor={darkMode === "dark" ? CHIP_BORDER_DARK : CHIP_BORDER}
                 />
@@ -1059,7 +1239,11 @@ function Field({
                   <span className="dash-panel-label text-[13px] font-bold">
                     ขนาดข้อความ
                   </span>
-                  <span className="text-[13px]" style={{ color: "#94a3b8" }}>
+                  <span
+                    ref={onMetricLabelRef?.(`textGroup:${index}:textSize`)}
+                    className="text-[13px]"
+                    style={{ color: "#94a3b8" }}
+                  >
                     {textSize}
                   </span>
                   <div className="dash-heading-rule border-b flex-1"></div>
@@ -1074,8 +1258,10 @@ function Field({
                   max={20}
                   step={1}
                   handleChange={onRangeChange}
+                  onCommit={onRangeCommit}
                   index={index}
                   mainField="textGroup"
+                  controlLabel="ขนาดข้อความ"
                 />
               </div>
             </div>
@@ -1145,8 +1331,10 @@ function Field({
                               max={255}
                               step={1}
                               handleChange={onRangeChange}
+                              onCommit={onRangeCommit}
                               index={index}
                               mainField="textGroup"
+                              controlLabel="ความโปร่งใส"
                             />
                           </div>
                           <ServiceColor
@@ -1174,7 +1362,11 @@ function Field({
                   <span className="dash-panel-label text-[13px] font-bold">
                     ขนาดไอคอน
                   </span>
-                  <span className="text-[13px]" style={{ color: "#94a3b8" }}>
+                  <span
+                    ref={onMetricLabelRef?.(`textGroup:${index}:iconSize`)}
+                    className="text-[13px]"
+                    style={{ color: "#94a3b8" }}
+                  >
                     {iconSize}
                   </span>
                   <div className="dash-heading-rule border-b flex-1"></div>
@@ -1190,22 +1382,119 @@ function Field({
                     max={30}
                     step={1}
                     handleChange={onRangeChange}
+                    onCommit={onRangeCommit}
                     index={index}
                     mainField="textGroup"
+                    controlLabel="ขนาดไอคอน"
                   />
                 </div>
               </div>
             </div>
 
-          </AccordionDetails>
-        </Accordion>
+      </TopBarItemCard>
+      {openIconModal ? (
         <ServiceIcon header="ไอคอน" icon={safeIcon} open={openIconModal} onClose={()=>setOpenIconMoal(false)} darkMode={darkMode} darkColor={darkTextColor} handleChange={(icon)=>{
           onFieldChange({target:{name:"icon",value:icon}},index,"textGroup")
         }}/>
-      </Box>
+      ) : null}
+      </>
     );
 
-  }
+});
+
+const SocialItemList = memo(function SocialItemList({
+  items,
+  darkMode,
+  darkTextColor,
+  onFieldChange,
+  onFieldBlur,
+  onRangeChange,
+  onRangeCommit,
+  onMetricLabelRef,
+  onSelectChange,
+  onCopy,
+  onRemove,
+}) {
+  const [openIndex, setOpenIndex] = useState(-1);
+  const onToggle = useCallback((index) => {
+    setOpenIndex((prev) => (prev === index ? -1 : index));
+  }, []);
+  const handleRemove = useCallback(
+    (index, field) => {
+      setOpenIndex((prev) =>
+        prev === index ? -1 : prev > index ? prev - 1 : prev
+      );
+      onRemove(index, field);
+    },
+    [onRemove]
+  );
+  return items.map((item, i) => (
+    <SocialList
+      key={i}
+      index={i}
+      item={item}
+      isOpen={openIndex === i}
+      darkMode={darkMode}
+      darkTextColor={darkTextColor}
+      onToggle={onToggle}
+      onFieldChange={onFieldChange}
+      onFieldBlur={onFieldBlur}
+      onRangeChange={onRangeChange}
+      onRangeCommit={onRangeCommit}
+      onMetricLabelRef={onMetricLabelRef}
+      onCopy={onCopy}
+      onRemove={handleRemove}
+      onSelectChange={onSelectChange}
+    />
+  ));
+});
+
+const TextItemList = memo(function TextItemList({
+  items,
+  darkMode,
+  darkTextColor,
+  onFieldChange,
+  onFieldBlur,
+  onRangeChange,
+  onRangeCommit,
+  onMetricLabelRef,
+  onSelectChange,
+  onCopy,
+  onRemove,
+}) {
+  const [openIndex, setOpenIndex] = useState(-1);
+  const onToggle = useCallback((index) => {
+    setOpenIndex((prev) => (prev === index ? -1 : index));
+  }, []);
+  const handleRemove = useCallback(
+    (index, field) => {
+      setOpenIndex((prev) =>
+        prev === index ? -1 : prev > index ? prev - 1 : prev
+      );
+      onRemove(index, field);
+    },
+    [onRemove]
+  );
+  return items.map((item, i) => (
+    <TextList
+      key={i}
+      index={i}
+      item={item}
+      isOpen={openIndex === i}
+      darkMode={darkMode}
+      darkTextColor={darkTextColor}
+      onToggle={onToggle}
+      onFieldChange={onFieldChange}
+      onFieldBlur={onFieldBlur}
+      onRangeChange={onRangeChange}
+      onRangeCommit={onRangeCommit}
+      onMetricLabelRef={onMetricLabelRef}
+      onCopy={onCopy}
+      onRemove={handleRemove}
+      onSelectChange={onSelectChange}
+    />
+  ));
+});
 
 
 const TopBarOffcanvas = ({
@@ -1215,63 +1504,14 @@ const TopBarOffcanvas = ({
   darkMode,
   darkTextColor,
   device,
+  onReady,
 }) => {
-  const AntSwitch = styled(Switch)(({ theme }) => ({
-    width: 28,
-    height: 16,
-    padding: 0,
-    display: "flex",
-    "&:active": {
-      "& .MuiSwitch-thumb": {
-        width: 15,
-      },
-      "& .MuiSwitch-switchBase.Mui-checked": {
-        transform: "translateX(9px)",
-      },
-    },
-    "& .MuiSwitch-switchBase": {
-      padding: 2,
-      "&.Mui-checked": {
-        transform: "translateX(12px)",
-
-        color: "#fff",
-        "& + .MuiSwitch-track": {
-          opacity: 1,
-          backgroundColor: TOPBAR_GROUP_ACTIVE_COLOR,
-        },
-      },
-    },
-    "& .MuiSwitch-thumb": {
-      boxShadow: "0 2px 4px 0 rgb(0 35 11 / 20%)",
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      transition: theme.transitions.create(["width"], {
-        duration: 200,
-      }),
-    },
-    "& .MuiSwitch-track": {
-      borderRadius: 16 / 2,
-      opacity: 1,
-      backgroundColor: "rgba(0,0,0,.25)",
-      boxSizing: "border-box",
-      ".dark &": { backgroundColor: "rgba(255,255,255,.25)" },
-    },
-  }));
-
-  const VisuallyHiddenInput = styled("input")({
-    clip: "rect(0 0 0 0)",
-    clipPath: "inset(50%)",
-    height: 1,
-    overflow: "hidden",
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    whiteSpace: "nowrap",
-    width: 1,
-  });
-
-  const [data, setData] = useState(topBar);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  useLayoutEffect(() => {
+    onReadyRef.current?.();
+  }, []);
+  const [data, setData] = useState(() => lodash.cloneDeep(topBar));
   const [menu, setMenu] = useState("Social");
   const isTablet = device === "Tablet";
   const tabletTopBarMode = data?.tabletTopBarMode || "social";
@@ -1280,13 +1520,25 @@ const TopBarOffcanvas = ({
   const [updated, setUpdated] = useState(false);
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
-  useState(null);
-  useState(null);
-  useRef(null);
-  useRef(null);
+  const syncedTopBarRef = useRef(topBar);
+  const hasActiveSliderRef = useRef(() => false);
+  const topBarHeightLabelRef = useRef(null);
+  const metricLabelRefs = useRef({});
+  const setMetricLabelRef = useCallback((name) => (node) => {
+    if (name === "topBarHeight") topBarHeightLabelRef.current = node;
+    if (node) metricLabelRefs.current[name] = node;
+    else delete metricLabelRefs.current[name];
+  }, []);
+  const draftTopBarRef = useRef(data);
+  const persistTimerRef = useRef(null);
 
   useEffect(() => {
-    setData(lodash.cloneDeep(topBar));
+    if (hasActiveSliderRef.current()) return;
+    if (persistTimerRef.current != null) return;
+    if (syncedTopBarRef.current === topBar) return;
+    syncedTopBarRef.current = topBar;
+    draftTopBarRef.current = topBar;
+    setData(topBar);
     setUpdated(false);
   }, [topBar]);
 
@@ -1377,29 +1629,41 @@ const TopBarOffcanvas = ({
     setOpenColorTable(n === openColorTable?-1:n)
   };
 
+  const applyFieldToDraft = useCallback((name, value, index = -1, mainField = null) => {
+    const prev = draftTopBarRef.current || {};
+    let next = prev;
+    if (index !== -1 && mainField) {
+      const nextGroup = [...(prev[mainField] || [])];
+      nextGroup[index] = {
+        ...nextGroup[index],
+        [name]: value,
+      };
+      next = { ...prev, [mainField]: nextGroup };
+    } else if (index !== -1 && !mainField) {
+      const nextGroup = [...(prev[name] || [])];
+      nextGroup[index] = value;
+      next = { ...prev, [name]: nextGroup };
+    } else {
+      next = { ...prev, [name]: value };
+    }
+    draftTopBarRef.current = next;
+    return next;
+  }, []);
+
   const handleChange = useCallback((e, index = -1, mainField = null) => {
     const { name, value } = e.target;
-  
-    setData((prev) => {
-      if (index !== -1 && mainField) {
-        const nextGroup = [...prev[mainField]];
-        nextGroup[index] = {
-          ...nextGroup[index],
-          [name]: value,
-        };
-        return { ...prev, [mainField]: nextGroup };
+    const next = applyFieldToDraft(name, value, index, mainField);
+    if (TOPBAR_TEXT_FIELDS.has(name)) {
+      const labelNode = metricLabelRefs.current[`${mainField}:${index}:${name}`];
+      if (labelNode) {
+        labelNode.textContent =
+          value || (name === "url" ? "Link URL" : "Bangkok Thailand");
       }
-      if (index !== -1 && !mainField) {
-        const nextGroup = [...prev[name]];
-        nextGroup[index] = value
-        return { ...prev, [name]: nextGroup };
-      }
-  
-      return { ...prev, [name]: value };
-    });
-  
+      return;
+    }
+    setData(() => next);
     setUpdated(true);
-  }, []);
+  }, [applyFieldToDraft]);
 
 
   const changeTopBarDisplayLayout = (value) => {
@@ -1407,10 +1671,53 @@ const TopBarOffcanvas = ({
     setUpdated(true);
   };
 
+  const persistTopBar = useCallback((latest) => {
+    if (!latest) return;
+    draftTopBarRef.current = latest;
+    syncedTopBarRef.current = latest;
+    onUpdateRef.current(latest);
+  }, []);
 
-  const handleRange = useCallback((field, value, index = -1, mainField = null) => {
+  const queueTopBarPersist = useCallback(
+    (latest) => {
+      draftTopBarRef.current = latest;
+      if (persistTimerRef.current != null) {
+        window.clearTimeout(persistTimerRef.current);
+      }
+      persistTimerRef.current = window.setTimeout(() => {
+        persistTimerRef.current = null;
+        persistTopBar(latest);
+      }, 80);
+    },
+    [persistTopBar]
+  );
+
+  const handleFieldBlur = useCallback(() => {
+    queueTopBarPersist(draftTopBarRef.current);
+  }, [queueTopBarPersist]);
+
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current != null) {
+        window.clearTimeout(persistTimerRef.current);
+      }
+    };
+  }, []);
+
+  const { updateSlider, commitSlider, hasActiveSlider } = usePanelSliderPreview({
+    type: TOP_BAR_PREVIEW_TYPE,
+    targetIds: [TOP_BAR_PREVIEW_ID],
+    data,
+    setData,
+    onCommit: (latest) => {
+      persistTopBar(latest);
+    },
+  });
+  hasActiveSliderRef.current = hasActiveSlider;
+
+  const handleRange = useCallback((field, value, index = -1, mainField = null, controlLabel = "") => {
     const nextValue = Number(value);
-    setData((prev) => {
+    const applyValue = (prev) => {
       if (index !== -1 && mainField) {
         const group = Array.isArray(prev[mainField]) ? prev[mainField] : [];
         const nextGroup = group.map((item, i) =>
@@ -1435,42 +1742,69 @@ const TopBarOffcanvas = ({
         ...prev,
         [field]: Number.isFinite(nextValue) ? nextValue : prev[field],
       };
-    });
+    };
 
-    setUpdated(true);
-  }, []);
-  
+    const next = updateSlider(applyValue, {
+      setData: false,
+      publish: false,
+      controlField: controlLabel || TOPBAR_SLIDER_LABELS[field] || field,
+    });
+    draftTopBarRef.current = next;
+    previewTopBarChromeDirectly(next);
+    if (Number.isFinite(nextValue)) {
+      const itemKey =
+        index !== -1 ? `${mainField || ""}:${index}:${field}` : field;
+      const labelNode =
+        metricLabelRefs.current[itemKey] ||
+        metricLabelRefs.current[field] ||
+        (field === "topBarHeight" ? topBarHeightLabelRef.current : null);
+      if (labelNode) labelNode.textContent = String(nextValue);
+    }
+  }, [updateSlider]);
+
+  const handleRangeCommit = useCallback(
+    (_value, reason) => {
+      const latest = draftTopBarRef.current;
+      const committed = commitSlider(reason || "range-commit");
+      if (committed && latest) {
+        setData(latest);
+        setUpdated(false);
+        window.requestAnimationFrame(() => {
+          clearSliderLiveTopBar();
+        });
+      }
+    },
+    [commitSlider]
+  );
+
   useEffect(() => {
     if (!updated) return;
-    const clonedData = lodash.cloneDeep(data);
-    for (const key in clonedData) {
-      if (clonedData[key] === "") {
-        clonedData[key] = 0;
-      }
-    }
-    onUpdateRef.current(clonedData);
-  }, [data, updated]);
+    if (hasActiveSliderRef.current()) return;
+    persistTopBar(data);
+  }, [data, updated, persistTopBar]);
 
   const handleSelect = useCallback((value, field, index = -1, mainField = null) => {
+    const prev = draftTopBarRef.current || {};
+    let next = prev;
     if (index !== -1 && mainField) {
-      setData((prev) => {
-        const group = Array.isArray(prev[mainField]) ? prev[mainField] : [];
-        const nextGroup = group.map((item, i) =>
+      const group = Array.isArray(prev[mainField]) ? prev[mainField] : [];
+      next = {
+        ...prev,
+        [mainField]: group.map((item, i) =>
           i === index ? { ...item, [field]: value } : item
-        );
-        return { ...prev, [mainField]: nextGroup };
-      });
+        ),
+      };
     } else if (index !== -1 && !mainField) {
-      setData((prev) => {
-        const arr = Array.isArray(prev[field]) ? [...prev[field]] : [];
-        arr[index] = value;
-        return { ...prev, [field]: arr };
-      });
+      const arr = Array.isArray(prev[field]) ? [...prev[field]] : [];
+      arr[index] = value;
+      next = { ...prev, [field]: arr };
     } else {
-      setData((prev) => ({ ...prev, [field]: value }));
+      next = { ...prev, [field]: value };
     }
-    setUpdated(true);
-  }, []);
+    draftTopBarRef.current = next;
+    previewTopBarChromeDirectly(next);
+    queueTopBarPersist(next);
+  }, [queueTopBarPersist]);
 
   //   useEffect(() => {
   //     setData(element);
@@ -1479,10 +1813,6 @@ const TopBarOffcanvas = ({
 
 
 
-  useState([]);
-
-
-  const [openIcon,setOpenIcon] = useState(-1)
   const [barGradientPicker, setBarGradientPicker] = useState("start");
 
 
@@ -1500,14 +1830,14 @@ const TopBarOffcanvas = ({
       const inBtn = el.closest("#btn-popper");
       const inPopper = el.closest("#popper-color");
       if (!inPopper && !inBtn) {
-        toggleColorTable(-1)
+        setOpenColorTable(-1);
       }
     };
     window.addEventListener("click", onClick);
     return () => {
       window.removeEventListener("click", onClick);
     };
-  });
+  }, []);
 
   const copy = useCallback((index,field) => {
     setData((prev) => {
@@ -1526,24 +1856,10 @@ const TopBarOffcanvas = ({
   const remove = useCallback((index,field) => {
     setData((prev) => {
       if (prev[field].length === 1) return prev;
-      if(openIcon === index) {
-        setOpenIcon(-1)
-      }
       const nextGroup = prev[field].filter((_, i) => i !== index);
       return { ...prev, [field]: nextGroup };
     });
     setUpdated(true);
-  }, [openIcon]);
-
-  const toggleOpenIcon = useCallback((index) => {
-    setOpenIcon((prev) => (prev === index ? -1 : index));
-  }, []);
-
-
-  const [openText,setOpenText] = useState(-1)
-
-  const toggleOpenText = useCallback((index) => {
-    setOpenText((prev) => (prev === index ? -1 : index));
   }, []);
 
 
@@ -1556,7 +1872,6 @@ const TopBarOffcanvas = ({
     <div
       className="dash-panel sm:block h-full min-h-0 w-full overflow-hidden"
     >
-      <TabContext value={menu}>
         <div className="shrink-0 flex items-center justify-between border-b border-slate-200 dash-panel-header bg-gray-100 px-6 pt-3 pb-2 dark:border-white/10 dark:bg-slate-800/70">
           <div className="font-semibold tracking-wide">
             ตั้งค่า Top Bar
@@ -1654,8 +1969,8 @@ const TopBarOffcanvas = ({
                 </div>
               )}
 
-              <TabPanel value="Social" sx={{ marginTop: -3 }}>
-                <div>
+              {menu === "Social" && (
+                <div className="px-6">
                   {!isTablet && (
                     <Stack
                       direction="row"
@@ -1722,6 +2037,7 @@ const TopBarOffcanvas = ({
                         valueInline
                         valueSuffix=""
                         valueColor="#94a3b8"
+                        valueRef={setMetricLabelRef("topBarHeight")}
                       />
                       <Range
                         darkMode={darkMode}
@@ -1732,12 +2048,21 @@ const TopBarOffcanvas = ({
                         max={62}
                         step={1}
                         handleChange={handleRange}
+                        onCommit={handleRangeCommit}
+                        controlLabel="ความสูง"
                       />
                     </div>
                   </div>
 
                   {/* BG color */}
-                  <MainLabel label={isGradient ? colorlabels[1] : colorlabels[0]} />
+                  <MainLabel
+                    label={isGradient ? colorlabels[1] : colorlabels[0]}
+                    value={isGradient ? NaN : bgOpacity}
+                    valueInline={!isGradient}
+                    valueSuffix=""
+                    valueColor="#94a3b8"
+                    valueRef={setMetricLabelRef("bgOpacity")}
+                  />
 
                   {!isGradient ? (
                     <ServiceColor
@@ -1747,6 +2072,7 @@ const TopBarOffcanvas = ({
                       handleOpacity={(e) =>
                         handleRange("bgOpacity", Number(e.target.value))
                       }
+                      onCommit={handleRangeCommit}
                       rangeColor={darkTextColor || "#000000"}
                       darkMode={darkMode}
                     />
@@ -1798,11 +2124,19 @@ const TopBarOffcanvas = ({
                             barGradientPicker === "end" ? 1 : 0
                           )
                         }
+                        onCommit={handleRangeCommit}
                         rangeColor={darkMode === "dark" ? darkTextColor : "#000000"}
                         darkMode={darkMode}
                       />
 
-                      <MainLabel label={`${bgDegree} องศา`} />
+                      <MainLabel
+                        label="องศา"
+                        value={bgDegree}
+                        valueInline
+                        valueSuffix=""
+                        valueColor="#94a3b8"
+                        valueRef={setMetricLabelRef("bgDegree")}
+                      />
 
                       <Range
                         darkMode={darkMode}
@@ -1811,8 +2145,10 @@ const TopBarOffcanvas = ({
                         value={bgDegree}
                         min={0}
                         max={360}
-                        step={45}
+                        step={1}
                         handleChange={handleRange}
+                        onCommit={handleRangeCommit}
+                        controlLabel="องศาไล่โทน"
                       />
                     </>
                   )}
@@ -1834,6 +2170,7 @@ const TopBarOffcanvas = ({
                             valueInline={isInlineMetric}
                             valueSuffix={isInlineMetric ? "" : "PX"}
                             valueColor={isInlineMetric ? "#94a3b8" : "gray"}
+                            valueRef={setMetricLabelRef(name)}
                           />
                           <Range
                             darkMode={darkMode}
@@ -1844,6 +2181,8 @@ const TopBarOffcanvas = ({
                             max={max}
                             step={step}
                             handleChange={handleRange}
+                            onCommit={handleRangeCommit}
+                            controlLabel={label}
                           />
                         </div>
                       );
@@ -1851,49 +2190,26 @@ const TopBarOffcanvas = ({
                   </div>
                   )}
                   {!isTablet && <MainLabel label="โซเชียล" />}
-                  {!isTablet && iconGroup.map((item, i) => {
-
-                    const {iconColor,iconOpacity,bgColor,bgOpacity} = item
-                    const safeBgOpacity = Number.isFinite(Number(bgOpacity))
-                      ? Number(bgOpacity)
-                      : 255;
-                    const safeIconOpacity = Number.isFinite(Number(iconOpacity))
-                      ? Number(iconOpacity)
-                      : 255;
-                  const colors = [
-                    {label:"สีพื้นหลัง",field:"bgColor",data:bgColor,opacity:safeBgOpacity,opacityField:"bgOpacity",open:openColorTable === 3,click:()=>{
-
-                      toggleColorTable(3)
-                    }},
-                    {label:"สีไอคอน",field:"iconColor",data:iconColor,opacity:safeIconOpacity,opacityField:"iconOpacity",open:openColorTable === 4,click:()=>{
-
-                      toggleColorTable(4)
-                    }}
-                  ]
-  return (
-    <SocialList
-    colors={colors}
-      key={i}
-      index={i}
-      item={item}
-      isOpen={openIcon === i}
-      darkMode={darkMode}
-      darkTextColor={darkTextColor}
-      onToggle={toggleOpenIcon}
-      onFieldChange={handleChange}
-      onRangeChange={handleRange}
-      onCopy={copy}
-      onRemove={remove}
-      onSelectChange={handleSelect}
-
-    />
-  );
-})}
+                  {!isTablet && (
+                    <SocialItemList
+                      items={iconGroup}
+                      darkMode={darkMode}
+                      darkTextColor={darkTextColor}
+                      onFieldChange={handleChange}
+                      onFieldBlur={handleFieldBlur}
+                      onRangeChange={handleRange}
+                      onRangeCommit={handleRangeCommit}
+                      onMetricLabelRef={setMetricLabelRef}
+                      onCopy={copy}
+                      onRemove={remove}
+                      onSelectChange={handleSelect}
+                    />
+                  )}
                 </div>
-              </TabPanel>
+              )}
 
-              <TabPanel value="Text" sx={{ marginTop: -3 }}>
-                <div>
+              {menu === "Text" && (
+                <div className="px-6">
                   {!isTablet && (
                     <Stack
                       direction="row"
@@ -1937,6 +2253,7 @@ const TopBarOffcanvas = ({
                             valueInline={isInlineMetric}
                             valueSuffix={isInlineMetric ? "" : "PX"}
                             valueColor={isInlineMetric ? "#94a3b8" : "gray"}
+                            valueRef={setMetricLabelRef(name)}
                           />
                           <Range
                             darkMode={darkMode}
@@ -1947,6 +2264,8 @@ const TopBarOffcanvas = ({
                             max={max}
                             step={step}
                             handleChange={handleRange}
+                            onCommit={handleRangeCommit}
+                            controlLabel={label}
                           />
                         </div>
                       );
@@ -1954,48 +2273,24 @@ const TopBarOffcanvas = ({
                   </div>
                   )}
                   <MainLabel label="ข้อความ" />
-                  {textGroup.map((item, i) => {
-
-                    const { iconColor, iconOpacity, bgColor, bgOpacity, textColor, textOpacity } = item
-                    const safeBgOpacity = Number.isFinite(Number(bgOpacity))
-                      ? Number(bgOpacity)
-                      : 255;
-                    const safeIconOpacity = Number.isFinite(Number(iconOpacity))
-                      ? Number(iconOpacity)
-                      : 255;
-                    const safeTextOpacity = Number.isFinite(Number(textOpacity))
-                      ? Number(textOpacity)
-                      : 255;
-                  const colors = [
-                    { label: "สีพื้นหลัง", field: "bgColor", data: bgColor, opacity: safeBgOpacity, opacityField: "bgOpacity" },
-                    { label: "สีไอคอน", field: "iconColor", data: iconColor, opacity: safeIconOpacity, opacityField: "iconOpacity" },
-                    { label: "สีข้อความ", field: "textColor", data: textColor, opacity: safeTextOpacity, opacityField: "textOpacity" },
-                  ]
-  return (
-    <TextList
-      colors={colors}
-      key={i}
-      index={i}
-      item={item}
-      isOpen={openText === i}
-      darkMode={darkMode}
-      darkTextColor={darkTextColor}
-      onToggle={toggleOpenText}
-      onFieldChange={handleChange}
-      onRangeChange={handleRange}
-      onCopy={copy}
-      onRemove={remove}
-      onSelectChange={handleSelect}
-
-    />
-  );
-})}
+                  <TextItemList
+                    items={textGroup}
+                    darkMode={darkMode}
+                    darkTextColor={darkTextColor}
+                    onFieldChange={handleChange}
+                    onFieldBlur={handleFieldBlur}
+                    onRangeChange={handleRange}
+                    onRangeCommit={handleRangeCommit}
+                    onMetricLabelRef={setMetricLabelRef}
+                    onCopy={copy}
+                    onRemove={remove}
+                    onSelectChange={handleSelect}
+                  />
                 </div>
-              </TabPanel>
+              )}
             </li>
           </ul>
         </nav>
-      </TabContext>
     </div>
   );
 
@@ -2005,6 +2300,7 @@ const TopBarOffcanvas = ({
     valueSuffix = "PX",
     valueInline = false,
     valueColor = "gray",
+    valueRef = null,
   }) {
     const w = "flex-1";
     let colorSwitchList = [
@@ -2030,7 +2326,8 @@ const TopBarOffcanvas = ({
     const mb =
       label === "ขนาดกรอบ" ||
       label === "ความโค้งมน" ||
-      label === "ความสูง"
+      label === "ความสูง" ||
+      label === "องศา"
         ? "mb-[7px]"
         : "mb-3";
 
@@ -2050,7 +2347,11 @@ const TopBarOffcanvas = ({
           {displayLabel}
         </span>
         {valueInline && !Number.isNaN(value) && (
-          <span className="text-[13px]" style={{ color: valueColor }}>
+          <span
+            ref={valueRef}
+            className="text-[13px]"
+            style={{ color: valueColor }}
+          >
             {value}
             {valueSuffix ? ` ${valueSuffix}` : ""}
           </span>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { getTheme } from "../../../Functions/theme";
 import Range from "../HTML/Range";
 import { Check } from "lucide-react";
@@ -7,6 +7,7 @@ import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckCla
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 
 let cachedTheme = null;
+export const getCachedPanelTheme = () => cachedTheme;
 let themeFetchPromise = null;
 
 const loadSharedTheme = () => {
@@ -44,6 +45,7 @@ const ServiceColor = ({
   opacity,
   handleColor,
   handleOpacity,
+  onCommit,
   rangeColor,
   compact = false,
   hideOpacity = false,
@@ -75,18 +77,24 @@ const ServiceColor = ({
       {!hideOpacity && (
         <div className="px-[5px] pb-2">
           <Range
+            name="opacity"
+            controlLabel="ความโปร่งใส"
             min={0}
             max={255}
             step={1}
             value={safeOpacity}
             pos={(safeOpacity / 255) * 100}
             handleChange={handleOpacity}
+            onCommit={onCommit}
             color={rangeColor}
             uncontrolled
           />
         </div>
       )}
-      <div className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]">
+      <div
+        data-color-swatches="true"
+        className="grid grid-cols-10 place-items-center gap-x-0 gap-y-[6px]"
+      >
         {allColors.map((c, i) => {
           const bgColor =
             typeof c === "string" ? c : theme?.[c.type]?.[c.index];
@@ -107,15 +115,27 @@ const ServiceColor = ({
                 type="button"
                 className="flex size-[25px] items-center justify-center rounded-full border"
                 style={{ backgroundColor: bgColor }}
-                onClick={() => handleColor(c)}
+                onClick={(event) => {
+                  const root = event.currentTarget.closest("[data-color-swatches]");
+                  root
+                    ?.querySelectorAll("[data-swatch-check]")
+                    .forEach((node) => {
+                      node.hidden = true;
+                    });
+                  const check = event.currentTarget.querySelector(
+                    "[data-swatch-check]"
+                  );
+                  if (check) check.hidden = false;
+                  handleColor(c);
+                }}
                 aria-label={`เลือกสีกรอบ ${bgColor}`}
               >
-                {selected && (
+                <span data-swatch-check hidden={!selected}>
                   <Check
                     className={swatchSelectedCheckClassName(bgColor)}
                     strokeWidth={4}
                   />
-                )}
+                </span>
               </button>
             </div>
           );
@@ -125,4 +145,12 @@ const ServiceColor = ({
   );
 };
 
-export default ServiceColor;
+export default memo(ServiceColor, (prev, next) => (
+  prev.opacity === next.opacity &&
+  prev.rangeColor === next.rangeColor &&
+  prev.darkMode === next.darkMode &&
+  prev.compact === next.compact &&
+  prev.hideOpacity === next.hideOpacity &&
+  prev.theme === next.theme &&
+  (prev.color === next.color || lodash.isEqual(prev.color, next.color))
+));

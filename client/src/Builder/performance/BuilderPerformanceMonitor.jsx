@@ -55,6 +55,9 @@ const ELEMENT_TYPE_NAMES = {
   frmSubmit: "Form Submit",
   "menu-item": "Menu Item",
   Menu: "Menu",
+  Nav: "Nav",
+  Top: "Top",
+  Footer: "Footer",
 };
 
 const StatusBadge = ({ status = "green" }) => (

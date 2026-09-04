@@ -212,6 +212,19 @@ p {
   --dash-control: var(--dash-panel-accent, #333333);
   --dash-panel-input-border: var(--dash-panel-btn-group-border, #e2e8f0);
 }
+@keyframes dash-offcanvas-enter-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0.55;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.dash-offcanvas-enter-right {
+  animation: dash-offcanvas-enter-right 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
 /* ชั้นในของ Panel ไม่ทับพื้นหลังซ้ำ (โดยเฉพาะสีโปร่งแสง) */
 .dash-panel .dash-panel {
   background: transparent !important;

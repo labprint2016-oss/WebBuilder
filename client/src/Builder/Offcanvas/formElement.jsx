@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { panelGroupButtonSx } from "../panelControlSx";
 import {
   Box,
@@ -23,7 +23,11 @@ import {
 } from "lucide-react";
 import IconAwsome from "../IconAwsome";
 import MainLabel from "../HTML/MainLabel";
-import Range from "../HTML/Range";
+import BaseRange from "../HTML/Range";
+import {
+  markBuilderPanelMounted,
+  usePanelSliderPreview,
+} from "../panelPreviewStore";
 import ServiceIcon from "../ServiceIcon";
 import { isValidFaIconRef } from "../Layouts/Elements/iconElementConfig";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
@@ -496,6 +500,50 @@ const parseStepperDigits = (raw, min, max) => {
   if (!Number.isFinite(n)) return null;
   return Math.min(max, Math.max(min, n));
 };
+const Range = (props) => <BaseRange {...props} uncontrolled />;
+
+const FormIconPickerButton = memo(function FormIconPickerButton({
+  header,
+  ariaLabel,
+  icon,
+  onChange,
+  darkColor,
+  darkMode,
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="dash-input flex w-[42px] shrink-0 items-center justify-center rounded-lg border text-slate-600 transition hover:opacity-90 dark:text-slate-300"
+        aria-label={ariaLabel}
+        onClick={() => setOpen(true)}
+      >
+        {icon?.name && icon?.type ? (
+          <IconAwsome
+            iconName={icon.name}
+            iconType={icon.type}
+            style={{
+              fontSize: 16,
+              color: "var(--dash-panel-btn-group-inactive-text, #333333)",
+            }}
+          />
+        ) : (
+          <Sparkles className="size-4 shrink-0" strokeWidth={2} />
+        )}
+      </button>
+      <ServiceIcon
+        header={header}
+        icon={icon}
+        open={open}
+        onClose={() => setOpen(false)}
+        handleChange={onChange}
+        darkColor={darkColor}
+        darkMode={darkMode}
+      />
+    </>
+  );
+});
 
 function NumericStepper({
   value,
@@ -944,9 +992,9 @@ const FormElementOffcanvas = ({
   onCalculationsChange = null,
   registerFlushHandler = null,
 }) => {
-  const [data, setData] = useState(() => buildFormElement(element));
-  const [iconPickerOpen, setIconPickerOpen] = useState(false);
-  const [successIconPickerOpen, setSuccessIconPickerOpen] = useState(false);
+  const [data, setDataState] = useState(() => buildFormElement(element));
+  const sliderInputActiveRef = useRef(false);
+  const sliderControlFieldRef = useRef("");
   const [formColorMode, setFormColorMode] = useState(FORM_COLOR_MODE_OPTIONS[0].value);
   const [formSuccessColorMode, setFormSuccessColorMode] = useState(
     FORM_SUCCESS_COLOR_MODE_OPTIONS[0].value
@@ -960,6 +1008,16 @@ const FormElementOffcanvas = ({
   const [conditionalOpen, setConditionalOpen] = useState(false);
   const [calculationOpen, setCalculationOpen] = useState(false);
   const [formulaOpen, setFormulaOpen] = useState(false);
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "FormElement",
+    targetIds: [String(data?.id || element?.id || "form-element")],
+    data,
+    setData: setDataState,
+    onCommit: (nextData) => {
+      setDataState(nextData);
+      onUpdate?.(nextData);
+    },
+  });
   const canDeleteSelectedPreset =
     Boolean(selectedPresetId) && selectedPresetId !== FORM_INPUT_PRESET_NONE;
   const normalizedCalculations = useMemo(
@@ -991,13 +1049,12 @@ const FormElementOffcanvas = ({
     return Boolean(findChainByFieldId(normalizedConditionalChains, fieldId));
   }, [element?.id, element?.type, normalizedConditionalChains]);
   useEffect(() => {
-    setData(buildFormElement(element));
+    setDataState(buildFormElement(element));
   }, [element]);
-
   useEffect(() => {
-    setIconPickerOpen(false);
-    setSuccessIconPickerOpen(false);
+    markBuilderPanelMounted("FormElement", element?.id);
   }, [element?.id]);
+
   useEffect(() => {
     setFormColorMode(FORM_COLOR_MODE_OPTIONS[0].value);
     setFormSuccessColorMode(FORM_SUCCESS_COLOR_MODE_OPTIONS[0].value);
@@ -1013,7 +1070,7 @@ const FormElementOffcanvas = ({
     setFormulaOpen(false);
   }, [element?.id]);
 
-  const merged = useMemo(() => buildFormElement(data), [data]);
+  const merged = data;
   const canOpenFormula = useMemo(
     () => selectHasFilledOptionValues(merged),
     [merged]
@@ -1180,11 +1237,21 @@ const FormElementOffcanvas = ({
 
   const patch = useCallback(
     (partial) => {
+      if (sliderInputActiveRef.current) {
+        updateSlider(
+          (previous) => buildFormElement({ ...previous, ...partial }),
+          {
+            controlField: sliderControlFieldRef.current || "slider",
+            setData: false,
+          }
+        );
+        return;
+      }
       const next = buildFormElement({ ...data, ...partial });
-      setData(next);
+      setDataState(next);
       onUpdate?.(next);
     },
-    [data, onUpdate]
+    [data, onUpdate, updateSlider]
   );
 
   const saveFormInputPreset = () => {
@@ -1260,7 +1327,35 @@ const FormElementOffcanvas = ({
   };
 
   return (
-    <aside className="dash-panel relative flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10">
+    <aside
+      className="dash-panel relative flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden border-r border-slate-200 dark:border-white/10"
+      onInputCapture={(event) => {
+        if (event.target?.type !== "range") return;
+        sliderInputActiveRef.current = true;
+        sliderControlFieldRef.current =
+          event.target.dataset?.perfControl || event.target.name || "slider";
+      }}
+      onPointerUpCapture={() => {
+        if (!sliderInputActiveRef.current) return;
+        commitSlider("pointerup");
+        sliderInputActiveRef.current = false;
+      }}
+      onPointerCancelCapture={() => {
+        if (!sliderInputActiveRef.current) return;
+        commitSlider("pointercancel");
+        sliderInputActiveRef.current = false;
+      }}
+      onKeyUpCapture={(event) => {
+        if (event.target?.type !== "range" || !sliderInputActiveRef.current) return;
+        commitSlider("keyboard");
+        sliderInputActiveRef.current = false;
+      }}
+      onBlurCapture={(event) => {
+        if (event.target?.type !== "range" || !sliderInputActiveRef.current) return;
+        commitSlider("blur");
+        sliderInputActiveRef.current = false;
+      }}
+    >
       <div className="shrink-0 px-6 pt-5 pb-3 flex items-center justify-between dash-panel-header bg-gray-100 dark:bg-slate-800/60">
         <div className="flex min-w-0 items-center gap-2">
           <span className="shrink-0 font-bold tracking-wide">
@@ -1547,25 +1642,14 @@ const FormElementOffcanvas = ({
                 <MainLabel label="หัวข้อ" />
                 {FORM_TYPES_WITH_LABEL_ICON.has(merged.type) ? (
                   <div className="mt-1 flex items-stretch gap-2">
-                    <button
-                      type="button"
-                      className="dash-input flex w-[42px] shrink-0 items-center justify-center rounded-lg border text-slate-600 transition hover:opacity-90 dark:text-slate-300"
-                      aria-label="เลือกไอคอนหน้าหัวข้อ"
-                      onClick={() => setIconPickerOpen(true)}
-                    >
-                      {labelIconForModal?.name && labelIconForModal?.type ? (
-                        <IconAwsome
-                          iconName={labelIconForModal.name}
-                          iconType={labelIconForModal.type}
-                          style={{
-                            fontSize: 16,
-                            color: "var(--dash-panel-btn-group-inactive-text, #333333)",
-                          }}
-                        />
-                      ) : (
-                        <Sparkles className="size-4 shrink-0" strokeWidth={2} />
-                      )}
-                    </button>
+                    <FormIconPickerButton
+                      header="ไอคอนหน้าหัวข้อ"
+                      ariaLabel="เลือกไอคอนหน้าหัวข้อ"
+                      icon={labelIconForModal}
+                      onChange={(ic) => patch({ labelIcon: ic })}
+                      darkColor={textColor || "#0d9488"}
+                      darkMode={darkMode}
+                    />
                     <div className="relative min-w-0 flex-1">
                       <input
                         type="text"
@@ -1667,6 +1751,7 @@ const FormElementOffcanvas = ({
               </div>
               <div className="px-0.5">
                 <Range
+                  controlLabel="Textarea rows"
                   min={TEXTAREA_ROWS_MIN}
                   max={TEXTAREA_ROWS_MAX}
                   step={1}
@@ -1709,6 +1794,7 @@ const FormElementOffcanvas = ({
                     </div>
                     <div className="px-0.5">
                       <Range
+                        controlLabel="Text spacing top"
                         min={TEXT_SPACING_MIN}
                         max={TEXT_SPACING_MAX}
                         step={1}
@@ -1745,6 +1831,7 @@ const FormElementOffcanvas = ({
                     </div>
                     <div className="px-0.5">
                       <Range
+                        controlLabel="Text spacing bottom"
                         min={TEXT_SPACING_MIN}
                         max={TEXT_SPACING_MAX}
                         step={1}
@@ -2105,6 +2192,7 @@ const FormElementOffcanvas = ({
             >
               <div className="px-[5px] pb-2">
                 <Range
+                  controlLabel={`Form ${formColorMode} opacity`}
                   min={0}
                   max={255}
                   step={1}
@@ -2199,25 +2287,14 @@ const FormElementOffcanvas = ({
                   }
                 />
                 <div className="flex items-stretch gap-2">
-                  <button
-                    type="button"
-                    className="dash-input flex w-[42px] shrink-0 items-center justify-center rounded-lg border text-slate-600 transition hover:opacity-90 dark:text-slate-300"
-                    aria-label="เลือกไอคอนข้อความสำเร็จ"
-                    onClick={() => setSuccessIconPickerOpen(true)}
-                  >
-                    {successIconForModal?.name && successIconForModal?.type ? (
-                      <IconAwsome
-                        iconName={successIconForModal.name}
-                        iconType={successIconForModal.type}
-                        style={{
-                          fontSize: 16,
-                          color: "var(--dash-panel-btn-group-inactive-text, #333333)",
-                        }}
-                      />
-                    ) : (
-                      <Sparkles className="size-4 shrink-0" strokeWidth={2} />
-                    )}
-                  </button>
+                  <FormIconPickerButton
+                    header="ไอคอนข้อความสำเร็จ"
+                    ariaLabel="เลือกไอคอนข้อความสำเร็จ"
+                    icon={successIconForModal}
+                    onChange={(ic) => patch({ formSuccessIcon: ic })}
+                    darkColor={textColor || "#0d9488"}
+                    darkMode={darkMode}
+                  />
                   <input
                     type="text"
                     className={`${PANEL_INPUT_CLASS} min-w-0 flex-1 text-[12px]`}
@@ -2245,6 +2322,7 @@ const FormElementOffcanvas = ({
                 <div className="mt-2 dash-card w-full rounded-md bg-white px-[0px] pb-[5px] pt-[2px] dark:bg-zinc-800">
                   <div className="px-[5px] pb-2">
                     <Range
+                      controlLabel={`Success ${formSuccessColorMode} opacity`}
                       min={0}
                       max={255}
                       step={1}
@@ -2392,24 +2470,6 @@ const FormElementOffcanvas = ({
           )}
         </ul>
       </nav>
-      <ServiceIcon
-        header="ไอคอนหน้าหัวข้อ"
-        icon={labelIconForModal}
-        open={iconPickerOpen}
-        onClose={() => setIconPickerOpen(false)}
-        handleChange={(ic) => patch({ labelIcon: ic })}
-        darkColor={textColor || "#0d9488"}
-        darkMode={darkMode}
-      />
-      <ServiceIcon
-        header="ไอคอนข้อความสำเร็จ"
-        icon={successIconForModal}
-        open={successIconPickerOpen}
-        onClose={() => setSuccessIconPickerOpen(false)}
-        handleChange={(ic) => patch({ formSuccessIcon: ic })}
-        darkColor={textColor || "#0d9488"}
-        darkMode={darkMode}
-      />
       <Snackbar
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         open={Boolean(presetToast.open)}

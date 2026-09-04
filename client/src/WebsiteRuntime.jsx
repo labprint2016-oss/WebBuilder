@@ -429,6 +429,11 @@ function WebsiteRuntime() {
     return (menuItem) => {
       const type = String(menuItem?.type || "").toLowerCase();
       const target = menuItem?.target === "_blank" ? "_blank" : "_self";
+      if (type === "landing" || type === "landingpage") {
+        const sectionId = String(menuItem?.url || "").trim().replace(/^#/, "");
+        if (!sectionId) return { href: "#", target: "_self", disabled: true };
+        return { href: `#${sectionId}`, target: "_self", disabled: false };
+      }
       const urlValue = normalizeWebsiteUrl(menuItem?.url);
       if (type === "url" || (!type && urlValue)) {
         if (!urlValue) return { href: "#", target, disabled: true };

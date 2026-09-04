@@ -11,6 +11,14 @@ export function applyRangeFillPos(el, min, max) {
   );
 }
 
+export function applyRangeValue(el, value, min, max) {
+  if (!el) return;
+  if (Number.isFinite(Number(min))) el.min = String(min);
+  if (Number.isFinite(Number(max))) el.max = String(max);
+  if (Number.isFinite(Number(value))) el.value = String(value);
+  applyRangeFillPos(el, min, max);
+}
+
 const Range = ({
   min,
   max,
@@ -20,8 +28,11 @@ const Range = ({
   onCommit,
   pos,
   color,
+  name,
+  controlLabel,
   uncontrolled = false,
   inputRef = null,
+  liveValueLabel = false,
 }) => {
   const localRef = useRef(null);
   const draggingRef = useRef(false);
@@ -49,11 +60,41 @@ const Range = ({
 
   useLayoutEffect(() => {
     applyRangeFillPos(localRef.current, min, max);
-  });
+  }, [min, max, value]);
+
+  const updateLiveValueLabel = (input, nextValue) => {
+    if (!liveValueLabel || !input || !Number.isFinite(nextValue)) return;
+    let scope = input.parentElement;
+    for (let depth = 0; scope && depth < 4; depth += 1, scope = scope.parentElement) {
+      const labels = [...scope.querySelectorAll(".tabular-nums")].filter(
+        (label) =>
+          label !== input &&
+          Boolean(
+            label.compareDocumentPosition(input) &
+              Node.DOCUMENT_POSITION_FOLLOWING
+          )
+      );
+      const label = labels.at(-1);
+      if (!label) continue;
+      const previousText = String(label.textContent || "").trim();
+      const decimals =
+        Number(step) > 0 && Number(step) < 1
+          ? Math.max(0, String(step).split(".")[1]?.length || 0)
+          : 0;
+      const formatted = decimals > 0 ? nextValue.toFixed(decimals) : String(Math.round(nextValue));
+      label.textContent = previousText.endsWith("ms")
+        ? `${formatted} ms`
+        : previousText.endsWith("%")
+          ? `${formatted}%`
+          : formatted;
+      return;
+    }
+  };
 
   const change = (e) => {
     draggingRef.current = true;
     applyRangeFillPos(e.currentTarget, min, max);
+    updateLiveValueLabel(e.currentTarget, Number(e.currentTarget.value));
     handleChange?.(e);
   };
   const commit = (e, reason) => {
@@ -88,6 +129,9 @@ const Range = ({
     <input
       ref={assignRef}
       type="range"
+      name={name}
+      data-perf-control={controlLabel || name}
+      aria-label={controlLabel || name}
       min={min}
       max={max}
       {...(uncontrolled ? { defaultValue: value } : { value })}
@@ -96,17 +140,13 @@ const Range = ({
         draggingRef.current = true;
       }}
       onChange={change}
-      onPointerUp={onCommit ? (e) => commit(e, "pointerup") : undefined}
-      onPointerCancel={
-        onCommit ? (e) => commit(e, "pointercancel") : undefined
-      }
-      onMouseUp={onCommit ? (e) => commit(e, "mouseup") : undefined}
-      onTouchEnd={onCommit ? (e) => commit(e, "touchend") : undefined}
-      onTouchCancel={
-        onCommit ? (e) => commit(e, "touchcancel") : undefined
-      }
-      onKeyUp={onCommit ? (e) => commit(e, "keyboard") : undefined}
-      onBlur={onCommit ? (e) => commit(e, "blur") : undefined}
+      onPointerUp={(e) => commit(e, "pointerup")}
+      onPointerCancel={(e) => commit(e, "pointercancel")}
+      onMouseUp={(e) => commit(e, "mouseup")}
+      onTouchEnd={(e) => commit(e, "touchend")}
+      onTouchCancel={(e) => commit(e, "touchcancel")}
+      onKeyUp={(e) => commit(e, "keyboard")}
+      onBlur={(e) => commit(e, "blur")}
       className={THEME_RANGE_INPUT_CLASS}
       style={{
         ["--fill"]: color || "var(--dash-panel-accent, #333333)",

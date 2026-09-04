@@ -19,6 +19,10 @@ const snapshots = new Map();
 const listeners = new Map();
 const scopedLayoutSnapshots = new WeakSet();
 const EMPTY_SNAPSHOT = null;
+export const TOP_BAR_PREVIEW_TYPE = "Top";
+export const TOP_BAR_PREVIEW_ID = "top-bar";
+export const TOP_BAR_NODE_SELECTOR = "[data-builder-topbar='true']";
+export const FOOTER_BAR_NODE_SELECTOR = "[data-builder-footer='true']";
 
 const legacyPerfEnabled =
   typeof window !== "undefined" &&
@@ -297,7 +301,12 @@ export function usePanelPreview(type, id) {
   );
 }
 
-export function startPanelSliderPerf(type, targetId, relatedElementIds = []) {
+export function startPanelSliderPerf(
+  type,
+  targetId,
+  relatedElementIds = [],
+  meta = {}
+) {
   if (!isPerfEnabled()) return null;
   if (activeSliderPerf) {
     finishPanelSliderPerf(
@@ -362,11 +371,14 @@ export function startPanelSliderPerf(type, targetId, relatedElementIds = []) {
     performanceTransactionId: beginBuilderPerformanceTransaction(
       "panel-slider",
       {
-        label: `${String(type || "Panel")} / slider`,
+        label: meta.controlField
+          ? `${String(type || "Panel")} / ${meta.controlField}`
+          : `${String(type || "Panel")} / slider`,
         panelType: type,
         elementType: type,
         elementId: targetId,
         controlKind: "slider",
+        controlField: meta.controlField || "slider",
         relatedElementIds,
       },
       { trackFrames: false }
@@ -677,6 +689,7 @@ export function usePanelSliderPreview({
   const lastPreviewPublishedAtRef = useRef(0);
   const generationRef = useRef(0);
   const gestureIdRef = useRef(null);
+  const controlFieldRef = useRef("");
 
   if (
     !activeRef.current ||
@@ -733,15 +746,19 @@ export function usePanelSliderPreview({
       cancelScheduledClear();
       generationRef.current += 1;
       if (options?.trackPerf !== false) {
-        if (!activeRef.current) {
+        const controlField = String(options.controlField || "");
+        if (!activeRef.current || controlField !== controlFieldRef.current) {
           activeRef.current = true;
+          controlFieldRef.current = controlField;
           gestureIdRef.current = startPanelSliderPerf(
             type,
             normalizedIds[0],
-            collectNestedCanvasElementIds(next)
+            collectNestedCanvasElementIds(next),
+            { controlField }
           );
+        } else {
+          recordPanelSliderInputUpdate(gestureIdRef.current);
         }
-        recordPanelSliderInputUpdate(gestureIdRef.current);
       }
       latestRef.current = next;
       publishPreviewRef.current = options?.publish !== false;
@@ -789,6 +806,7 @@ export function usePanelSliderPreview({
       if (disabled) return false;
       if (!activeRef.current) return false;
       activeRef.current = false;
+      controlFieldRef.current = "";
       const generation = ++generationRef.current;
       const gestureId = gestureIdRef.current;
       stopPanelSliderGestureDiagnostics(gestureId);
@@ -870,6 +888,7 @@ export function usePanelSliderPreview({
         );
         finishPanelSliderPerf("unmount", gestureId);
         gestureIdRef.current = null;
+        controlFieldRef.current = "";
       }
       cancelScheduledClear();
       clearLatest();

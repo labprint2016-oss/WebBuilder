@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { panelGroupButtonSx } from "../panelControlSx";
 import {
   Box,
@@ -29,7 +29,8 @@ import {
 } from "lucide-react";
 import lodash from "lodash";
 import ImageModal from "../imageModal";
-import Range from "../HTML/Range";
+import BaseRange from "../HTML/Range";
+import { usePanelSliderPreview } from "../panelPreviewStore";
 import { swatchSelectedCheckClassName } from "../Layouts/Elements/swatchCheckClass";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import { getTheme } from "../../../Functions/theme";
@@ -358,11 +359,47 @@ const buildDefaultHeroSection = () => ({
 const createDefaultSlides = () => [
   { id: "hero-slide-1", name: "Slide 1", displayMode: "fade", durationSec: 5, layerItems: [] },
 ];
+const Range = (props) => (
+  <BaseRange {...props} uncontrolled liveValueLabel />
+);
 
 function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device = "Desktop" }) {
   const [activeTab, setActiveTab] = useState("settings");
-  const [data, setData] = useState(() => ({ ...buildDefaultHeroSection(), ...(element || {}) }));
-  const [updated, setUpdated] = useState(false);
+  const [data, setDataState] = useState(() => ({ ...buildDefaultHeroSection(), ...(element || {}) }));
+  const [updated, setUpdatedState] = useState(false);
+  const sliderInputActiveRef = useRef(false);
+  const sliderControlFieldRef = useRef("");
+  const dataRef = useRef(data);
+  const updatedRef = useRef(updated);
+  const onUpdateRef = useRef(onUpdate);
+  dataRef.current = data;
+  updatedRef.current = updated;
+  onUpdateRef.current = onUpdate;
+  const { updateSlider, commitSlider } = usePanelSliderPreview({
+    type: "Hero",
+    targetIds: [String(data?.id || "HeroSec-1")],
+    data,
+    setData: setDataState,
+    onCommit: (nextData) => {
+      setDataState(nextData);
+      setUpdatedState(false);
+      onUpdateRef.current?.(lodash.cloneDeep(nextData));
+    },
+  });
+  const setData = (updater) => {
+    if (!sliderInputActiveRef.current) {
+      setDataState(updater);
+      return;
+    }
+    updateSlider(updater, {
+      controlField: sliderControlFieldRef.current || "slider",
+      setData: false,
+    });
+  };
+  const setUpdated = (value) => {
+    if (sliderInputActiveRef.current && value === true) return;
+    setUpdatedState(value);
+  };
   const [backgroundPickerOpen, setBackgroundPickerOpen] = useState(false);
   const [gradientStop, setGradientStop] = useState("start");
   const [theme, setTheme] = useState(null);
@@ -399,7 +436,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
     if (!element) return;
     const merged = { ...buildDefaultHeroSection(), ...element };
     setUpdated(false);
-    setData((prev) => (lodash.isEqual(prev, merged) ? prev : merged));
+    setDataState((prev) => (lodash.isEqual(prev, merged) ? prev : merged));
   }, [element, device]);
 
   useEffect(() => {
@@ -410,9 +447,23 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
 
   useEffect(() => {
     if (!updated) return;
-    onUpdate?.(lodash.cloneDeep(data));
-    setUpdated(false);
-  }, [updated, data, onUpdate]);
+    const timerId = window.setTimeout(() => {
+      const snapshot = lodash.cloneDeep(dataRef.current);
+      startTransition(() => {
+        onUpdateRef.current?.(snapshot);
+      });
+      setUpdated(false);
+    }, 64);
+    return () => window.clearTimeout(timerId);
+  }, [updated, data]);
+
+  useEffect(
+    () => () => {
+      if (!updatedRef.current) return;
+      onUpdateRef.current?.(lodash.cloneDeep(dataRef.current));
+    },
+    []
+  );
 
   const resolveColor = (value) => {
     if (typeof value === "string") return value;
@@ -843,7 +894,35 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
     }, 0);
   };
   return (
-    <aside className="dash-panel sm:block h-full min-h-0 overflow-hidden border-r border-slate-200 dark:border-white/10 w-[400px] flex flex-col">
+    <aside
+      className="dash-panel sm:block h-full min-h-0 overflow-hidden border-r border-slate-200 dark:border-white/10 w-[400px] flex flex-col"
+      onInputCapture={(event) => {
+        if (event.target?.type !== "range") return;
+        sliderInputActiveRef.current = true;
+        sliderControlFieldRef.current =
+          event.target.dataset?.perfControl || event.target.name || "slider";
+      }}
+      onPointerUpCapture={() => {
+        if (!sliderInputActiveRef.current) return;
+        commitSlider("pointerup");
+        sliderInputActiveRef.current = false;
+      }}
+      onPointerCancelCapture={() => {
+        if (!sliderInputActiveRef.current) return;
+        commitSlider("pointercancel");
+        sliderInputActiveRef.current = false;
+      }}
+      onKeyUpCapture={(event) => {
+        if (event.target?.type !== "range" || !sliderInputActiveRef.current) return;
+        commitSlider("keyboard");
+        sliderInputActiveRef.current = false;
+      }}
+      onBlurCapture={(event) => {
+        if (event.target?.type !== "range" || !sliderInputActiveRef.current) return;
+        commitSlider("blur");
+        sliderInputActiveRef.current = false;
+      }}
+    >
       <div className="flex h-full min-h-0 flex-col">
       <div className="dash-panel-header shrink-0 flex items-center justify-between border-b border-slate-200 bg-gray-100 px-6 pt-3 pb-2 dark:border-white/10 dark:bg-slate-800/70">
         <div className="font-semibold tracking-wide">
@@ -909,6 +988,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
             </div>
             <div className="px-[5px] pb-2">
               <Range
+                controlLabel="Hero height"
                 min={400}
                 max={800}
                 value={heroHeight}
@@ -1108,6 +1188,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
             </div>
             <div className="mt-[8px]">
               <Range
+                controlLabel="Slide duration"
                 min={SLIDE_DURATION_MS_MIN}
                 max={SLIDE_DURATION_MS_MAX}
                 step={SLIDE_DURATION_MS_STEP}
@@ -1201,6 +1282,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                 </div>
                 <div className="mt-[8px]">
                   <Range
+                    controlLabel="Bullet size"
                     min={6}
                     max={24}
                     step={1}
@@ -1223,6 +1305,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                 </div>
                 <div className="mt-[8px]">
                   <Range
+                    controlLabel="Bullet bottom offset"
                     min={0}
                     max={80}
                     step={1}
@@ -1262,6 +1345,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
             <Box sx={{ width: "100%", pt: 0.5 }}>
               <div className="px-[5px] pb-2">
                 <Range
+                  controlLabel="Background opacity"
                   min={0}
                   max={255}
                   value={activeSolidOpacity}
@@ -1320,6 +1404,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
               <Box sx={{ width: "100%", pt: 1 }}>
                 <div className="px-[5px] pb-2">
                   <Range
+                    controlLabel="Gradient opacity"
                     min={0}
                     max={255}
                     value={activeGradientOpacity}
@@ -1374,6 +1459,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                 </Typography>
                 <div className="w-full pt-0 pb-[2px] px-[2px]">
                   <Range
+                    controlLabel="Gradient angle"
                     min={0}
                     max={360}
                     step={1}
@@ -1474,6 +1560,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                     <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <Range
+                    controlLabel="Image brightness"
                     min={0}
                     max={200}
                     step={1}
@@ -1500,6 +1587,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                     <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <Range
+                    controlLabel="Image blur"
                     min={0}
                     max={100}
                     step={1}
@@ -1529,6 +1617,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                       <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     </div>
                     <Range
+                      controlLabel="Background position X"
                       min={HERO_BG_FOCUS_MIN}
                       max={HERO_BG_FOCUS_MAX}
                       step={1}
@@ -1558,6 +1647,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                       <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     </div>
                     <Range
+                      controlLabel="Background position Y"
                       min={HERO_BG_FOCUS_MIN}
                       max={HERO_BG_FOCUS_MAX}
                       step={1}
@@ -1599,6 +1689,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                     />
                   </div>
                   <Range
+                    controlLabel="Background zoom"
                     min={HERO_BG_ZOOM_MIN}
                     max={HERO_BG_ZOOM_MAX}
                     step={1}
@@ -1676,6 +1767,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                       <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     </div>
                     <Range
+                      controlLabel="SVG divider height"
                       min={HERO_SVG_DIVIDER_HEIGHT_MIN}
                       max={HERO_SVG_DIVIDER_HEIGHT_MAX}
                       step={1}
@@ -1702,6 +1794,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                       <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     </div>
                     <Range
+                      controlLabel="SVG divider density"
                       min={HERO_SVG_DIVIDER_DENSITY_MIN}
                       max={HERO_SVG_DIVIDER_DENSITY_MAX}
                       step={0.1}
@@ -1731,6 +1824,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                       <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     </div>
                     <Range
+                      controlLabel="SVG divider height"
                       min={HERO_SVG_DIVIDER_HEIGHT_MIN}
                       max={HERO_SVG_DIVIDER_HEIGHT_MAX}
                       step={1}
@@ -1757,6 +1851,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                       <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                     </div>
                     <Range
+                      controlLabel="SVG divider size"
                       min={HERO_SVG_DIVIDER_SIZE_MIN}
                       max={HERO_SVG_DIVIDER_SIZE_MAX}
                       step={0.1}
@@ -2060,6 +2155,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                     <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <Range
+                    controlLabel="Layer animation duration"
                     min={100}
                     max={5000}
                     step={100}
@@ -2105,6 +2201,7 @@ function HeroOffcanvas({ element, updateHero: onUpdate, close, textColor, device
                     <div className="dash-heading-rule min-w-0 flex-1 border-b" />
                   </div>
                   <Range
+                    controlLabel="Layer animation delay"
                     min={0}
                     max={3000}
                     step={100}

@@ -82,6 +82,17 @@ import IconAwsome from "./IconAwsome";
 import ServicePage from "./ServicePage";
 import ServiceSelectPage from "./ServiceSelectPage";
 import { CirclePicker } from "react-color";
+import {
+  TOP_BAR_PREVIEW_ID,
+  TOP_BAR_PREVIEW_TYPE,
+  usePanelPreview,
+} from "./panelPreviewStore";
+import {
+  buildTopBarBackgroundStyle,
+  getSliderLiveTopBar,
+  normalizeTopBarDegree,
+} from "./topBarChromePreview";
+import MenuBarLogo from "./MenuBarLogo";
 
 
 
@@ -145,6 +156,39 @@ const Header = ({
   const normalizeTopBarIcon = (icon) =>
     icon?.name && icon.name !== "fa0" ? icon : { type: "fas", name: "faHouse" };
   useNavigate();
+  const topBarLive = topBarData;
+  const menuBarPreview = usePanelPreview(
+    "Menu",
+    `chrome:Menu:${deviceType}`
+  );
+  const menuBarDesktopLive =
+    deviceType === "Desktop" && menuBarPreview
+      ? menuBarPreview
+      : menuBarDesktop;
+  const menuBarMobileLive =
+    deviceType !== "Desktop" && menuBarPreview
+      ? menuBarPreview
+      : menuBarMobile;
+  const [siteMenuHoverID, setSiteMenuHoverID] = useState(null);
+  const siteMenuHoverCloseTimerRef = useRef(null);
+  const clearSiteMenuHoverCloseTimer = () => {
+    if (siteMenuHoverCloseTimerRef.current) {
+      clearTimeout(siteMenuHoverCloseTimerRef.current);
+      siteMenuHoverCloseTimerRef.current = null;
+    }
+  };
+  const scheduleSiteMenuHoverClose = () => {
+    clearSiteMenuHoverCloseTimer();
+    siteMenuHoverCloseTimerRef.current = setTimeout(() => {
+      setSiteMenuHoverID(null);
+      siteMenuHoverCloseTimerRef.current = null;
+    }, 120);
+  };
+  useEffect(() => {
+    return () => {
+      clearSiteMenuHoverCloseTimer();
+    };
+  }, []);
   const storeBuilderMode = useBuilderContextStore((state) => state.builderMode);
   const builderMode = storeBuilderMode || builderModeProp;
   const [optimisticBuilderMode, setOptimisticBuilderMode] =
@@ -185,8 +229,9 @@ const Header = ({
     bgMenuOpacityGradient:bgoGD_D,
     bgMenuDegree:bgd_D,
   
-    display:dp_D,
-    menuHeight:mh_D,
+    display:dp_D = "right",
+    menuHeight:mh_D = 60,
+    isOverlay:isOverlay_D = false,
   
     logo:l_D,
     logoHeight:lh_D,
@@ -220,7 +265,7 @@ const Header = ({
     subMenuBorderColor:s_bc_D,
     subMenuBorderOpacity:s_bo_D,
     subMenuBorderStyle:s_bs_D,
-  } = menuBarDesktop;
+  } = menuBarDesktopLive || {};
 
   const{
     // Main
@@ -241,8 +286,8 @@ const Header = ({
     iconButtonOpacity:icno_M,
     borderWidth:bw,
 
-    display:dp_M,
-    barHeight:brh_M,
+    display:dp_M = "right",
+    barHeight:brh_M = 56,
   
     logo:l_M,
     logoHeight:lh_M,
@@ -250,7 +295,7 @@ const Header = ({
     isFluidLayout:menuFluidMobile,
   
   
-  } = menuBarMobile;
+  } = menuBarMobileLive || {};
 
   const {
     ableLeft,
@@ -272,13 +317,25 @@ const Header = ({
     radiusText,
     borderTextSize,
     textGroup,
-  }  = topBarData
+  }  = topBarLive
   
 
   const opacity_2_hex = (opcy) => {
-    if (Number.isNaN(opcy)) return "";
-    const hex = opcy.toString(16).toUpperCase().padStart(2, 0);
-    return hex;
+    const n = Number(opcy);
+    if (!Number.isFinite(n)) return "";
+    return Math.max(0, Math.min(255, n))
+      .toString(16)
+      .toUpperCase()
+      .padStart(2, "0");
+  };
+
+  const resolveColorHex = (color, fallback = "#ffffff") => {
+    if (typeof color === "string" && color.trim()) return color;
+    if (color && typeof color === "object") {
+      const hex = theme?.[color.type]?.[color.index];
+      if (typeof hex === "string" && hex.trim()) return hex;
+    }
+    return fallback;
   };
 
   const setColor = (
@@ -288,33 +345,14 @@ const Header = ({
     degree = null
   ) => {
     if (isGradient) {
-      let gradientColor;
-      let color1;
-      let color2;
-      if (typeof color[0] === "string") {
-        color1 = color[0]+ opacity_2_hex(opacity[0])
-        
-      } else {
-        color1 =
-          theme[color[0].type][color[0].index] + opacity_2_hex(opacity[0]);
-      }
-  
-      if (typeof color[1] === "string") {
-        color2 = color[1]+ opacity_2_hex(opacity[1])
-      } else {
-        color2 =
-          theme[color[1].type][color[1].index] + opacity_2_hex(opacity[1]);
-      }
-  
-      gradientColor = `linear-gradient(${degree}deg, ${color1} 0%, ${color2} 100%)`;
-  
-      return gradientColor;
-    } else {
-      if (typeof color === "string") {
-        return color + opacity_2_hex(opacity);
-      }
-      return theme[color.type][color.index] + opacity_2_hex(opacity);
+      const stops = Array.isArray(color) ? color : [];
+      const ops = Array.isArray(opacity) ? opacity : [];
+      const color1 = resolveColorHex(stops[0]) + opacity_2_hex(ops[0]);
+      const color2 = resolveColorHex(stops[1]) + opacity_2_hex(ops[1]);
+      const safeDegree = Number.isFinite(Number(degree)) ? Number(degree) : 0;
+      return `linear-gradient(${safeDegree}deg, ${color1} 0%, ${color2} 100%)`;
     }
+    return resolveColorHex(color) + opacity_2_hex(opacity);
   };
 
   const devices = [
@@ -453,7 +491,16 @@ const Header = ({
   };
 
   const w = deviceType === "Desktop" ? "100%" : deviceType === "Mobile" ? 375 : 768
-  const h = deviceType === "Desktop"?mh_D:brh_M
+  const desktopMenuHeight = Number(mh_D);
+  const mobileBarHeight = Number(brh_M);
+  const h =
+    deviceType === "Desktop"
+      ? Number.isFinite(desktopMenuHeight) && desktopMenuHeight > 0
+        ? desktopMenuHeight
+        : 60
+      : Number.isFinite(mobileBarHeight) && mobileBarHeight > 0
+        ? mobileBarHeight
+        : 56;
 
   const MenuBar = () => {
     const fluidLayoutValue =
@@ -478,49 +525,11 @@ const Header = ({
     const logoHeight = deviceType === "Desktop" ? lh_D:lh_M
 
 
-    const Logo = () => {
-      if(logo){
-        return (
-          <div>
-            <img
-     src={logo}
-     alt="logo"
-     className="object-contain"
-     style={{height:logoHeight}}
-   />
-          </div>
-        );
-      }
-      return (
-        <div>
-          <h1 className="font-semibold text-[25px]">Logo App</h1>
-        </div>
-      );
-    };
-
-    const [hoverID, setHoverID] = useState(null);
-    const hoverCloseTimerRef = useRef(null);
-
-    const clearHoverCloseTimer = () => {
-      if (hoverCloseTimerRef.current) {
-        clearTimeout(hoverCloseTimerRef.current);
-        hoverCloseTimerRef.current = null;
-      }
-    };
-
-    const scheduleHoverClose = () => {
-      clearHoverCloseTimer();
-      hoverCloseTimerRef.current = setTimeout(() => {
-        setHoverID(null);
-        hoverCloseTimerRef.current = null;
-      }, 120);
-    };
-
-    useEffect(() => {
-      return () => {
-        clearHoverCloseTimer();
-      };
-    }, []);
+    const logoNode = (
+      <div style={{ transform: "translateZ(0)" }}>
+        <MenuBarLogo src={logo} height={logoHeight} />
+      </div>
+    );
 
     const SubMenus = ({
       items,
@@ -692,7 +701,7 @@ const Header = ({
             const { id,name,icon } = menu;
 
 
-            const isHover = hoverID === id;
+            const isHover = siteMenuHoverID === id;
             const textColor = isHover
               ? setColor(hover_D, hoverOpct_D)
               : setColor(color_D, opct_D);
@@ -704,11 +713,11 @@ const Header = ({
                 key={menu.id}
                 className="relative h-full flex items-stretch"
                 onMouseEnter={() => {
-                  clearHoverCloseTimer();
-                  setHoverID(id);
+                  clearSiteMenuHoverCloseTimer();
+                  setSiteMenuHoverID(id);
                 }}
                 onMouseLeave={() => {
-                  scheduleHoverClose();
+                  scheduleSiteMenuHoverClose();
                 }}
               >
                 {/* ✅ Hitbox ที่ใหญ่จริง */}
@@ -756,10 +765,10 @@ const Header = ({
                     items={menu.children}
                     setMainHoverID={(n) => {
                       if (n === 1) {
-                        clearHoverCloseTimer();
-                        setHoverID(id);
+                        clearSiteMenuHoverCloseTimer();
+                        setSiteMenuHoverID(id);
                       } else {
-                        scheduleHoverClose();
+                        scheduleSiteMenuHoverClose();
                       }
                     }}
                   />
@@ -790,6 +799,16 @@ const Header = ({
         
 
     const menuBg = bg();
+    const overlayOn =
+      deviceType === "Desktop" && toBoolean(isOverlay_D);
+    const overlayTop = hideTopBarEverywhere
+      ? 0
+      : Number.isFinite(Number(topBarHeight))
+        ? Number(topBarHeight)
+        : 52;
+    const menuPositionClass = overlayOn
+      ? "absolute left-0 right-0 z-[140]"
+      : "relative z-[120]";
     const menuStyle = {
       height: h,
       background: menuBg,
@@ -799,6 +818,7 @@ const Header = ({
       borderBottomWidth: 0,
       borderColor: "transparent",
       boxShadow: "none",
+      ...(overlayOn ? { top: overlayTop } : {}),
     };
 
 
@@ -833,11 +853,13 @@ const Header = ({
     if (dp_D === "center" && deviceType === "Desktop") {
       return (
         <header
-          className={`relative z-[120] flex min-w-0 w-full shrink-0 items-center gap-3 overflow-visible px-3 sm:px-6 backdrop-blur`}
+          data-builder-menu-bar=""
+          className={`${menuPositionClass} flex min-w-0 w-full shrink-0 items-center gap-3 overflow-visible px-3 sm:px-6 backdrop-blur`}
           style={menuStyle}
           onClick={() => open("Menu")}
         >
           <div
+            data-builder-menu-inner=""
             className={`${menuInnerBaseClass} grid items-stretch`}
             style={{
               gridTemplateColumns: "1fr auto 1fr",
@@ -849,7 +871,7 @@ const Header = ({
             </div>
 
             <div className="justify-self-center h-full flex items-center">
-              <Logo />
+              {logoNode}
             </div>
 
             <div className="justify-self-start h-full flex items-stretch">
@@ -860,15 +882,16 @@ const Header = ({
       );
     }
 
-    if (dp_D === "right" && deviceType === "Desktop") {
+    if (deviceType === "Desktop") {
     return (
       <header
-        className="relative z-[120] flex min-w-0 w-full shrink-0 items-center gap-3 overflow-visible px-3 sm:px-6 backdrop-blur"
+        data-builder-menu-bar=""
+        className={`${menuPositionClass} flex min-w-0 w-full shrink-0 items-center gap-3 overflow-visible px-3 sm:px-6 backdrop-blur`}
         style={menuStyle}
         onClick={() => open("Menu")}
       >
-        <div className={`${menuInnerBaseClass} flex items-center justify-between`}>
-          <Logo />
+        <div data-builder-menu-inner="" className={`${menuInnerBaseClass} flex items-center justify-between`}>
+          {logoNode}
 
           <Menus items={menus} />
         </div>
@@ -885,7 +908,7 @@ const Header = ({
        onClick={() => open("Menu")}
      >
        <div className={`${menuInnerBaseClass} flex items-center justify-between`}>
-         <Logo />
+         {logoNode}
 
         <MenuButton/>
        </div>
@@ -906,7 +929,7 @@ const Header = ({
 
        <MenuButton/>
 
-         <Logo />
+         {logoNode}
 
 
        </div>
@@ -917,6 +940,32 @@ const Header = ({
   };
 
   const TopBar = ()=>{
+    const topBarPreview = usePanelPreview(
+      TOP_BAR_PREVIEW_TYPE,
+      TOP_BAR_PREVIEW_ID
+    );
+    const liveTopBar = topBarPreview || getSliderLiveTopBar() || topBarLive;
+    const {
+      ableLeft,
+      hideTopBarEverywhere = false,
+      tabletTopBarMode = "social",
+      topBarHeight,
+      isFluidLayout: topBarFluidLayout,
+      isGradient,
+      bgColor,
+      bgOpacity,
+      bgColorGradient,
+      bgOpacityGradient,
+      bgDegree: bgDegreeRaw,
+      borderSize,
+      radius,
+      iconGroup,
+      ableRight,
+      radiusText,
+      borderTextSize,
+      textGroup,
+    } = liveTopBar;
+    const bgDegree = normalizeTopBarDegree(bgDegreeRaw);
     if (hideTopBarEverywhere) return null;
     const isTopBarFluidLayout = toBoolean(topBarFluidLayout);
     const topBarInnerBaseClass = isTopBarFluidLayout
@@ -929,6 +978,7 @@ const Header = ({
       isGradient,
       bgDegree
     )
+    const topBarBgStyle = buildTopBarBackgroundStyle(isGradient, bg);
 
 
     const IconGroup = ()=>{
@@ -952,6 +1002,8 @@ const Header = ({
             onClick={(e) => {
               if (!url) e.preventDefault();
             }}
+            data-builder-topbar-chip="social"
+            data-builder-topbar-index={i}
             className="flex items-center justify-center"
             style={{
               width: borderSize,
@@ -988,7 +1040,11 @@ const Header = ({
               className="h-full shrink-0 flex items-center text-[10px]"
               key={i}
             >
-              <div className="size-[26px] bg-white rounded-full flex items-center justify-center"     style={{
+              <div
+              data-builder-topbar-chip="text"
+              data-builder-topbar-index={i}
+              className="size-[26px] bg-white rounded-full flex items-center justify-center"
+              style={{
               width: borderTextSize,
               height: borderTextSize,
               background: setColor(bgColor, bgOpacity),
@@ -997,7 +1053,12 @@ const Header = ({
             }}>
                 <IconAwsome iconType={safeIcon.type} iconName={safeIcon.name} style={{color:setColor(iconColor,iconOpacity),fontSize:iconSize}}/>
               </div>
-              <div className="ml-2 whitespace-nowrap" style={{color:setColor(textColor,textOpacity),fontSize:textSize}}>{text}</div>
+              <div
+                data-builder-topbar-text="true"
+                data-builder-topbar-index={i}
+                className="ml-2 whitespace-nowrap"
+                style={{color:setColor(textColor,textOpacity),fontSize:textSize}}
+              >{text}</div>
             </div>
           )
         }
@@ -1012,7 +1073,8 @@ const Header = ({
       return(
         <div className="flex w-full min-w-0 justify-center overflow-x-hidden">
            <header
-      className="flex min-w-0 w-full max-w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6   backdrop-blur dark:bg-gray-900/70 " style={{width:w,maxWidth:"100%",height:topBarHeight,background:bg}}
+      data-builder-topbar="true"
+      className="flex min-w-0 w-full max-w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6   backdrop-blur " style={{width:w,maxWidth:"100%",height:topBarHeight,...topBarBgStyle}}
     >
       <div className={`${topBarInnerBaseClass} flex items-center justify-center`}>
       {mode === "text" ? <TextGroup/> : <IconGroup/>}
@@ -1027,7 +1089,8 @@ const Header = ({
       return(
         <div className="flex w-full min-w-0 justify-center overflow-x-hidden">
            <header
-      className="flex min-w-0 w-full max-w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6   backdrop-blur dark:bg-gray-900/70 " style={{width:w,maxWidth:"100%",height:topBarHeight,background:bg}}
+      data-builder-topbar="true"
+      className="flex min-w-0 w-full max-w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6   backdrop-blur " style={{width:w,maxWidth:"100%",height:topBarHeight,...topBarBgStyle}}
       onClick={() => open("Top")}
     >
       <div className={`${topBarInnerBaseClass} flex items-center ${mode === "text" ? "justify-start overflow-hidden" : "justify-center"}`}>
@@ -1045,7 +1108,8 @@ const Header = ({
     }
     return(
       <header
-      className="flex h-[32px] min-w-0 w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6 backdrop-blur dark:bg-gray-900/70 " style={{height:topBarHeight,background:bg}}
+      data-builder-topbar="true"
+      className="flex h-[32px] min-w-0 w-full shrink-0 items-center gap-3 overflow-x-hidden px-3 sm:px-6 backdrop-blur " style={{height:topBarHeight,...topBarBgStyle}}
       onClick={() => open("Top")}
     >
       <div className={`${topBarInnerBaseClass} flex items-center justify-between`}>
@@ -1824,7 +1888,7 @@ const Header = ({
       {option === "Menu" && deviceType === "Desktop" && activeMenuPresetId && (
         <div className="relative z-[120]" style={{cursor:"pointer"}} id="header-bar">
           <TopBar/>
-          <MenuBar />
+          {MenuBar()}
         </div>
       )}
       {openCreateMenuModal && (

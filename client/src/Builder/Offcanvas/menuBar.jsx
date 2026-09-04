@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { memo, startTransition, useEffect, useLayoutEffect, useMemo, useState, useRef } from "react";
 import { getTheme } from "../../../Functions/theme";
 import TextField from "@mui/material/TextField";
 import { panelGroupButtonSx } from "../panelControlSx";
@@ -26,7 +26,7 @@ import {
   ButtonGroup
 } from "@mui/material";
 import ImageModal from "../imageModal";
-import { TabContext, TabPanel } from "@mui/lab";
+import { TabContext } from "@mui/lab";
 import lodash, { isNull } from "lodash";
 import { Minus, Plus, Check, Palette, ImageOff, Trash2,Image, Home} from "lucide-react";
 import Popper from "@mui/material/Popper";
@@ -42,6 +42,11 @@ import ServiceIcon from "../ServiceIcon";
 import IconAwsome from "../IconAwsome";
 import SelectLine from "../HTML/SelectLine";
 import ServiceColor from "../Services/ServiceColor";
+import {
+  applyMenuFluidLayoutDirectly,
+  applyMenuOverlayDirectly,
+} from "../menuBarChromePreview";
+import { usePanelSliderPreview } from "../panelPreviewStore";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "../themePanelBasicColors";
 import {
   ensurePageCatalogLoaded,
@@ -111,6 +116,37 @@ const CHIP_BG_DARK_HOVER = "rgba(30, 41, 59, 1)";
 
 const layoutGroupButtonSx = panelGroupButtonSx;
 
+const KeepMountedTab = memo(function KeepMountedTab({ value, activeValue, eager = false, children }) {
+  const active = activeValue === value;
+  const [mounted, setMounted] = useState(eager);
+  useLayoutEffect(() => {
+    if (!active || mounted) return undefined;
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setMounted(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [active, mounted]);
+  if (!mounted) return null;
+  return (
+    <div
+      hidden={!active}
+      className="px-6 pb-6"
+      style={{ display: active ? "block" : "none" }}
+    >
+      {typeof children === "function" ? children() : children}
+    </div>
+  );
+}, (prev, next) => {
+  const wasActive = prev.activeValue === prev.value;
+  const isActive = next.activeValue === next.value;
+  if (wasActive || isActive) return false;
+  return prev.value === next.value && prev.eager === next.eager;
+});
+
 const layoutGroupRootSx = {
   width: "100%",
   boxShadow: "none",
@@ -147,6 +183,113 @@ const MENU_BAR_DISPLAY_LAYOUT_OPTIONS = [
   { value: false, label: "ความกว้างมาตรฐาน" },
 ];
 
+const AntSwitch = styled(Switch)(({ theme }) => ({
+  width: 28,
+  height: 16,
+  padding: 0,
+  display: "flex",
+  "&:active": {
+    "& .MuiSwitch-thumb": {
+      width: 15,
+    },
+    "& .MuiSwitch-switchBase.Mui-checked": {
+      transform: "translateX(9px)",
+    },
+  },
+  "& .MuiSwitch-switchBase": {
+    padding: 2,
+    "&.Mui-checked": {
+      transform: "translateX(12px)",
+      color: "#fff",
+      "& + .MuiSwitch-track": {
+        opacity: 1,
+        backgroundColor: "var(--dash-panel-switch-on, #333333)",
+      },
+    },
+  },
+  "& .MuiSwitch-thumb": {
+    boxShadow: "0 2px 4px 0 rgb(0 35 11 / 20%)",
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    transition: theme.transitions.create(["width"], {
+      duration: 200,
+    }),
+  },
+  "& .MuiSwitch-track": {
+    borderRadius: 16 / 2,
+    opacity: 1,
+    backgroundColor: "rgba(0,0,0,.25)",
+    boxSizing: "border-box",
+    ".dark &": { backgroundColor: "rgba(255,255,255,.25)" },
+  },
+}));
+
+function CycledServiceColor({
+  options,
+  theme,
+  rangeColor,
+  darkMode,
+  resolveColor,
+  onColor,
+  onOpacity,
+  onCommit,
+  renderExtra,
+  controlName,
+}) {
+  const [index, setIndex] = useState(0);
+  const valueRef = useRef(null);
+  const indexRef = useRef(0);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
+  const len = Array.isArray(options) ? options.length : 0;
+  const safeIndex = len ? Math.min(index, len - 1) : 0;
+  const selected = len ? options[safeIndex] : null;
+
+  const cycle = (step) => {
+    const list = optionsRef.current;
+    const total = list?.length || 1;
+    const next = (indexRef.current + step + total) % total;
+    indexRef.current = next;
+    const label = list?.[next]?.label;
+    if (valueRef.current && label) valueRef.current.textContent = label;
+    requestAnimationFrame(() => {
+      setIndex(next);
+    });
+  };
+
+  if (!selected) return null;
+  const color = resolveColor
+    ? resolveColor(selected)
+    : selected.data ?? selected.color;
+  const name = controlName || "สี";
+
+  return (
+    <>
+      <SelectLine
+        prev={() => cycle(-1)}
+        next={() => cycle(1)}
+        value={selected.label}
+        valueRef={valueRef}
+        prevControl={`ก่อนหน้า ${name}`}
+        nextControl={`ถัดไป ${name}`}
+      />
+      <ServiceColor
+        theme={theme}
+        color={color}
+        opacity={selected.opacity}
+        handleColor={(value) => onColor?.(selected, value)}
+        handleOpacity={(event) => onOpacity?.(selected, event)}
+        onCommit={(_, reason) => onCommit?.(reason)}
+        rangeColor={rangeColor}
+        darkMode={darkMode}
+      />
+      {renderExtra?.(selected)}
+    </>
+  );
+}
+
 const toBoolean = (value) => {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value === 1;
@@ -157,6 +300,118 @@ const toBoolean = (value) => {
   return false;
 };
 
+function FluidLayoutButtons({ value, onPersist, textColor }) {
+  const [fluid, setFluid] = useState(() => toBoolean(value));
+  const fluidRef = useRef(toBoolean(value));
+  const persistRef = useRef(onPersist);
+  const skipSyncRef = useRef(false);
+  persistRef.current = onPersist;
+
+  useEffect(() => {
+    if (skipSyncRef.current) {
+      skipSyncRef.current = false;
+      return;
+    }
+    const next = toBoolean(value);
+    fluidRef.current = next;
+    setFluid(next);
+  }, [value]);
+
+  const apply = (next) => {
+    if (fluidRef.current === next) return;
+    skipSyncRef.current = true;
+    fluidRef.current = next;
+    setFluid(next);
+    applyMenuFluidLayoutDirectly(next);
+    requestAnimationFrame(() => persistRef.current?.(next));
+  };
+
+  return (
+    <ButtonGroup
+      fullWidth
+      variant="outlined"
+      disableElevation
+      color="inherit"
+      aria-label="รูปแบบการแสดงผล"
+      sx={layoutGroupRootSx}
+    >
+      {MENU_BAR_DISPLAY_LAYOUT_OPTIONS.map((opt) => {
+        const selected = opt.value === fluid;
+        return (
+          <Button
+            key={String(opt.value)}
+            color="inherit"
+            data-perf-control={opt.label}
+            aria-label={opt.label}
+            onClick={() => apply(opt.value)}
+            sx={layoutGroupButtonSx(selected, textColor)}
+          >
+            {opt.label}
+          </Button>
+        );
+      })}
+    </ButtonGroup>
+  );
+}
+
+function OverlaySwitch({ checked, topOffset = 0, onPersist }) {
+  const [on, setOn] = useState(() => toBoolean(checked));
+  const onRef = useRef(toBoolean(checked));
+  const persistRef = useRef(onPersist);
+  const skipCheckedSyncRef = useRef(false);
+  persistRef.current = onPersist;
+
+  useEffect(() => {
+    if (skipCheckedSyncRef.current) {
+      skipCheckedSyncRef.current = false;
+      return;
+    }
+    const next = toBoolean(checked);
+    onRef.current = next;
+    setOn(next);
+  }, [checked]);
+
+  return (
+    <span data-perf-control="Overlay">
+      <AntSwitch
+        inputProps={{
+          "aria-label": "Overlay",
+          "data-perf-control": "Overlay",
+        }}
+        checked={on}
+        onChange={() => {
+          const next = !onRef.current;
+          onRef.current = next;
+          skipCheckedSyncRef.current = true;
+          setOn(next);
+          applyMenuOverlayDirectly(next, topOffset);
+          requestAnimationFrame(() => {
+            persistRef.current?.(next);
+          });
+        }}
+      />
+    </span>
+  );
+}
+
+
+const selectOptionValue = (item) =>
+  item && typeof item === "object"
+    ? (item.value ?? item._id ?? item.pageName ?? "")
+    : item;
+
+const safeSelectValue = (value, array = []) => {
+  const optionValues = array.map(selectOptionValue);
+  if (
+    value !== undefined &&
+    value !== null &&
+    value !== "" &&
+    optionValues.some((option) => String(option) === String(value))
+  ) {
+    return optionValues.find((option) => String(option) === String(value));
+  }
+  return optionValues[0] ?? "";
+};
 
 const SelectInput = ({ name, value, handChange, array,darkMode,fontSize=13 }) => {
   const textColor = darkMode === "dark"?"#ffffff":"#050505"
@@ -190,7 +445,7 @@ const SelectInput = ({ name, value, handChange, array,darkMode,fontSize=13 }) =>
     >
       <Select
         name={name}
-        value={value}
+        value={safeSelectValue(value, array)}
         onChange={handChange}
         input={<OutlinedInput notched={false} />} // ✅ ปิด notch ให้ขอบไม่แหว่ง
         
@@ -222,10 +477,7 @@ const SelectInput = ({ name, value, handChange, array,darkMode,fontSize=13 }) =>
       }
       >
         {array.map((a,i) => {
-          const itemValue =
-            a && typeof a === "object"
-              ? (a.value ?? a._id ?? a.pageName ?? "")
-              : a;
+          const itemValue = selectOptionValue(a);
           const itemLabel =
             a && typeof a === "object"
               ? (a.label ?? a.pageName ?? String(itemValue))
@@ -254,12 +506,13 @@ const SelectInput = ({ name, value, handChange, array,darkMode,fontSize=13 }) =>
   );
 };
 
-const Range = ({ name, value, min, max, step, handleChange,darkTextColor,darkMode, index = null }) => {
-  const [newValue, setNewValue] = useState(value);
+const Range = ({ name, value, min, max, step, handleChange, onCommit, darkTextColor,darkMode, index = null }) => {
+  const safeValue = Number.isFinite(Number(value)) ? Number(value) : min;
+  const [newValue, setNewValue] = useState(safeValue);
 
   useEffect(() => {
-    setNewValue(value);
-  }, [value]);
+    setNewValue(Number.isFinite(Number(value)) ? Number(value) : min);
+  }, [min, value]);
 
   let pos = ((newValue - min) / (max - min)) * 100;
 
@@ -267,15 +520,24 @@ const Range = ({ name, value, min, max, step, handleChange,darkTextColor,darkMod
     <div className="pb-[2px] px-[5px]">
       <input
         type="range"
+        name={name}
+        aria-label={name}
+        data-perf-control={name}
         min={min}
         max={max}
-        value={newValue}
+        value={Number.isFinite(Number(newValue)) ? newValue : min}
         step={step}
         onChange={(e) => {
           const v = Number(e.target.value);
           setNewValue(v);
           handleChange?.(name, v, index); // ✅ อัปเดตทันที
         }}
+        onPointerUp={() => onCommit?.("pointerup")}
+        onPointerCancel={() => onCommit?.("pointercancel")}
+        onTouchEnd={() => onCommit?.("touchend")}
+        onTouchCancel={() => onCommit?.("touchcancel")}
+        onKeyUp={() => onCommit?.("keyboard")}
+        onBlur={() => onCommit?.("blur")}
         className={`
           w-full cursor-pointer appearance-none h-2 rounded-full
           bg-zinc-200
@@ -306,26 +568,54 @@ const Range = ({ name, value, min, max, step, handleChange,darkTextColor,darkMod
   );
 };
 
-const NumberInput = ({ value, field, handChange, plus, minus }) => {
+const NumberInput = ({ value, field, handChange, plus, minus, label = "ค่า" }) => {
+  const inputRef = useRef(null);
+  const skipSyncRef = useRef(false);
+  const [localValue, setLocalValue] = useState(value ?? "");
+
+  useEffect(() => {
+    if (skipSyncRef.current) {
+      skipSyncRef.current = false;
+      return;
+    }
+    setLocalValue(value ?? "");
+  }, [value]);
+
+  const commitStep = (updater) => {
+    const current = Number(inputRef.current?.value ?? localValue);
+    const next = typeof updater === "function" ? updater(current) : updater;
+    skipSyncRef.current = true;
+    setLocalValue(next);
+    if (inputRef.current) inputRef.current.value = String(next ?? "");
+    requestAnimationFrame(() => handChange(field, next));
+  };
+
   return (
     <div className="relative w-auto rounded-md border border-[#e2e8f0] dark:border-white/10 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 flex items-center justify-center w-[160px] mb-[5px] h-[35px]">
       <div className="absolute pr-2 -left-px">
         <button
+          type="button"
           className="bg-transparent flex items-center justify-center rounded-md"
-          onClick={() => handChange(field, minus)}
+          aria-label={`ลด${label}`}
+          data-perf-control={`ลด${label}`}
+          onClick={() => commitStep(minus)}
         >
           <Minus className="size-3 m-[10px] text-dark dark:text-white" />
         </button>
       </div>
       <input
+        ref={inputRef}
         className="text-dark dark:text-white bg-transparent w-full text-center text-[14px] outline-none focus:outline-none focus:ring-0 focus-visible:outline-none appearance-none"
-        value={value ?? ""}
+        value={localValue ?? ""}
         onChange={(e) => handChange(field, e.target.value)}
       />
       <div className="absolute pr-2 -right-px">
         <button
+          type="button"
           className=" bg-transparent flex items-center justify-center rounded-md"
-          onClick={() => handChange(field, plus)}
+          aria-label={`เพิ่ม${label}`}
+          data-perf-control={`เพิ่ม${label}`}
+          onClick={() => commitStep(plus)}
         >
           <Plus className="size-3 m-[10px] text-dark dark:text-white" />
         </button>
@@ -496,51 +786,19 @@ const MenuBarOffcanvas = ({
   updateTopBar,
   updateMenuBar: onUpdate,
   close,
-  textColor,darkMode,darkTextColor,device
+  textColor,darkMode,darkTextColor,device,
+  panel,
+  onReady,
 }) => {
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  useLayoutEffect(() => {
+    onReadyRef.current?.();
+  }, [panel]);
 
-  const AntSwitch = styled(Switch)(({ theme }) => ({
-    width: 28,
-    height: 16,
-    padding: 0,
-    display: "flex",
-    "&:active": {
-      "& .MuiSwitch-thumb": {
-        width: 15,
-      },
-      "& .MuiSwitch-switchBase.Mui-checked": {
-        transform: "translateX(9px)",
-      },
-    },
-    "& .MuiSwitch-switchBase": {
-      padding: 2,
-      "&.Mui-checked": {
-        transform: "translateX(12px)",
-
-        color: "#fff",
-        "& + .MuiSwitch-track": {
-          opacity: 1,
-          backgroundColor: textColor,
-        },
-      },
-    },
-    "& .MuiSwitch-thumb": {
-      boxShadow: "0 2px 4px 0 rgb(0 35 11 / 20%)",
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      transition: theme.transitions.create(["width"], {
-        duration: 200,
-      }),
-    },
-    "& .MuiSwitch-track": {
-      borderRadius: 16 / 2,
-      opacity: 1,
-      backgroundColor: "rgba(0,0,0,.25)",
-      boxSizing: "border-box",
-      ".dark &": { backgroundColor: "rgba(255,255,255,.25)" },
-    },
-  }));
+  const skipNextDesktopSyncRef = useRef(false);
+  const skipNextMobileSyncRef = useRef(false);
+  const skipNextNavSyncRef = useRef(false);
 
   const pageCatalog = usePageCatalog()
   const pages = useMemo(
@@ -612,23 +870,18 @@ const MenuBarOffcanvas = ({
   const [updated, setUpdated] = useState(false);
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
+  const dataDesktopRef = useRef(dataDesktop);
+  dataDesktopRef.current = dataDesktop;
   const navBottomRef = useRef(navBottom);
   navBottomRef.current = navBottom;
   const menuBarMobileRef = useRef(menuBarMobile);
   menuBarMobileRef.current = menuBarMobile;
   const [menu,setMenu] = useState("Main")
-  const [menuMainColorIndexDesktop, setMenuMainColorIndexDesktop] = useState(0);
-  const [menuMainColorIndexMobile, setMenuMainColorIndexMobile] = useState(0);
-  const [buttonColorIndexMobile, setButtonColorIndexMobile] = useState(0);
-  const [subMenuColorIndexDesktop, setSubMenuColorIndexDesktop] = useState(0);
-  const [subMenuColorIndexMobile, setSubMenuColorIndexMobile] = useState(0);
-  const [navMenuStyleIndexMobile, setNavMenuStyleIndexMobile] = useState(0);
-  
 
   const{
     // Main
-    menuFontSize:fs_D,
-    menuFontWeight:fw_D,
+    menuFontSize:fs_D = 15,
+    menuFontWeight:fw_D = 400,
   
     menuColor:color_D,
     menuColorOpacity:opct_D,
@@ -657,8 +910,8 @@ const MenuBarOffcanvas = ({
     isOverlay:isOverlay_D = false,
   
     // Sub
-    subMenuFontSize:s_fs_D,
-    subMenuFontWeight:s_fw_D,
+    subMenuFontSize:s_fs_D = 12,
+    subMenuFontWeight:s_fw_D = 400,
   
     subMenuColor:s_color_D,
     subMenuColorOpacity:s_opct_D,
@@ -680,8 +933,8 @@ const MenuBarOffcanvas = ({
 
   const{
     // Main
-    menuFontSize:fs_M,
-    menuFontWeight:fw_M,
+    menuFontSize:fs_M = 14,
+    menuFontWeight:fw_M = 600,
   
     menuColor:color_M,
     menuColorOpacity:opct_M,
@@ -715,8 +968,8 @@ const MenuBarOffcanvas = ({
     dividerOpacity:dvo_M,
   
     // Sub
-    subMenuFontSize:s_fs_M,
-    subMenuFontWeight:s_fw_M,
+    subMenuFontSize:s_fs_M = 12,
+    subMenuFontWeight:s_fw_M = 400,
   
     subMenuColor:s_color_M,
     subMenuColorOpacity:s_opct_M,
@@ -894,27 +1147,6 @@ const MenuBarOffcanvas = ({
     },
   ];
 
-  const selectedMenuColorDesktop =
-    menuColors[menuMainColorIndexDesktop] ?? menuColors[0];
-  const selectedMenuColorMobile =
-    menuColorsMobile[menuMainColorIndexMobile] ?? menuColorsMobile[0];
-
-  const cycleMenuMainColorDesktop = (step) => {
-    closePopper();
-    setMenuMainColorIndexDesktop((prev) => {
-      const len = menuColors.length || 1;
-      return (prev + step + len) % len;
-    });
-  };
-
-  const cycleMenuMainColorMobile = (step) => {
-    closePopper();
-    setMenuMainColorIndexMobile((prev) => {
-      const len = menuColorsMobile.length || 1;
-      return (prev + step + len) % len;
-    });
-  };
-
   const buttonColorsMobile = [
     {
       label: "สีไอคอน",
@@ -945,15 +1177,6 @@ const MenuBarOffcanvas = ({
       opacityField: "bgMenuBarOpacity",
     },
   ];
-  const selectedButtonColorMobile =
-    buttonColorsMobile[buttonColorIndexMobile] ?? buttonColorsMobile[0];
-  const cycleButtonColorMobile = (step) => {
-    closePopper();
-    setButtonColorIndexMobile((prev) => {
-      const len = buttonColorsMobile.length || 1;
-      return (prev + step + len) % len;
-    });
-  };
   const subMenuColors = [
     {
       label: "สีข้อความ",
@@ -1032,16 +1255,6 @@ const MenuBarOffcanvas = ({
       setAnchorEl: setAnchorElSubGradient,
     },
   ];
-  const selectedSubMenuColorDesktop =
-    subMenuColors[subMenuColorIndexDesktop] ?? subMenuColors[0];
-  const cycleSubMenuColorDesktop = (step) => {
-    closePopper();
-    setSubMenuColorIndexDesktop((prev) => {
-      const len = subMenuColors.length || 1;
-      return (prev + step + len) % len;
-    });
-  };
-
   const subMenuColorsMobile = [
     {
       label: "สีข้อความ",
@@ -1076,16 +1289,6 @@ const MenuBarOffcanvas = ({
       setAnchorEl:setAnchorElActive,
     },
   ];
-  const selectedSubMenuColorMobile =
-    subMenuColorsMobile[subMenuColorIndexMobile] ?? subMenuColorsMobile[0];
-  const cycleSubMenuColorMobile = (step) => {
-    closePopper();
-    setSubMenuColorIndexMobile((prev) => {
-      const len = subMenuColorsMobile.length || 1;
-      return (prev + step + len) % len;
-    });
-  };
-
   const getThemeColorToken = (value, fallbackType = "mainColor") => {
     if (value && typeof value === "object") {
       const type = typeof value.type === "string" ? value.type : fallbackType;
@@ -1270,15 +1473,6 @@ const MenuBarOffcanvas = ({
       sizeValue: nls_M,
     },
   ];
-  const selectedNavMenuStyle =
-    navMenuStyleOptions[navMenuStyleIndexMobile] ?? navMenuStyleOptions[0];
-  const cycleNavMenuStyle = (step) => {
-    setNavMenuStyleIndexMobile((prev) => {
-      const len = navMenuStyleOptions.length || 1;
-      return (prev + step + len) % len;
-    });
-  };
-
   const dividerStyles = [
     { label: "เส้นตรง", value: "solid" },
     { label: "จุด", value: "dotted" },
@@ -1368,15 +1562,43 @@ const MenuBarOffcanvas = ({
  
 
  const setData = device === "Desktop"?setDataDesktop:menu === "Nav"?setDataNavBottom:setDataMobile
+ const isNavSliderPanel = device !== "Desktop" && menu === "Nav";
+ const sliderPanelType = isNavSliderPanel ? "Nav" : "Menu";
+ const sliderData =
+   device === "Desktop"
+     ? dataDesktop
+     : isNavSliderPanel
+       ? dataNavBottom
+       : dataMobile;
+ const sliderActiveRef = useRef(false);
+ const { updateSlider, commitSlider } = usePanelSliderPreview({
+   type: sliderPanelType,
+   targetIds: `chrome:${sliderPanelType}:${device}`,
+   data: sliderData,
+   setData,
+   onCommit: (latest) => {
+     setData(latest);
+     if (device === "Desktop") skipNextDesktopSyncRef.current = true;
+     else if (isNavSliderPanel) skipNextNavSyncRef.current = true;
+     else skipNextMobileSyncRef.current = true;
+     onUpdateRef.current(latest, isNavSliderPanel);
+   },
+ });
 
-  const changeMenuBarDisplayLayout = (value) => {
-    setData((prev) => ({ ...prev, isFluidLayout: toBoolean(value) }));
-    setUpdated(true);
+  const persistDesktopOverlay = (next) => {
+    skipNextDesktopSyncRef.current = true;
+    onUpdateRef.current({
+      ...(dataDesktopRef.current || {}),
+      isOverlay: next,
+    });
   };
 
-  const changeDesktopOverlay = () => {
-    setDataDesktop((prev) => ({ ...prev, isOverlay: !toBoolean(prev?.isOverlay) }));
-    setUpdated(true);
+  const persistDesktopFluidLayout = (next) => {
+    skipNextDesktopSyncRef.current = true;
+    onUpdateRef.current({
+      ...(dataDesktopRef.current || {}),
+      isFluidLayout: next,
+    });
   };
 
   const minusFontSize = (value) => {
@@ -1407,34 +1629,41 @@ const MenuBarOffcanvas = ({
     setUpdated(true);
   };
   const handleSelect = (value, field, index = null) => {
-    if (!isNull(index)) {
+    startTransition(() => {
       setData((prev) => {
-        const bgc = prev[field];
-        bgc[index] = value;
-        return { ...prev, [field]: bgc };
+        if (isNull(index)) return { ...prev, [field]: value };
+        const nextValues = Array.isArray(prev?.[field])
+          ? [...prev[field]]
+          : [];
+        nextValues[index] = value;
+        return { ...prev, [field]: nextValues };
       });
-    } else {
-      setData((prev) => {
-        return { ...prev, [field]: value };
-      });
-    }
-    setUpdated(true);
+      setUpdated(true);
+    });
   };
 
-  const handleRange = (field, value, index = null) => {
-    if (!isNull(index)) {
-      setData((prev) => {
-        const opct = prev[field];
-        opct[index] = value;
-        return { ...prev, [field]: opct };
-      });
-    } else {
-      setData((prev) => {
-        return { ...prev, [field]: value };
-      });
-    }
-
-    setUpdated(true);
+  const handleRange = (field, value, index = null, extraPatch = null) => {
+    sliderActiveRef.current = true;
+    updateSlider(
+      (prev) => {
+        const patch =
+          extraPatch && typeof extraPatch === "object" ? extraPatch : {};
+        if (isNull(index)) return { ...prev, ...patch, [field]: value };
+        const nextValues = Array.isArray(prev?.[field])
+          ? [...prev[field]]
+          : [];
+        nextValues[index] = value;
+        return { ...prev, ...patch, [field]: nextValues };
+      },
+      {
+        controlField: isNull(index) ? field : `${field}[${index}]`,
+        setData: false,
+      }
+    );
+  };
+  const handleRangeCommit = (reason) => {
+    sliderActiveRef.current = false;
+    commitSlider(reason || "range-commit");
   };
 
   const changeDisplay = (value,field) => {
@@ -1493,16 +1722,31 @@ const MenuBarOffcanvas = ({
 
 
   useEffect(() => {
-    if (updated) {
-      const clonedData = {...dataDesktop};
-      for (const key in clonedData) {
-        if (clonedData[key] === "") {
-          clonedData[key] = 0;
-        }
+    if (!updated) return;
+    if (sliderActiveRef.current) return;
+
+    const persistNav = device !== "Desktop" && menu === "Nav";
+    const source =
+      device === "Desktop"
+        ? dataDesktop
+        : persistNav
+          ? dataNavBottom
+          : dataMobile;
+    if (!source || typeof source !== "object") return;
+
+    const clonedData = { ...source };
+    for (const key of Object.keys(clonedData)) {
+      if (clonedData[key] !== "") continue;
+      if (/display|logo|color|style|font|icon|text|name|url|src|type|design/i.test(key)) {
+        continue;
       }
-      onUpdateRef.current(clonedData);
+      clonedData[key] = 0;
     }
-  }, [dataDesktop, updated]);
+    if (device === "Desktop") skipNextDesktopSyncRef.current = true;
+    else if (persistNav) skipNextNavSyncRef.current = true;
+    else skipNextMobileSyncRef.current = true;
+    onUpdateRef.current(clonedData, persistNav);
+  }, [dataDesktop, dataMobile, dataNavBottom, updated, device, menu]);
 
   useEffect(() => {
     if (dataDesktop?.isMenuGradient) {
@@ -1528,42 +1772,32 @@ const MenuBarOffcanvas = ({
     }
 },[device, menu])
 
-
   useEffect(() => {
-    if (updated) {
-      const clonedData = {...dataMobile};
-      for (const key in clonedData) {
-        if (clonedData[key] === "") {
-          clonedData[key] = 0;
-        }
-      }
-      onUpdateRef.current(clonedData);
+    if (skipNextDesktopSyncRef.current) {
+      skipNextDesktopSyncRef.current = false;
+      setUpdated(false);
+      return;
     }
-  }, [dataMobile, updated]);
-
-  useEffect(() => {
-    if (updated) {
-      const clonedData = {...dataNavBottom};
-      for (const key in clonedData) {
-        if (clonedData[key] === "") {
-          clonedData[key] = 0;
-        }
-      }
-      onUpdateRef.current(clonedData,true);
-    }
-  }, [dataNavBottom, updated]);
-
-  useEffect(() => {
     setDataDesktop(lodash.cloneDeep(menuBarDesktop));
     setUpdated(false);
   }, [menuBarDesktop]);
 
   useEffect(() => {
+    if (skipNextMobileSyncRef.current) {
+      skipNextMobileSyncRef.current = false;
+      setUpdated(false);
+      return;
+    }
     setDataMobile(lodash.cloneDeep(menuBarMobile));
     setUpdated(false);
   }, [menuBarMobile]);
 
   useEffect(() => {
+    if (skipNextNavSyncRef.current) {
+      skipNextNavSyncRef.current = false;
+      setUpdated(false);
+      return;
+    }
     setDataNavBottom(lodash.cloneDeep(navBottom));
     setUpdated(false);
   }, [navBottom]);
@@ -1640,8 +1874,11 @@ const MenuBarOffcanvas = ({
           ตั้งค่า Menu Bar
         </div>
         <button
+          type="button"
           className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-white/70"
           onClick={() => close(null)}
+          aria-label="ปิดแผง"
+          data-perf-control="ปิดแผง"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -1678,14 +1915,15 @@ const MenuBarOffcanvas = ({
                       <Button
                         key={value}
                         color="inherit"
+                        data-perf-control={`ส่วนตั้งค่า ${lable}`}
                         onClick={() => {
-                          setMenu(value);
-                          if (value === "Nav") {
-                            close("Nav");
-                          } else {
-                            close("Menu");
-                          }
-                          closePopper();
+                          if (selected) return;
+                          const nextPanel = value === "Nav" ? "Nav" : "Menu";
+                          startTransition(() => {
+                            setMenu(value);
+                            if (panel !== nextPanel) close(nextPanel);
+                            closePopper();
+                          });
                         }}
                         sx={{
                           ...layoutGroupButtonSx(selected, darkTextColor),
@@ -1703,7 +1941,8 @@ const MenuBarOffcanvas = ({
          
             {device === "Desktop" && (
               <>
-                <TabPanel value="Main" sx={{marginTop:-3}}>
+                <KeepMountedTab value="Main" activeValue={menu} eager>
+          {() => (<>
           <div >
       {/* Display */}
       {l_D ? (
@@ -1730,6 +1969,7 @@ const MenuBarOffcanvas = ({
                 max={60}
                 step={1}
                 handleChange={handleRange}
+                onCommit={handleRangeCommit}
               />
             </div>
         </div>
@@ -1749,11 +1989,16 @@ const MenuBarOffcanvas = ({
           Top Bar
         </span>
         <div className="dash-heading-rule min-w-0 flex-1 border-b" />
+        <span data-perf-control="Top Bar">
         <AntSwitch
-          inputProps={{ "aria-label": "toggle top bar section" }}
+          inputProps={{
+            "aria-label": "Top Bar",
+            "data-perf-control": "Top Bar",
+          }}
           checked={showTopBarEverywhere}
           onChange={changeHideTopBarEverywhere}
         />
+        </span>
         <Typography sx={{ fontSize: 13, color: darkMode === "dark" ? "#94a3b8" : "#9ca3af" }}>
           เปิด
         </Typography>
@@ -1764,28 +2009,11 @@ const MenuBarOffcanvas = ({
         </span>
         <div className="dash-heading-rule min-w-0 flex-1 border-b" />
       </div>
-      <ButtonGroup
-        fullWidth
-        variant="outlined"
-        disableElevation
-        color="inherit"
-        aria-label="รูปแบบการแสดงผล"
-        sx={layoutGroupRootSx}
-      >
-        {MENU_BAR_DISPLAY_LAYOUT_OPTIONS.map((opt) => {
-          const selected = opt.value === toBoolean(dataDesktop?.isFluidLayout);
-          return (
-            <Button
-              key={String(opt.value)}
-              color="inherit"
-              onClick={() => changeMenuBarDisplayLayout(opt.value)}
-              sx={layoutGroupButtonSx(selected, textColor)}
-            >
-              {opt.label}
-            </Button>
-          );
-        })}
-      </ButtonGroup>
+      <FluidLayoutButtons
+        value={dataDesktop?.isFluidLayout}
+        onPersist={persistDesktopFluidLayout}
+        textColor={textColor}
+      />
       <div className="grid grid-cols-2">
         <div className="col col-span-2">
           <div className="mb-3 mt-4 flex items-center gap-2">
@@ -1793,10 +2021,16 @@ const MenuBarOffcanvas = ({
               การจัดวาง
             </span>
             <div className="dash-heading-rule min-w-0 flex-1 border-b" />
-            <AntSwitch
-              inputProps={{ "aria-label": "toggle menu overlay hero" }}
-              checked={toBoolean(isOverlay_D)}
-              onChange={changeDesktopOverlay}
+            <OverlaySwitch
+              checked={isOverlay_D}
+              topOffset={
+                topBar?.hideTopBarEverywhere
+                  ? 0
+                  : Number.isFinite(Number(topBar?.topBarHeight))
+                    ? Number(topBar.topBarHeight)
+                    : 52
+              }
+              onPersist={persistDesktopOverlay}
             />
             <Typography sx={{ fontSize: 13, color: darkMode === "dark" ? "#94a3b8" : "#9ca3af" }}>
               Overlay
@@ -1809,10 +2043,12 @@ const MenuBarOffcanvas = ({
             className="col col-span-1 text-black dark:text-white"
           >
             <FormControlLabel
+              data-perf-control={item.label || "การจัดวาง"}
               control={
                 <Radio
                   checked={item.value === item.data}
                   onChange={() => changeDisplay(item.value,"display")}
+                  inputProps={{ "data-perf-control": item.label || "การจัดวาง" }}
                   sx={() => {
                     return {
                       // ยังไม่ติ๊ก = สีตามโหมด
@@ -1881,20 +2117,18 @@ const MenuBarOffcanvas = ({
         })}
       </div>
 
-      {selectedMenuColorDesktop && (
+      {menuColors.length > 0 && (
         <div className="mb-[8px]">
           <MainLabel label="สีข้อความ - สีพื้นหลัง" />
-          <SelectLine
-            prev={() => cycleMenuMainColorDesktop(-1)}
-            next={() => cycleMenuMainColorDesktop(1)}
-            value={selectedMenuColorDesktop.label}
-          />
-          <ServiceColor
+          <CycledServiceColor
+            options={menuColors}
             theme={theme}
-            color={selectedMenuColorDesktop.data}
-            opacity={selectedMenuColorDesktop.opacity}
-            handleColor={(value) => {
-              if (selectedMenuColorDesktop.field === "bgMenuColor") {
+            rangeColor={textColor || "#0d9488"}
+            darkMode={darkMode}
+            controlName="สีเมนูหลัก"
+            onCommit={handleRangeCommit}
+            onColor={(option, value) => {
+              if (option.field === "bgMenuColor") {
                 setDataDesktop((prev) => ({
                   ...prev,
                   isMenuGradient: false,
@@ -1903,38 +2137,31 @@ const MenuBarOffcanvas = ({
                 setUpdated(true);
                 return;
               }
-              handleSelect(value, selectedMenuColorDesktop.field);
+              handleSelect(value, option.field);
             }}
-            handleOpacity={(e) =>
-              {
-                if (selectedMenuColorDesktop.opacityField === "bgMenuOpacity") {
-                  setDataDesktop((prev) => ({
-                    ...prev,
-                    isMenuGradient: false,
-                    bgMenuOpacity: Number(e.target.value),
-                  }));
-                  setUpdated(true);
-                  return;
-                }
+            onOpacity={(option, e) => {
+              if (option.opacityField === "bgMenuOpacity") {
                 handleRange(
-                  selectedMenuColorDesktop.opacityField,
-                  Number(e.target.value)
+                  "bgMenuOpacity",
+                  Number(e.target.value),
+                  null,
+                  { isMenuGradient: false }
                 );
+                return;
               }
-            }
-            rangeColor={textColor || "#0d9488"}
-            darkMode={darkMode}
+              handleRange(option.opacityField, Number(e.target.value));
+            }}
           />
         </div>
       )}
 
-      <div className="grid grid-cols-2">
+      <div className="grid grid-cols-1">
         {rangeValue.map((item, i) => {
           const { data, label, name, min, max, step } = item;
           const isInlineMenuValue =
             label === "ระยะห่างเมนู" || label === "ความสูงเมนู";
           return (
-            <div className={`col col-span-1 ml-[5px] mr-[5px]`} key={i}>
+            <div className="col-span-1" key={i}>
               <MainLabel
                 label={label}
                 value={data}
@@ -1954,6 +2181,7 @@ const MenuBarOffcanvas = ({
                 max={max}
                 step={step}
                 handleChange={handleRange}
+                onCommit={handleRangeCommit}
               />
             </div>
           );
@@ -1972,6 +2200,7 @@ const MenuBarOffcanvas = ({
             handleOpacity={(e) =>
               handleRange("dividerOpacity", Number(e.target.value))
             }
+            onCommit={(_, reason) => handleRangeCommit(reason)}
             rangeColor={textColor || "#0d9488"}
             darkMode={darkMode}
           />
@@ -1993,6 +2222,8 @@ const MenuBarOffcanvas = ({
                     <Button
                       key={opt.value}
                       color="inherit"
+                      data-perf-control={opt.label}
+                      aria-label={opt.label}
                       onClick={() => handleSelect(opt.value, "dividerStyle")}
                       sx={layoutGroupButtonSx(selected, textColor)}
                     >
@@ -2016,9 +2247,11 @@ const MenuBarOffcanvas = ({
         </>
       )}
     </div>
-          </TabPanel>
+          </>)}
+          </KeepMountedTab>
 
-          <TabPanel value="Sub" sx={{marginTop:-3}}>
+          <KeepMountedTab value="Sub" activeValue={menu}>
+          {() => (<>
           
       {/* FontSizes */}
       <div className="grid grid-cols-2">
@@ -2063,20 +2296,18 @@ const MenuBarOffcanvas = ({
         })}
       </div>
 
-      {selectedSubMenuColorDesktop && (
+      {subMenuColors.length > 0 && (
         <div className="mb-[8px]">
           <MainLabel label="สีข้อความ - สีพื้นหลัง" />
-          <SelectLine
-            prev={() => cycleSubMenuColorDesktop(-1)}
-            next={() => cycleSubMenuColorDesktop(1)}
-            value={selectedSubMenuColorDesktop.label}
-          />
-          <ServiceColor
+          <CycledServiceColor
+            options={subMenuColors}
             theme={theme}
-            color={selectedSubMenuColorDesktop.data}
-            opacity={selectedSubMenuColorDesktop.opacity}
-            handleColor={(value) => {
-              if (selectedSubMenuColorDesktop.field === "bgSubMenuColor") {
+            rangeColor={textColor || "#0d9488"}
+            darkMode={darkMode}
+            controlName="สีเมนูย่อย"
+            onCommit={handleRangeCommit}
+            onColor={(option, value) => {
+              if (option.field === "bgSubMenuColor") {
                 setDataDesktop((prev) => ({
                   ...prev,
                   isSubMenuGradient: false,
@@ -2085,25 +2316,20 @@ const MenuBarOffcanvas = ({
                 setUpdated(true);
                 return;
               }
-              handleSelect(value, selectedSubMenuColorDesktop.field);
+              handleSelect(value, option.field);
             }}
-            handleOpacity={(e) => {
-              if (selectedSubMenuColorDesktop.opacityField === "bgSubMenuOpacity") {
-                setDataDesktop((prev) => ({
-                  ...prev,
-                  isSubMenuGradient: false,
-                  bgSubMenuOpacity: Number(e.target.value),
-                }));
-                setUpdated(true);
+            onOpacity={(option, e) => {
+              if (option.opacityField === "bgSubMenuOpacity") {
+                handleRange(
+                  "bgSubMenuOpacity",
+                  Number(e.target.value),
+                  null,
+                  { isSubMenuGradient: false }
+                );
                 return;
               }
-              handleRange(
-                selectedSubMenuColorDesktop.opacityField,
-                Number(e.target.value)
-              );
+              handleRange(option.opacityField, Number(e.target.value));
             }}
-            rangeColor={textColor || "#0d9488"}
-            darkMode={darkMode}
           />
         </div>
       )}
@@ -2121,6 +2347,7 @@ const MenuBarOffcanvas = ({
                     handleOpacity={(e) =>
                       handleRange("subMenuBorderOpacity", Number(e.target.value))
                     }
+                    onCommit={(_, reason) => handleRangeCommit(reason)}
                     rangeColor={textColor || "#0d9488"}
                     darkMode={darkMode}
                   />
@@ -2141,6 +2368,8 @@ const MenuBarOffcanvas = ({
                     <Button
                       key={opt.value}
                       color="inherit"
+                      data-perf-control={opt.label}
+                      aria-label={opt.label}
                       onClick={() => handleSelect(opt.value, "subMenuBorderStyle")}
                       sx={layoutGroupButtonSx(selected, textColor)}
                     >
@@ -2152,13 +2381,15 @@ const MenuBarOffcanvas = ({
               </div>
              </div>
    
-          </TabPanel>
+          </>)}
+          </KeepMountedTab>
               </>
             )}
 
 {["Mobile","Tablet"].includes(device) && (
               <>
-                <TabPanel value="Main" sx={{marginTop:-3}}>
+                <KeepMountedTab value="Main" activeValue={menu} eager>
+          {() => (<>
           <div >
       {/* Display */}
       {l_M ? (
@@ -2185,6 +2416,7 @@ const MenuBarOffcanvas = ({
                 max={60}
                 step={1}
                 handleChange={handleRange}
+                onCommit={handleRangeCommit}
               />
             </div>
         </div>
@@ -2209,10 +2441,12 @@ const MenuBarOffcanvas = ({
             className="col col-span-1 text-black dark:text-white"
           >
             <FormControlLabel
+              data-perf-control={item.label || "การจัดวาง"}
               control={
                 <Radio
                   checked={item.value === item.data}
                   onChange={() => changeDisplay(item.value,"display")}
+                  inputProps={{ "data-perf-control": item.label || "การจัดวาง" }}
                   sx={() => {
                     return {
                       // ยังไม่ติ๊ก = สีตามโหมด
@@ -2239,20 +2473,18 @@ const MenuBarOffcanvas = ({
         ))}
       </div>
   
-      {selectedButtonColorMobile && (
+      {buttonColorsMobile.length > 0 && (
         <div className="mb-[25px]">
           <MainLabel label="สีไอคอน - ปุ่ม - สีกรอบ ปุ่มเมนู" />
-          <SelectLine
-            prev={() => cycleButtonColorMobile(-1)}
-            next={() => cycleButtonColorMobile(1)}
-            value={selectedButtonColorMobile.label}
-          />
-          <ServiceColor
+          <CycledServiceColor
+            options={buttonColorsMobile}
             theme={theme}
-            color={selectedButtonColorMobile.data}
-            opacity={selectedButtonColorMobile.opacity}
-            handleColor={(value) => {
-              if (selectedButtonColorMobile.field === "bgMenuBarColor") {
+            rangeColor={textColor || "#0d9488"}
+            darkMode={darkMode}
+            controlName="สีปุ่มเมนู"
+            onCommit={handleRangeCommit}
+            onColor={(option, value) => {
+              if (option.field === "bgMenuBarColor") {
                 setData((prev) => ({
                   ...prev,
                   isMenuBarGradient: false,
@@ -2261,45 +2493,38 @@ const MenuBarOffcanvas = ({
                 setUpdated(true);
                 return;
               }
-              handleSelect(value, selectedButtonColorMobile.field);
+              handleSelect(value, option.field);
             }}
-            handleOpacity={(e) => {
-              if (selectedButtonColorMobile.opacityField === "bgMenuBarOpacity") {
-                setData((prev) => ({
-                  ...prev,
-                  isMenuBarGradient: false,
-                  bgMenuBarOpacity: Number(e.target.value),
-                }));
-                setUpdated(true);
+            onOpacity={(option, e) => {
+              if (option.opacityField === "bgMenuBarOpacity") {
+                handleRange(
+                  "bgMenuBarOpacity",
+                  Number(e.target.value),
+                  null,
+                  { isMenuBarGradient: false }
+                );
                 return;
               }
-              handleRange(
-                selectedButtonColorMobile.opacityField,
-                Number(e.target.value)
-              );
+              handleRange(option.opacityField, Number(e.target.value));
             }}
-            rangeColor={textColor || "#0d9488"}
-            darkMode={darkMode}
+            renderExtra={(option) =>
+              option.field !== "bgMenuBarColor" ? (
+                <div className="mt-2 ml-[5px] mr-[5px]">
+                  <MainLabel label="ความหนากรอบ" spacingClass="mt-2 mb-3" />
+                  <NumberInput
+                    plus={plusFontSize}
+                    minus={minusFontSize}
+                    value={bw}
+                    field="borderWidth"
+                    handChange={handleFontSize}
+                  />
+                </div>
+              ) : null
+            }
           />
         </div>
       )}
-      <div className="grid grid-cols-2">
-        {selectedButtonColorMobile?.field !== "bgMenuBarColor" && (
-          <div className="col col-span-1 ml-[5px] mr-[5px]">
-            <MainLabel label="ความหนากรอบ" spacingClass="-mt-4 mb-3" />
-            <NumberInput
-              plus={plusFontSize}
-              minus={minusFontSize}
-              value={bw}
-              field="borderWidth"
-              handChange={handleFontSize}
-            />
-          </div>
-        )}
-      </div>
-      <div
-        className={`${selectedButtonColorMobile?.field !== "bgMenuBarColor" ? "-mt-[4px]" : "-mt-[30px]"} grid grid-cols-2`}
-      >
+      <div className="-mt-[4px] grid grid-cols-2">
         {rangeValueMobile.map((item, i) => {
           const { data, label, name, min, max, step } = item;
           const isInlineMenuValue =
@@ -2327,6 +2552,7 @@ const MenuBarOffcanvas = ({
                 max={max}
                 step={step}
                 handleChange={handleRange}
+                onCommit={handleRangeCommit}
               />
             </div>
           );
@@ -2375,52 +2601,45 @@ const MenuBarOffcanvas = ({
         })}
       </div>
 
-      {selectedMenuColorMobile && (
+      {menuColorsMobile.length > 0 && (
         <div className="mb-[25px]">
           <MainLabel label="สีข้อความ - สีพื้นหลัง" />
-          <SelectLine
-            prev={() => cycleMenuMainColorMobile(-1)}
-            next={() => cycleMenuMainColorMobile(1)}
-            value={selectedMenuColorMobile.label}
-          />
-          <ServiceColor
+          <CycledServiceColor
+            options={menuColorsMobile}
             theme={theme}
-            color={selectedMenuColorMobile.data}
-            opacity={selectedMenuColorMobile.opacity}
-            handleColor={(value) => {
-              handleSelect(value, selectedMenuColorMobile.field);
-            }}
-            handleOpacity={(e) =>
-              {
-                handleRange(
-                  selectedMenuColorMobile.opacityField,
-                  Number(e.target.value)
-                );
-              }
-            }
             rangeColor={textColor || "#0d9488"}
             darkMode={darkMode}
+            controlName="สีเมนูมือถือ"
+            onCommit={handleRangeCommit}
+            onColor={(option, value) => handleSelect(value, option.field)}
+            onOpacity={(option, e) =>
+              handleRange(option.opacityField, Number(e.target.value))
+            }
+            renderExtra={(option) =>
+              option.field === "dividerColor" ? (
+                <div className="mt-5 ml-[5px] mr-[5px]">
+                  <SelectInput
+                    name="dividerStyle"
+                    value={dvs_M}
+                    handChange={(e) =>
+                      handleSelect(e.target.value, e.target.name)
+                    }
+                    array={dividerStyles}
+                    darkMode={darkMode}
+                  />
+                </div>
+              ) : null
+            }
           />
-          {selectedMenuColorMobile.field === "dividerColor" && (
-            <div className="mt-5 ml-[5px] mr-[5px]">
-              <SelectInput
-                name="dividerStyle"
-                value={dvs_M}
-                handChange={(e) =>
-                  handleSelect(e.target.value, e.target.name)
-                }
-                array={dividerStyles}
-                darkMode={darkMode}
-              />
-            </div>
-          )}
         </div>
       )}
 
     </div>
-          </TabPanel>
+          </>)}
+          </KeepMountedTab>
 
-          <TabPanel value="Sub" sx={{marginTop:-3}}>
+          <KeepMountedTab value="Sub" activeValue={menu}>
+          {() => (<>
           
       {/* FontSizes */}
       <div className="grid grid-cols-2">
@@ -2465,72 +2684,36 @@ const MenuBarOffcanvas = ({
         })}
       </div>
 
-      {device === "Tablet" ? (
-        selectedSubMenuColorMobile && (
+      {subMenuColorsMobile.length > 0 && (
           <div className="mb-[8px]">
             <MainLabel label="สีข้อความ - สีข้อความ Active" />
-            <SelectLine
-              prev={() => cycleSubMenuColorMobile(-1)}
-              next={() => cycleSubMenuColorMobile(1)}
-              value={selectedSubMenuColorMobile.label}
-            />
-            <ServiceColor
-            theme={theme}
-              color={selectedSubMenuColorMobile.data}
-              opacity={selectedSubMenuColorMobile.opacity}
-              handleColor={(value) => {
-                handleSelect(value, selectedSubMenuColorMobile.field);
-              }}
-              handleOpacity={(e) => {
-                handleRange(
-                  selectedSubMenuColorMobile.opacityField,
-                  Number(e.target.value)
-                );
-              }}
+            <CycledServiceColor
+              options={subMenuColorsMobile}
+              theme={theme}
               rangeColor={textColor || "#0d9488"}
               darkMode={darkMode}
+              controlName="สีเมนูย่อยมือถือ"
+              onCommit={handleRangeCommit}
+              resolveColor={
+                device === "Tablet"
+                  ? undefined
+                  : (option) => getThemeColorToken(option.data, "mainColor")
+              }
+              onColor={(option, value) => handleSelect(value, option.field)}
+              onOpacity={(option, e) =>
+                handleRange(option.opacityField, Number(e.target.value))
+              }
             />
           </div>
-        )
-      ) : (
-        selectedSubMenuColorMobile && (() => {
-          const selectedField = selectedSubMenuColorMobile.field;
-          const selectedOpacity = selectedSubMenuColorMobile.opacity;
-          const selectedOpacityField = selectedSubMenuColorMobile.opacityField;
-          const selectedToken = getThemeColorToken(
-            selectedSubMenuColorMobile.data,
-            "mainColor"
-          );
-
-          return (
-            <div className="mb-[8px]">
-              <MainLabel label="สีข้อความ - สีข้อความ Active" />
-              <SelectLine
-                prev={() => cycleSubMenuColorMobile(-1)}
-                next={() => cycleSubMenuColorMobile(1)}
-                value={selectedSubMenuColorMobile.label}
-              />
-              <ServiceColor
-            theme={theme}
-                color={selectedToken}
-                opacity={selectedOpacity}
-                handleColor={(value) => handleSelect(value, selectedField)}
-                handleOpacity={(e) =>
-                  handleRange(selectedOpacityField, Number(e.target.value))
-                }
-                rangeColor={textColor || "#0d9488"}
-                darkMode={darkMode}
-              />
-            </div>
-          );
-        })()
       )}
 
      
    
-          </TabPanel>
+          </>)}
+          </KeepMountedTab>
           {["Tablet", "Mobile"].includes(device) && (
-          <TabPanel value="Top" sx={{marginTop:-3}}>
+          <KeepMountedTab value="Top" activeValue={menu}>
+            {() => (<>
             <div className="mt-4 ml-[5px] mr-[5px]">
               <div className="mb-3 flex items-center gap-2">
                 <span className="dash-panel-label shrink-0 text-[13px] font-semibold">
@@ -2556,6 +2739,8 @@ const MenuBarOffcanvas = ({
                     <Button
                       key={opt.value}
                       color="inherit"
+                      data-perf-control={opt.label}
+                      aria-label={opt.label}
                       onClick={() => changeTabletTopBarMode(opt.value)}
                       sx={layoutGroupButtonSx(selected, textColor)}
                     >
@@ -2565,26 +2750,31 @@ const MenuBarOffcanvas = ({
                 })}
               </ButtonGroup>
             </div>
-          </TabPanel>
+            </>)}
+          </KeepMountedTab>
           )}
           {device === "Mobile" && (
-          <TabPanel value="Nav" sx={{marginTop:"0px"}}>
+          <KeepMountedTab value="Nav" activeValue={menu}>
+          {() => (<>
           
           {/* FontSizes */}
     
     
 
-          <Stack direction="row" spacng={1} sx={{ alignItems: "center",marginBottom:"15px" }}>
+          <Stack direction="row" spacng={1} sx={{ alignItems: "center",marginBottom:"15px" }} data-perf-control="เปิดใช้งานแถบนำทาง">
             <AntSwitch
-              inputProps={{ "aria-label": "ant design" }}
+              inputProps={{
+                "aria-label": "เปิดใช้งานแถบนำทาง",
+                "data-perf-control": "เปิดใช้งานแถบนำทาง",
+              }}
               checked={isAnav_M}
               onChange={() => {
-                setUpdated(true)
-                setData(prev=>{
-                  const next = {...prev}
-                  next.isAbleNavBottom = !next.isAbleNavBottom
-                  return next
-                })
+                  setUpdated(true)
+                  setData(prev=>{
+                    const next = {...prev}
+                    next.isAbleNavBottom = !next.isAbleNavBottom
+                    return next
+                  })
                }}
             />
             <Typography sx={{ fontSize: 13,ml:2 }}>เปิดใช้งาน</Typography>
@@ -2597,10 +2787,12 @@ const MenuBarOffcanvas = ({
             className="col col-span-1 text-black dark:text-white"
           >
             <FormControlLabel
+              data-perf-control={item.label || "การจัดวาง"}
               control={
                 <Radio
                   checked={item.value === item.data}
                   onChange={() => changeDisplay(item.value,"navBottomDisplay")}
+                  inputProps={{ "data-perf-control": item.label || "การจัดวาง" }}
                   sx={() => {
                     return {
                       // ยังไม่ติ๊ก = สีตามโหมด
@@ -2753,6 +2945,8 @@ const MenuBarOffcanvas = ({
             <Button
               key={opt.value}
               color="inherit"
+              data-perf-control={opt.label}
+              aria-label={opt.label}
               onClick={() => changeDisplay(opt.value, "navBottomDesign")}
               sx={layoutGroupButtonSx(selected, textColor)}
             >
@@ -2765,50 +2959,45 @@ const MenuBarOffcanvas = ({
       </>
       )}
 
-      {selectedNavMenuStyle && (
+      {navMenuStyleOptions.length > 0 && (
         <div className="mb-[18px]">
           <MainLabel label="สีพื้นหลังเมนู - สีไอคอน - สีข้อความ" />
-          <SelectLine
-            prev={() => cycleNavMenuStyle(-1)}
-            next={() => cycleNavMenuStyle(1)}
-            value={selectedNavMenuStyle.label}
-          />
-          <ServiceColor
+          <CycledServiceColor
+            options={navMenuStyleOptions}
             theme={theme}
-            color={selectedNavMenuStyle.color}
-            opacity={selectedNavMenuStyle.opacity}
-            handleColor={(value) => handleSelect(value, selectedNavMenuStyle.field)}
-            handleOpacity={(e) =>
-              handleRange(
-                selectedNavMenuStyle.opacityField,
-                Number(e.target.value)
-              )
-            }
             rangeColor={textColor || "#0d9488"}
             darkMode={darkMode}
+            controlName="สีแถบนำทาง"
+            onCommit={handleRangeCommit}
+            onColor={(option, value) => handleSelect(value, option.field)}
+            onOpacity={(option, e) =>
+              handleRange(option.opacityField, Number(e.target.value))
+            }
+            renderExtra={(option) =>
+              option.sizeField ? (
+                <div className="mt-1 grid grid-cols-12">
+                  <div className="col-span-12 ml-[5px] mr-[5px]">
+                    <MainLabel label={option.sizeLabel} spacingClass="mt-2 mb-1" />
+                  </div>
+                  <div className="col-span-6 mt-2 ml-[5px] mr-[5px]">
+                    <NumberInput
+                      plus={plusFontSize}
+                      minus={minusFontSize}
+                      value={option.sizeValue}
+                      field={option.sizeField}
+                      handChange={handleFontSize}
+                    />
+                  </div>
+                </div>
+              ) : null
+            }
           />
-          {selectedNavMenuStyle.sizeField && (
-            <div className="mt-1 grid grid-cols-12">
-              <div className="col-span-12 ml-[5px] mr-[5px]">
-                <MainLabel label={selectedNavMenuStyle.sizeLabel} spacingClass="mt-2 mb-1" />
-              </div>
-              <div className="col-span-6 mt-2 ml-[5px] mr-[5px]">
-                <NumberInput
-                  plus={plusFontSize}
-                  minus={minusFontSize}
-                  value={selectedNavMenuStyle.sizeValue}
-                  field={selectedNavMenuStyle.sizeField}
-                  handChange={handleFontSize}
-                />
-              </div>
-            </div>
-          )}
         </div>
       )}
 
 
 
-<div className={`${selectedNavMenuStyle?.sizeField ? "-mt-6" : "-mt-4"} grid grid-cols-2`}>
+<div className="-mt-4 grid grid-cols-2">
         {rangeValueNavMobile
           .filter((item) => (navd_M === "menu" ? true : item.name !== "navSpace"))
           .map((item, i) => {
@@ -2836,6 +3025,7 @@ const MenuBarOffcanvas = ({
                 max={max}
                 step={step}
                 handleChange={handleRange}
+                onCommit={handleRangeCommit}
               />
             </div>
           );
@@ -2860,6 +3050,7 @@ const MenuBarOffcanvas = ({
             handleOpacity={(e) =>
               handleRange("navDividerOpacity", Number(e.target.value))
             }
+            onCommit={(_, reason) => handleRangeCommit(reason)}
             rangeColor={textColor || "#0d9488"}
             darkMode={darkMode}
             compact
@@ -2888,7 +3079,8 @@ const MenuBarOffcanvas = ({
     
         
        
-              </TabPanel>
+          </>)}
+              </KeepMountedTab>
           )}
               </>
             )}
@@ -2967,20 +3159,19 @@ const MenuBarOffcanvas = ({
         const onSwitch = ()=>{
           setUpdated(true)
           setData(prev=>{
-            closePopper()
             if (label === "เส้นคั่น") {
               if(menu === "Nav"){
                 return { ...prev, navDivider: !prev.navDivider };
               }else if(menu === "Main"){
                 return { ...prev, divider: !prev.divider };
               }
-              
             }else if(label === "สีพื้นหลังบาร์") {
               return { ...prev, isMenuBarGradient: !prev.isMenuBarGradient };
             }
             else if(label === "สีพื้นหลังเมนูย่อย") {
               return { ...prev, isSubMenuGradient: !prev.isSubMenuGradient};
             }
+            return prev;
           })
         }
   
@@ -3000,13 +3191,18 @@ const MenuBarOffcanvas = ({
         <div className={`dash-heading-rule border-b ${w}`}></div>
         {colorSwitch && (
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+            <span data-perf-control={label}>
             <AntSwitch
-              inputProps={{ "aria-label": "ant design" }}
+              inputProps={{
+                "aria-label": typography() || label,
+                "data-perf-control": label,
+              }}
               checked={checked()}
               onChange={() => {
                 onSwitch()
               }}
             />
+            </span>
             <Typography sx={{ fontSize: 13 }}>{typography()}</Typography>
           </Stack>
         )}

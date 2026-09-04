@@ -14,11 +14,20 @@ import {
 } from "lucide-react";
 import {
   deleteFormResponse,
+  deleteFormResponses,
   getFormResponses,
   updateFormResponse,
 } from "../../Functions/forms";
+import { BuilderPerformanceTrigger } from "./performance/BuilderPerformanceMonitor";
+import {
+  beginBuilderPerformanceTransaction,
+  finishBuilderPerformanceTransactionAfterPaint,
+  recordBuilderCanvasCommit,
+  recordBuilderPanelControlEvent,
+} from "./performance/builderPerformanceStore";
 
 const FORMS_MENU_BAR_ID = "69db17211be82fe7637ea096";
+const MESSAGES_PAGE_SIZE = 20;
 
 const notifyMessagesChanged = () => {
   if (typeof window === "undefined") return;
@@ -198,6 +207,75 @@ const normalizeMessage = (row) => {
   };
 };
 
+const MessageListRow = React.memo(function MessageListRow({
+  message,
+  active,
+  checked,
+  onToggleChecked,
+  onOpen,
+  onToggleStarred,
+}) {
+  return (
+    <div
+      className="flex h-[64px] w-full shrink-0 items-center gap-2 border-b px-3 transition"
+      style={{
+        borderColor: C.border,
+        background: active
+          ? C.activeSoft
+          : checked
+            ? C.activeSofter
+            : message.read
+              ? "transparent"
+              : C.unreadRow,
+      }}
+    >
+      <ThemeCheckbox
+        checked={checked}
+        ariaLabel={`เลือก ${message.title}`}
+        onChange={(nextChecked) => onToggleChecked(message.id, nextChecked)}
+      />
+      <button
+        type="button"
+        aria-label={`เปิดข้อความ ${message.title}`}
+        onClick={() => onOpen(message)}
+        className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+      >
+        <span
+          className={`min-w-0 truncate text-[13px] ${
+            message.read ? "font-medium" : "font-semibold"
+          }`}
+          style={{ color: C.heading }}
+        >
+          {message.title}
+        </span>
+        <span
+          className="shrink-0 text-[11px] tabular-nums"
+          style={{ color: C.textMuted }}
+        >
+          {formatMessageTime(message.createdAt)}
+        </span>
+      </button>
+      <button
+        type="button"
+        title={message.starred ? "เอาดาวออก" : "ติดดาว"}
+        aria-label={message.starred ? "เอาดาวออก" : "ติดดาว"}
+        aria-pressed={message.starred}
+        onClick={(event) => onToggleStarred(message, event)}
+        className="inline-flex h-9 w-8 shrink-0 items-center justify-center rounded-md transition hover:opacity-80"
+      >
+        <Star
+          size={16}
+          strokeWidth={message.starred ? 0 : 2}
+          fill={message.starred ? C.active : "none"}
+          style={{
+            color: message.starred ? C.active : C.starIdle,
+          }}
+        />
+      </button>
+    </div>
+  );
+});
+
 /** Modal Confirm ธีมเดียวกับ Builder / Media */
 function DeleteConfirmModal({ open, title, message, onConfirm, onClose }) {
   const isOpen = Boolean(open);
@@ -283,7 +361,7 @@ function DeleteConfirmModal({ open, title, message, onConfirm, onClose }) {
   );
 }
 
-export default function MessagesPage() {
+function MessagesPage() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -295,65 +373,110 @@ export default function MessagesPage() {
   const [deletingChecked, setDeletingChecked] = useState(false);
   /** null | { type: "single", id, label } | { type: "bulk", ids, count } */
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    total: 0,
+    totalPages: 1,
+  });
+  const [counts, setCounts] = useState({
+    all: 0,
+    unread: 0,
+    read: 0,
+    starred: 0,
+  });
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+      setPage(1);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   const loadMessages = useCallback(async () => {
+    const transactionId = beginBuilderPerformanceTransaction(
+      "resource-load",
+      {
+        label: "โหลด Messages",
+        elementType: "Messages",
+        elementId: FORMS_MENU_BAR_ID,
+        scope: "load",
+      },
+      { trackFrames: true }
+    );
+    const apiStartedAt = performance.now();
     setLoading(true);
     setError("");
     try {
-      const res = await getFormResponses(FORMS_MENU_BAR_ID);
-      const rows = Array.isArray(res?.data) ? res.data : [];
+      const res = await getFormResponses(FORMS_MENU_BAR_ID, null, {
+        page,
+        limit: MESSAGES_PAGE_SIZE,
+        folder,
+        search: debouncedQuery || undefined,
+      });
+      const payload = res?.data;
+      const rows = Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload)
+          ? payload
+          : [];
       const next = rows.map(normalizeMessage).filter((item) => item.id);
       setMessages(next);
+      if (payload?.pagination) {
+        setPagination(payload.pagination);
+      }
+      if (payload?.counts) {
+        setCounts(payload.counts);
+      }
       setCheckedIds(new Set());
       setSelectedId((prev) =>
         prev && next.some((item) => item.id === prev) ? prev : ""
+      );
+      finishBuilderPerformanceTransactionAfterPaint(
+        transactionId,
+        {
+          apiLatencyMs: performance.now() - apiStartedAt,
+          rowCount: next.length,
+          totalCount: Number(payload?.pagination?.total || next.length),
+        },
+        { reason: "messages-loaded" }
       );
     } catch {
       setMessages([]);
       setCheckedIds(new Set());
       setError("โหลดข้อความไม่สำเร็จ");
+      finishBuilderPerformanceTransactionAfterPaint(
+        transactionId,
+        { apiLatencyMs: performance.now() - apiStartedAt },
+        { reason: "messages-load-error" }
+      );
     } finally {
       setLoading(false);
       notifyMessagesChanged();
     }
-  }, []);
+  }, [debouncedQuery, folder, page, refreshKey]);
 
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return messages.filter((item) => {
-      if (folder === "unread" && item.read) return false;
-      if (folder === "read" && !item.read) return false;
-      if (folder === "starred" && !item.starred) return false;
-      if (!q) return true;
-      const hay = `${item.title} ${item.preview} ${item.formName}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [messages, query, folder]);
+  const filtered = messages;
 
   const selected = useMemo(
     () => filtered.find((item) => item.id === selectedId) || null,
     [filtered, selectedId]
   );
 
-  const unreadCount = useMemo(
-    () => messages.filter((item) => !item.read).length,
-    [messages]
-  );
-  const readCount = useMemo(
-    () => messages.filter((item) => item.read).length,
-    [messages]
-  );
-  const starredCount = useMemo(
-    () => messages.filter((item) => item.starred).length,
-    [messages]
-  );
+  const unreadCount = counts.unread;
+  const readCount = counts.read;
+  const starredCount = counts.starred;
 
   const selectFolder = (nextFolder) => {
     setFolder(nextFolder);
+    setPage(1);
     setSelectedId("");
     setCheckedIds(new Set());
   };
@@ -370,14 +493,14 @@ export default function MessagesPage() {
     [filteredIds, checkedIds]
   );
 
-  const toggleChecked = (messageId, nextChecked) => {
+  const toggleChecked = useCallback((messageId, nextChecked) => {
     setCheckedIds((prev) => {
       const next = new Set(prev);
       if (nextChecked) next.add(messageId);
       else next.delete(messageId);
       return next;
     });
-  };
+  }, []);
 
   const toggleCheckAllFiltered = () => {
     setCheckedIds((prev) => {
@@ -391,7 +514,7 @@ export default function MessagesPage() {
     });
   };
 
-  const markRead = async (message) => {
+  const markRead = useCallback(async (message) => {
     if (!message?.id || message.read) return;
     setMessages((prev) =>
       prev.map((item) =>
@@ -404,9 +527,9 @@ export default function MessagesPage() {
     } catch {
       /* keep optimistic UI */
     }
-  };
+  }, []);
 
-  const toggleStarred = async (message, event) => {
+  const toggleStarred = useCallback(async (message, event) => {
     event?.stopPropagation?.();
     event?.preventDefault?.();
     if (!message?.id) return;
@@ -425,12 +548,12 @@ export default function MessagesPage() {
         )
       );
     }
-  };
+  }, []);
 
-  const openMessage = async (message) => {
+  const openMessage = useCallback(async (message) => {
     setSelectedId(message.id);
     await markRead(message);
-  };
+  }, [markRead]);
 
   const requestDeleteOne = (message) => {
     if (!message?.id || busyId || deletingChecked) return;
@@ -493,7 +616,7 @@ export default function MessagesPage() {
     setDeletingChecked(true);
     setError("");
     try {
-      await Promise.all(ids.map((id) => deleteFormResponse(id)));
+      await deleteFormResponses(ids);
       const removeSet = new Set(ids);
       setMessages((prev) => prev.filter((item) => !removeSet.has(item.id)));
       setSelectedId((current) => (removeSet.has(current) ? "" : current));
@@ -518,6 +641,14 @@ export default function MessagesPage() {
     pendingDelete?.type === "bulk"
       ? `คุณต้องการลบข้อความที่เลือก ${pendingDelete.count} รายการใช่หรือไม่?`
       : `คุณต้องการลบข้อความนี้ใช่หรือไม่?`;
+  const handleMessagesPerformanceEvent = useCallback((event) => {
+    recordBuilderPanelControlEvent(event, {
+      panelType: "Messages",
+      elementType: "Messages",
+      elementId: FORMS_MENU_BAR_ID,
+      labelPrefix: "Messages",
+    });
+  }, []);
 
   return (
     <main
@@ -526,6 +657,11 @@ export default function MessagesPage() {
         background: C.bg,
         color: C.text,
       }}
+      onPointerDownCapture={handleMessagesPerformanceEvent}
+      onPointerUpCapture={handleMessagesPerformanceEvent}
+      onInputCapture={handleMessagesPerformanceEvent}
+      onChangeCapture={handleMessagesPerformanceEvent}
+      onClickCapture={handleMessagesPerformanceEvent}
     >
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left rail — Gmail-like folders */}
@@ -554,7 +690,7 @@ export default function MessagesPage() {
                 id: "all",
                 label: "ข้อความทั้งหมด",
                 icon: Inbox,
-                count: messages.length,
+                count: counts.all,
               },
               {
                 id: "unread",
@@ -672,7 +808,7 @@ export default function MessagesPage() {
               <button
                 type="button"
                 title="รีเฟรช"
-                onClick={loadMessages}
+                onClick={() => setRefreshKey((value) => value + 1)}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full transition hover:opacity-80"
                 style={{ color: C.textMuted }}
               >
@@ -704,65 +840,15 @@ export default function MessagesPage() {
                 const active = message.id === selectedId;
                 const checked = checkedIds.has(message.id);
                 return (
-                  <div
+                  <MessageListRow
                     key={message.id}
-                    className="flex h-[64px] w-full shrink-0 items-center gap-2 border-b px-3 transition"
-                    style={{
-                      borderColor: C.border,
-                      background: active
-                        ? C.activeSoft
-                        : checked
-                          ? C.activeSofter
-                          : message.read
-                            ? "transparent"
-                            : C.unreadRow,
-                    }}
-                  >
-                    <ThemeCheckbox
-                      checked={checked}
-                      ariaLabel={`เลือก ${message.title}`}
-                      onChange={(nextChecked) =>
-                        toggleChecked(message.id, nextChecked)
-                      }
-                    />
-                    <button
-                      type="button"
-                      onClick={() => openMessage(message)}
-                      className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
-                    >
-                      <span
-                        className={`min-w-0 truncate text-[13px] ${
-                          message.read ? "font-medium" : "font-semibold"
-                        }`}
-                        style={{ color: C.heading }}
-                      >
-                        {message.title}
-                      </span>
-                      <span
-                        className="shrink-0 text-[11px] tabular-nums"
-                        style={{ color: C.textMuted }}
-                      >
-                        {formatMessageTime(message.createdAt)}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      title={message.starred ? "เอาดาวออก" : "ติดดาว"}
-                      aria-label={message.starred ? "เอาดาวออก" : "ติดดาว"}
-                      aria-pressed={message.starred}
-                      onClick={(event) => toggleStarred(message, event)}
-                      className="inline-flex h-9 w-8 shrink-0 items-center justify-center rounded-md transition hover:opacity-80"
-                    >
-                      <Star
-                        size={16}
-                        strokeWidth={message.starred ? 0 : 2}
-                        fill={message.starred ? C.active : "none"}
-                        style={{
-                          color: message.starred ? C.active : C.starIdle,
-                        }}
-                      />
-                    </button>
-                  </div>
+                    message={message}
+                    active={active}
+                    checked={checked}
+                    onToggleChecked={toggleChecked}
+                    onOpen={openMessage}
+                    onToggleStarred={toggleStarred}
+                  />
                 );
               })
             )}
@@ -942,6 +1028,36 @@ export default function MessagesPage() {
           )}
         </section>
       </div>
+      <footer
+        className="flex shrink-0 items-center justify-between gap-3 border-t px-4 py-2"
+        style={{ background: C.surface, borderColor: C.border }}
+      >
+        <BuilderPerformanceTrigger />
+        <div className="flex items-center gap-2 text-[12px]">
+          <button
+            type="button"
+            disabled={loading || pagination.page <= 1}
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+            className="dash-button rounded-md px-2.5 py-1 disabled:opacity-40"
+          >
+            ก่อนหน้า
+          </button>
+          <span className="tabular-nums" style={{ color: C.textMuted }}>
+            หน้า {pagination.page} / {pagination.totalPages} ·{" "}
+            {pagination.total.toLocaleString("th-TH")} รายการ
+          </span>
+          <button
+            type="button"
+            disabled={loading || pagination.page >= pagination.totalPages}
+            onClick={() =>
+              setPage((value) => Math.min(pagination.totalPages, value + 1))
+            }
+            className="dash-button rounded-md px-2.5 py-1 disabled:opacity-40"
+          >
+            ถัดไป
+          </button>
+        </div>
+      </footer>
 
       <DeleteConfirmModal
         open={Boolean(pendingDelete)}
@@ -953,3 +1069,22 @@ export default function MessagesPage() {
     </main>
   );
 }
+
+const MemoizedMessagesPage = React.memo(MessagesPage);
+
+function ProfiledMessagesPage(props) {
+  return (
+    <React.Profiler
+      id="MessagesCanvas"
+      onRender={(_id, phase, actualDuration, baseDuration) =>
+        recordBuilderCanvasCommit(actualDuration, baseDuration, phase, {
+          area: "Messages",
+        })
+      }
+    >
+      <MemoizedMessagesPage {...props} />
+    </React.Profiler>
+  );
+}
+
+export default React.memo(ProfiledMessagesPage);

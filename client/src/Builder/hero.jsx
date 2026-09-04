@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AlignLeft,
   AlignCenter,
@@ -14,6 +21,12 @@ import { styled } from "@mui/material/styles";
 import Switch from "@mui/material/Switch";
 import ImageModal from "./imageModal";
 import ServiceIcon from "./ServiceIcon";
+import { usePanelPreview } from "./panelPreviewStore";
+import { BuilderPerformanceTrigger } from "./performance/BuilderPerformanceMonitor";
+import {
+  recordBuilderCanvasCommit,
+  recordBuilderPanelControlEvent,
+} from "./performance/builderPerformanceStore";
 import IconAwsome from "./IconAwsome";
 import { THEME_PANEL_BASIC_COLOR_SWATCHES } from "./themePanelBasicColors";
 import Range from "./HTML/Range";
@@ -377,19 +390,23 @@ const resolveHeroSectionByDevice = (section, device) => {
   };
 };
 
-function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, device = "Desktop", readOnly = false }) {
+function HeroPage({
+  heroSection,
+  theme,
+  openOffcavanas,
+  updateHeroSection,
+  device: requestedDevice = "Desktop",
+  readOnly = false,
+}) {
+  const device = useDeferredValue(requestedDevice);
   const [isHoverSection, setIsHoverSection] = useState(false);
-  const deviceRef = useRef(device);
-  const heroSectionRef = useRef(heroSection);
-  useEffect(() => {
-    deviceRef.current = device;
-  }, [device]);
-  useEffect(() => {
-    heroSectionRef.current = heroSection;
-  }, [heroSection]);
   const editableHeroSection = useMemo(
     () => resolveHeroSectionByDevice(heroSection, device),
     [heroSection, device]
+  );
+  const heroSliderPreview = usePanelPreview(
+    "Hero",
+    String(editableHeroSection?.id || "HeroSec-1")
   );
   const sectionData = useMemo(() => {
     return {
@@ -444,41 +461,28 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
       bulletBottomOffset: 12,
       activeLayerItemId: null,
       ...editableHeroSection,
+      ...(heroSliderPreview || {}),
       id: String(editableHeroSection?.id || "HeroSec-1"),
       _sectionIndex: 0,
       _isSplitSection: false,
     };
-  }, [editableHeroSection]);
+  }, [editableHeroSection, heroSliderPreview]);
+  const handleHeroPerformanceEvent = useCallback(
+    (event) => {
+      recordBuilderPanelControlEvent(event, {
+        panelType: "Hero Canvas",
+        elementType: "Hero",
+        elementId: String(sectionData.id || "HeroSec-1"),
+        labelPrefix: "Hero",
+      });
+    },
+    [sectionData.id]
+  );
 
   const handleUpdateSection = useCallback(
     (nextSection) => {
       if (!updateHeroSection) return;
-      const currentDevice = deviceRef.current;
-      const currentHeroSection = heroSectionRef.current;
-      const sanitizedNextSection = stripHeroDeviceSections(nextSection);
-      if (!HERO_RESPONSIVE_DEVICES.has(currentDevice)) {
-        const preservedDeviceSections =
-          currentHeroSection?.deviceSections && typeof currentHeroSection.deviceSections === "object"
-            ? { ...currentHeroSection.deviceSections }
-            : undefined;
-        updateHeroSection({
-          ...sanitizedNextSection,
-          ...(preservedDeviceSections ? { deviceSections: preservedDeviceSections } : {}),
-        });
-        return;
-      }
-      const rootSection = stripHeroDeviceSections(currentHeroSection);
-      const prevDeviceSections =
-        currentHeroSection?.deviceSections && typeof currentHeroSection.deviceSections === "object"
-          ? { ...currentHeroSection.deviceSections }
-          : {};
-      updateHeroSection({
-        ...rootSection,
-        deviceSections: {
-          ...prevDeviceSections,
-          [currentDevice]: sanitizedNextSection,
-        },
-      });
+      updateHeroSection(stripHeroDeviceSections(nextSection));
     },
     [updateHeroSection]
   );
@@ -546,6 +550,8 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
   const dragLayerMetaRef = useRef(null);
   const [dragLayerId, setDragLayerId] = useState(null);
   const [layerDragDraft, setLayerDragDraft] = useState({});
+  const layerDragDraftRef = useRef(layerDragDraft);
+  layerDragDraftRef.current = layerDragDraft;
   const resizeLayerMetaRef = useRef(null);
   const [resizeLayerId, setResizeLayerId] = useState(null);
   const [layerResizeDraft, setLayerResizeDraft] = useState({});
@@ -1887,7 +1893,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
     const meta = dragLayerMetaRef.current;
     if (!meta) return;
     dragLayerMetaRef.current = null;
-    const draft = layerDragDraft[meta.layerId];
+    const draft = layerDragDraftRef.current[meta.layerId];
     const moved =
       draft &&
       Number.isFinite(Number(draft.x)) &&
@@ -1904,7 +1910,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
       return next;
     });
     setDragLayerId(null);
-  }, [layerDragDraft, updateLayerItemPosition]);
+  }, [updateLayerItemPosition]);
   const endLayerResize = useCallback(() => {
     const meta = resizeLayerMetaRef.current;
     if (!meta) return;
@@ -1965,6 +1971,16 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
       if (!layerItem?.id || !previewDropRef.current || resizeLayerMetaRef.current) return;
       event.preventDefault();
       event.stopPropagation();
+      if (
+        Number.isFinite(Number(event.pointerId)) &&
+        typeof event.currentTarget?.setPointerCapture === "function"
+      ) {
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture is best-effort; window listeners remain as fallback.
+        }
+      }
       const dropRect = previewDropRef.current.getBoundingClientRect();
       dragLayerMetaRef.current = {
         layerId: layerItem.id,
@@ -2945,25 +2961,30 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
   handleUpdateSectionRef.current = handleUpdateSection;
   useEffect(() => {
     if (!dragLayerId) return undefined;
-    const onMouseMove = (event) => moveLayerDrag(event);
-    const onMouseUp = () => endLayerDrag();
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    const onPointerMove = (event) => moveLayerDrag(event);
+    const onPointerUp = () => endLayerDrag();
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
     return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
   }, [dragLayerId, endLayerDrag, moveLayerDrag]);
   useEffect(() => {
-    const onMouseMove = (event) => moveLayerResize(event);
-    const onMouseUp = () => endLayerResize();
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    if (!resizeLayerId) return undefined;
+    const onPointerMove = (event) => moveLayerResize(event);
+    const onPointerUp = () => endLayerResize();
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
     return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
-  }, [endLayerResize, moveLayerResize]);
+  }, [resizeLayerId, endLayerResize, moveLayerResize]);
   useEffect(() => {
     setLayerDragDraft({});
     setDragLayerId(null);
@@ -3180,7 +3201,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
             unicodeBidi: "plaintext",
             writingMode: "horizontal-tb",
           }}
-          onMouseDown={(event) => {
+          onPointerDown={(event) => {
             if (isTextEditing) {
               event.stopPropagation();
             }
@@ -3384,7 +3405,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
               data-gramm="false"
               data-gramm_editor="false"
               data-enable-grammarly="false"
-              onMouseDown={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
               onChange={(event) => {
                 if (!item?.id) return;
                 const nextText = String(event.currentTarget.value ?? "");
@@ -3512,7 +3533,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                 data-gramm="false"
                 data-gramm_editor="false"
                 data-enable-grammarly="false"
-                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
                 onChange={(event) => {
                   if (!item?.id) return;
                   const nextText = String(event.currentTarget.value ?? "");
@@ -3781,9 +3802,17 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
     ? `max(0px, calc((100% - ${previewFrameDeviceWidth}px) / 2))`
     : desktopFrameInsetX;
   const previewFrameMediaClipStyle = shouldClipSceneMediaToPreviewFrame
-    ? {
-        clipPath: `inset(0 ${previewFrameClipInsetX} 0 ${previewFrameClipInsetX})`,
-      }
+    ? Number.isFinite(previewFrameDeviceWidth)
+      ? {
+          left: "50%",
+          right: "auto",
+          width: `min(100%, ${previewFrameDeviceWidth}px)`,
+          transform: "translateX(-50%)",
+          contain: "layout paint style",
+        }
+      : {
+          clipPath: `inset(0 ${previewFrameClipInsetX} 0 ${previewFrameClipInsetX})`,
+        }
     : undefined;
   const previewFrameBoundsStyle = {
     width: heroPreviewViewportWidth,
@@ -3940,6 +3969,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
             }`}
             style={{
               ...previewFrameBoundsStyle,
+              contain: "layout style",
             }}
           >
             <div className="pointer-events-none absolute inset-0 z-10">
@@ -4012,8 +4042,16 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
   }
 
   return (
-    <main className="flex-1 overflow-y-auto px-4 pb-4 pt-0 sm:px-6 sm:pb-6 sm:pt-0">
-      <div className="min-h-[600px] px-4 pb-4 pt-0">
+    <main
+      className="flex flex-1 flex-col overflow-y-auto px-4 pb-4 pt-0 sm:px-6 sm:pb-6 sm:pt-0"
+      onPointerDownCapture={handleHeroPerformanceEvent}
+      onPointerUpCapture={handleHeroPerformanceEvent}
+      onInputCapture={handleHeroPerformanceEvent}
+      onChangeCapture={handleHeroPerformanceEvent}
+      onClickCapture={handleHeroPerformanceEvent}
+      onBlurCapture={handleHeroPerformanceEvent}
+    >
+      <div className="min-h-[600px] flex-1 px-4 pb-4 pt-0">
         <div
           className="mx-auto w-full overflow-x-auto overflow-y-hidden transition-all duration-300 ease-out"
           style={{
@@ -4207,6 +4245,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                 </span>
                 <div className="shrink-0 w-fit px-[2px]">
                   <Range
+                    controlLabel="Canvas image brightness"
                     min={0}
                     max={200}
                     step={1}
@@ -4226,6 +4265,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                 </span>
                 <div className="shrink-0 w-fit px-[2px]">
                   <Range
+                    controlLabel="Canvas shape radius"
                     min={0}
                     max={100}
                     step={1}
@@ -4258,6 +4298,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                 </span>
                 <div className="shrink-0 w-fit px-[2px]">
                   <Range
+                    controlLabel="Canvas layer opacity"
                     min={0}
                     max={100}
                     step={1}
@@ -4310,6 +4351,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                 </span>
                 <div className="shrink-0 w-fit px-[2px]">
                   <Range
+                    controlLabel="Canvas text line height"
                     min={TEXT_LAYER_MIN_LINE_HEIGHT}
                     max={TEXT_LAYER_MAX_LINE_HEIGHT}
                     step={0.05}
@@ -4339,6 +4381,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                 </span>
                 <div className="shrink-0 w-fit px-[2px]">
                   <Range
+                    controlLabel="Canvas heading letter spacing"
                     min={HEADING_LAYER_MIN_LETTER_SPACING}
                     max={HEADING_LAYER_MAX_LETTER_SPACING}
                     step={0.1}
@@ -4370,6 +4413,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                 </span>
                 <div className="shrink-0 w-fit px-[2px]">
                   <Range
+                    controlLabel="Canvas button font size"
                     min={BUTTON_LAYER_MIN_FONT_SIZE}
                     max={BUTTON_LAYER_MAX_FONT_SIZE}
                     step={1}
@@ -4401,6 +4445,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                 </span>
                 <div className="shrink-0 w-fit px-[2px]">
                   <Range
+                    controlLabel="Canvas button radius"
                     min={0}
                     max={100}
                     step={1}
@@ -4479,6 +4524,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                 </span>
                 <div className="shrink-0 w-fit px-[2px]">
                   <Range
+                    controlLabel="Canvas layer blur"
                     min={0}
                     max={100}
                     step={1}
@@ -4593,6 +4639,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
             }`}
             style={{
               ...previewFrameBoundsStyle,
+              contain: "layout style",
             }}
             ref={previewDropRef}
             onMouseDown={(event) => {
@@ -4861,9 +4908,10 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                       left: `${x}px`,
                       top: `${y}px`,
                       zIndex: Number(item?.__safeZIndex || 1),
+                      touchAction: "none",
                       ...(isResizableElement ? { width: `${width}px`, height: `${height}px` } : {}),
                     }}
-                    onMouseDown={(event) => {
+                    onPointerDown={(event) => {
                       if (
                         isTextElement &&
                         editingTextLayerId !== item?.id &&
@@ -4912,6 +4960,28 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                       }
                       if ((isTextElement || isButtonElement) && editingTextLayerId === item?.id) return;
                       startLayerDrag(event, item, x, y, width, height);
+                    }}
+                    onPointerMove={(event) => {
+                      if (dragLayerMetaRef.current?.layerId !== item?.id) return;
+                      moveLayerDrag(event);
+                    }}
+                    onPointerUp={(event) => {
+                      if (dragLayerMetaRef.current?.layerId !== item?.id) return;
+                      if (
+                        Number.isFinite(Number(event.pointerId)) &&
+                        typeof event.currentTarget?.releasePointerCapture === "function"
+                      ) {
+                        try {
+                          event.currentTarget.releasePointerCapture(event.pointerId);
+                        } catch {
+                          // The browser may already have released capture.
+                        }
+                      }
+                      endLayerDrag();
+                    }}
+                    onPointerCancel={() => {
+                      if (dragLayerMetaRef.current?.layerId !== item?.id) return;
+                      endLayerDrag();
                     }}
                     onClick={(event) => {
                       event.preventDefault();
@@ -4971,7 +5041,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                           <button
                             type="button"
                             className="absolute -top-8 right-0 z-10 rounded bg-black/80 px-2 py-1 text-[10px] font-medium text-white"
-                            onMouseDown={(event) => {
+                            onPointerDown={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
                             }}
@@ -5007,7 +5077,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                               className={`absolute z-20 ${
                                 isTextElement ? textHandleSizeClass : "h-[10px] w-[10px]"
                               } pointer-events-auto rounded-[2px] border border-slate-700 bg-white ${handle.className}`}
-                              onMouseDown={(event) => {
+                              onPointerDown={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
                                 startLayerResize(
@@ -5048,7 +5118,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                               key={`${item?.id}-edge-${handle.key}`}
                               data-resize-handle="true"
                               className={`absolute h-[10px] w-[10px] pointer-events-auto rounded-[2px] border border-slate-700 bg-white ${handle.className}`}
-                              onMouseDown={(event) => {
+                              onPointerDown={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
                                 startLayerResize(
@@ -5083,7 +5153,7 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
                               key={`${item?.id}-text-edge-${handle.key}`}
                               data-resize-handle="true"
                               className={`absolute z-20 ${textHandleSizeClass} pointer-events-auto rounded-[2px] border border-slate-700 bg-white ${handle.className}`}
-                              onMouseDown={(event) => {
+                              onPointerDown={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
                                 startLayerResize(
@@ -5159,6 +5229,12 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
           </div>
         </div>
       </div>
+      <footer className="sticky bottom-0 z-30 mt-auto flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-[var(--dash-bg,#f8fafc)] px-4 py-2 dark:border-white/10">
+        <BuilderPerformanceTrigger />
+        <span className="shrink-0 text-[12px] text-slate-500">
+          Copyright © {new Date().getFullYear()} Web Builder. All rights reserved.
+        </span>
+      </footer>
       <ImageModal
         openModal={isLayerImagePickerOpen}
         setOpenModal={setIsLayerImagePickerOpen}
@@ -5206,4 +5282,22 @@ function HeroPage({ heroSection, theme, openOffcavanas, updateHeroSection, devic
   );
 }
 
-export default HeroPage;
+const MemoizedHeroPage = React.memo(HeroPage);
+
+function ProfiledHeroPage(props) {
+  return (
+    <React.Profiler
+      id="HeroCanvas"
+      onRender={(_id, phase, actualDuration, baseDuration) =>
+        recordBuilderCanvasCommit(actualDuration, baseDuration, phase, {
+          area: "Hero",
+          device: props.device || "Desktop",
+        })
+      }
+    >
+      <MemoizedHeroPage {...props} />
+    </React.Profiler>
+  );
+}
+
+export default React.memo(ProfiledHeroPage);

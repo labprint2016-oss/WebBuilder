@@ -517,21 +517,17 @@ function SelectInput({ label, name, value, datas, handleChange }) {
 
 function Navbar({ handleDragElement,prepareDragElement,isDark,updateNewTheme,navOpen,setNavOpen,selectedMenuId,setSelectedMenuId, railExpanded = false }) {
  const FORMS_MENU_BAR_ID = "69db17211be82fe7637ea096";
- const countUnreadMessages = (rows) =>
-   (Array.isArray(rows) ? rows : []).filter(
-     (row) => !(row?.read === true || row?.meta?.read === true)
-   ).length;
-
-
  const navigate = useNavigate()
  const location = useLocation()
  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
 
  const refreshUnreadMessageCount = useCallback(async () => {
    try {
-     const res = await getFormResponses(FORMS_MENU_BAR_ID);
-     const rows = Array.isArray(res?.data) ? res.data : [];
-     setUnreadMessageCount(countUnreadMessages(rows));
+     const res = await getFormResponses(FORMS_MENU_BAR_ID, null, {
+       page: 1,
+       limit: 10,
+     });
+     setUnreadMessageCount(Number(res?.data?.counts?.unread || 0));
    } catch {
      // keep previous count when fetch fails
    }

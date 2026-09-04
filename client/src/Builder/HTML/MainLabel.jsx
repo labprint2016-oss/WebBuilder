@@ -56,6 +56,7 @@ const MainLabel = ({
   typography = null,
   noLine = false,
   fontWeight = 600,
+  valueRef = null,
 }) => {
   const accent = color || "#0d9488";
   return (
@@ -76,7 +77,7 @@ const MainLabel = ({
     >
       {label}{" "}
       {!isNaN(value) && (
-        <span className="text-slate-400 dark:text-slate-400">
+        <span ref={valueRef} className="text-slate-400 dark:text-slate-400">
           {Math.round(value)}
         </span>
       )}

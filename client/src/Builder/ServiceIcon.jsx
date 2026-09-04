@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
     Dialog,
@@ -83,11 +83,16 @@ const AntSwitch = styled(Switch)({
           '.dark &': { backgroundColor: 'rgba(255,255,255,.25)' },
         },
       });
+const ICON_RENDER_BATCH_SIZE = 30;
 
 const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMode})=>{
     const modalContentRef = useRef(null);
     const gridRef = useRef(null);
     const switchWrapRef = useRef(null);
+    const handleChangeRef = useRef(handleChange);
+    const onCloseRef = useRef(onClose);
+    handleChangeRef.current = handleChange;
+    onCloseRef.current = onClose;
     const icons = ICON_LIST;
     const [searchKeyword, setSearchKeyword] = useState("");
     const [visibleCount, setVisibleCount] = useState(0);
@@ -161,7 +166,7 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
         };
       }
       paintIconSelection(next?.name, next?.type);
-      handleChange?.(next);
+      handleChangeRef.current?.(next);
     };
 
     useLayoutEffect(() => {
@@ -173,7 +178,7 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
       let frame2 = 0;
       const frame1 = requestAnimationFrame(() => {
         frame2 = requestAnimationFrame(() => {
-          setVisibleCount(Number.POSITIVE_INFINITY);
+          setVisibleCount(ICON_RENDER_BATCH_SIZE);
         });
       });
       return () => {
@@ -181,6 +186,10 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
         cancelAnimationFrame(frame2);
       };
     }, [open]);
+    useEffect(() => {
+      if (!open) return;
+      setVisibleCount(ICON_RENDER_BATCH_SIZE);
+    }, [open, searchKeyword]);
 
 
       const textColor = darkMode === "dark"?"text-white":"text-[#333]"
@@ -201,7 +210,7 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
     return(  
       <Modal
       open={open}
-      onClose={onClose}
+      onClose={() => onCloseRef.current?.()}
       disableAutoFocus={false}
       aria-labelledby="basic-modal-title"
       aria-describedby="basic-modal-desc"
@@ -314,7 +323,7 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
               </div>
     
               <div>
-                <a onClick={onClose} style={{ cursor: "pointer", color: textColor }}>
+                <a onClick={() => onCloseRef.current?.()} style={{ cursor: "pointer", color: textColor }}>
                   X
                 </a>
               </div>
@@ -329,6 +338,20 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
     
             {/* ✅ ส่วนนี้ scroll */}
             <Box
+              onScroll={(event) => {
+                const target = event.currentTarget;
+                if (
+                  target.scrollTop + target.clientHeight >=
+                  target.scrollHeight - 120
+                ) {
+                  setVisibleCount((count) =>
+                    Math.min(
+                      filteredIcons.length,
+                      count + ICON_RENDER_BATCH_SIZE
+                    )
+                  );
+                }
+              }}
               sx={{
                 flex: 1,
                 overflowY: "auto",
@@ -423,4 +446,14 @@ const ServiceIcon = ({header,icon:icn,open,onClose,handleChange,darkColor,darkMo
 }
 
 
-export default ServiceIcon
+export default memo(ServiceIcon, (prev, next) => {
+  if (prev.open !== next.open) return false;
+  if (prev.header !== next.header) return false;
+  if (prev.darkMode !== next.darkMode) return false;
+  if (prev.darkColor !== next.darkColor) return false;
+  if (prev.open && next.open) return true;
+  return (
+    (prev.icon?.name ?? null) === (next.icon?.name ?? null) &&
+    (prev.icon?.type ?? null) === (next.icon?.type ?? null)
+  );
+});

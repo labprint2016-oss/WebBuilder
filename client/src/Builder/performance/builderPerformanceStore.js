@@ -96,6 +96,9 @@ const STRUCTURAL_UNRELATED_IGNORE_KINDS = new Set([
   "dnd",
   "canvas-clone",
   "canvas-delete",
+  "canvas-expand",
+  "canvas-collapse",
+  "canvas-toggle",
   "canvas-reorder",
   "canvas-column-split",
   "canvas-resize",
@@ -882,9 +885,26 @@ const getControlKind = (target) => {
   return tag || "control";
 };
 
+const getPerfControlName = (node) => {
+  if (!node) return "";
+  const fromDataset = node.dataset?.perfControl;
+  if (fromDataset) return fromDataset;
+  const closest = node.closest?.("[data-perf-control]");
+  if (closest?.dataset?.perfControl) return closest.dataset.perfControl;
+  const nested = node.querySelector?.(
+    "[data-perf-control], input[data-perf-control]"
+  );
+  if (nested?.dataset?.perfControl) return nested.dataset.perfControl;
+  return (
+    node.getAttribute?.("aria-label") ||
+    nested?.getAttribute?.("aria-label") ||
+    ""
+  );
+};
+
 const getControlField = (target, controlKind) =>
   normalizeId(
-    target?.dataset?.perfControl ||
+    getPerfControlName(target) ||
       target?.name ||
       target?.id ||
       target?.getAttribute?.("aria-label") ||
@@ -903,6 +923,13 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
   ) {
     return;
   }
+  if (
+    [...activeTransactions.values()].some(
+      (transaction) => transaction.kind === "panel-open"
+    )
+  ) {
+    return;
+  }
   const eventTarget = event?.target;
   if (
     !eventTarget ||
@@ -917,11 +944,22 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
   );
   if (!target) return;
   const controlKind = getControlKind(target);
+  const eventType = String(event.type || "");
   // Range / native color belong to panel-slider (starts on first onChange).
   // Recording them here on pointerdown creates a panel-control row whose first
   // frame gap is the grab hitch, not commit work.
   if (controlKind === "slider" || controlKind === "color") {
-    return;
+    const isAutoTrackedSlider =
+      controlKind === "slider" &&
+      target.dataset?.perfSliderAuto === "true";
+    if (
+      !isAutoTrackedSlider ||
+      !["input", "change", "pointerup", "pointercancel", "blur"].includes(
+        eventType
+      )
+    ) {
+      return;
+    }
   }
   const controlField = getControlField(target, controlKind);
   if (context.skipWhenRecentActive === true && controlKind !== "text") {
@@ -941,7 +979,6 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
   }
   const panelType = normalizeId(context.panelType);
   const elementId = normalizeId(context.elementId);
-  const eventType = String(event.type || "");
   if (
     (controlKind === "toggle" || controlKind === "button") &&
     eventType === "pointerdown"
@@ -968,7 +1005,8 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
   let session = controlSessions.get(sessionKey);
   if (!session) {
     const transactionId = beginBuilderPerformanceTransaction(
-      context.transactionKind || "panel-control",
+      context.transactionKind ||
+        (controlKind === "slider" ? "panel-slider" : "panel-control"),
       {
         label: `${context.labelPrefix || context.panelType || "Panel"} / ${controlField}`,
         panelType: context.panelType,
@@ -983,6 +1021,7 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
           controlKind === "slider" ||
           controlKind === "color",
         skipInitialFrameGap:
+          controlKind === "slider" ||
           (context.transactionKind === "navigation-control" &&
             controlKind === "button" &&
             controlField === "Builder") ||
@@ -991,6 +1030,7 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
             (controlField === "ลบ" ||
               controlField === "โหลด PRESET" ||
               controlField === "บันทึกลงหน้า")),
+        skipInitialFrameGapCount: controlKind === "slider" ? 2 : 1,
       }
     );
     if (transactionId == null) return;
@@ -1017,7 +1057,8 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
   const shouldFinishImmediately =
     eventType === "blur" ||
     eventType === "pointerup" ||
-    eventType === "input" ||
+    eventType === "pointercancel" ||
+    (eventType === "input" && controlKind !== "slider") ||
     (eventType === "click" &&
       (controlKind === "button" || controlKind === "toggle")) ||
     (eventType === "change" &&
@@ -1030,7 +1071,10 @@ export function recordBuilderPanelControlEvent(event, context = {}) {
   session.timerId = setTimeout(() => {
     controlSessions.delete(sessionKey);
     const interactionStartedAt =
-      controlKind === "toggle" || controlKind === "button"
+      controlKind === "toggle" ||
+      controlKind === "button" ||
+      controlKind === "slider" ||
+      controlKind === "color"
         ? session.lastEventAt
         : session.startedAt;
     if (controlKind === "toggle" || controlKind === "button") {
